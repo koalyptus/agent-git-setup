@@ -11,9 +11,9 @@ made there are attributed to a bot, while your main checkout stays exactly as yo
 
 It handles two distinct things:
 
-1. **Local worktree commit identity.** Inside the worktree only, `user.name` and
-   `user.email` are set to the bot identity. Commits authored there read as the
-   bot. This is pure local git config — no token required.
+1. **Local worktree commit identity (required).** Inside the worktree only,
+   `user.name` and `user.email` are set to the bot identity. Commits authored
+   there read as the bot. This is pure local git config — no token required.
 2. **GitHub actor (push / API).** The worktree's `origin` remote is rewritten to
    use a token (`https://x-access-token:<token>@...`), so pushes are attributed
    to that identity. The same `GH_TOKEN` in the agent's environment also drives
@@ -47,13 +47,24 @@ agent-git-setup.sh <repo-dir> [worktree-name] [branch]
 | `AGENT_GIT_USER_ID`  | The bot **user** id (NOT the App id). Get it from                    |
 |                      | `https://api.github.com/users/<name>` -> `.id`.                     |
 
-### Optional environment
+The commit author (`user.name` / `user.email`) is set from the required
+variables above — it is **not** optional.
+
+### Optional: verified commit signing
 
 | Variable              | Meaning                                                              |
 |----------------------|----------------------------------------------------------------------|
 | `AGENT_GIT_SIGNINGKEY` | An SSH public key (`key::<pubkey>`) for a **verified** `[bot]` badge. |
-| `AGENT_GIT_WORKTREE` | Worktree name (default: `agent`).                                   |
-| `AGENT_GIT_BRANCH`   | Branch created in the worktree (default: `agent-work`).             |
+
+Without this, commits still show as `<name>[bot]` but **unverified**. With it,
+they get the green Verified checkmark.
+
+### Defaults (override via environment or arguments)
+
+| Variable              | Default     | Meaning                                  |
+|----------------------|-------------|------------------------------------------|
+| `AGENT_GIT_WORKTREE` | `agent`     | Worktree directory name.                |
+| `AGENT_GIT_BRANCH`   | `agent-work`| Branch created in the worktree.          |
 
 ### Example
 
