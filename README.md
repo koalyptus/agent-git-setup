@@ -122,6 +122,19 @@ ln -s "$PWD/agent-git-setup.sh" ~/.local/bin/agent-git-setup.sh
 A skill definition (`skills/SKILL.md`) ships in the repo so agents that load
 skills from a repo can pick it up directly.
 
+## Tests
+
+The suite is hermetic (temp repos, sandboxed `HOME`/`GIT_CONFIG_GLOBAL`, dummy
+token, no network, auto-cleanup) and needs only `bash` + `git`:
+
+```bash
+bash agent-git-setup-test.sh
+```
+
+It prints each check (`ok` / `FAIL`) and exits non-zero if any fail. The same
+suite runs automatically in CI (`.github/workflows/test.yml`) on every push and
+pull request, so a regression shows up as a red check before merge.
+
 ## Usage
 
 ```bash
