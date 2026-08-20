@@ -127,11 +127,11 @@ curl -s https://api.github.com/users/myagent%5Bbot%5D | jq .id
 # => e.g. 268339505   (this is AGENT_GIT_USER_ID, NOT the App ID)
 ```
 
-### 5. Mint tokens (use the repo's `mint-token.sh`)
+### 5. Mint tokens with `mint-token.sh` (required for the happy path)
 
-This repo ships a neutral minter — `mint-token.sh` — so you don't need any
-other tooling. It mints a GitHub App installation token (RS256 JWT, needs only
-`python3` + `cryptography`):
+This repo ships the minter — `mint-token.sh` — because token minting is the
+core of the setup, not an afterthought. It mints a GitHub App installation
+token (RS256 JWT, needs only `python3` + `cryptography`):
 
 ```bash
 source <(./mint-token.sh --app-id "$APP_ID" --pem "$PEM_PATH" --shell)
@@ -142,8 +142,8 @@ Set the env vars (`GITHUB_APP_ID`, `GITHUB_APP_PEM`) or pass `--app-id` /
 `--pem`. The token is short-lived (~1h); re-run for a fresh one.
 
 `agent-git-setup.sh` only *consumes* `GH_TOKEN` and stays token-agnostic — any
-other source works too (e.g. a harness's own App support) — but `mint-token.sh`
-is the self-contained default.
+other source works too — but `mint-token.sh` is the provided, primary minter
+and the one the agent uses in the happy path.
 
 ### 6. Optional: verified `[bot]` signing
 

@@ -66,11 +66,13 @@ The token is short-lived (~1h); re-run step 1 for a fresh one in long sessions.
 - **Worktree isolation.** All bot config is scoped to the worktree's own config
   file. The human's main tree stays theirs. No collision, no `git config`
   discipline required.
-- **Token source is in-repo.** `mint-token.sh` mints a GitHub App installation
-  token (RS256 JWT, no extra deps beyond `python3` + `cryptography`). It is the
-  neutral replacement for any backend-specific minter. `agent-git-setup.sh`
-  itself stays token-agnostic — it only consumes `GH_TOKEN`, so any other token
-  source works too (e.g. a harness's own App support).
+- **Token minting is fundamental.** The happy path requires a token, and this
+  repo provides `mint-token.sh` to mint one from a GitHub App (RS256 JWT, needs
+  only `python3` + `cryptography`). It is the expected, primary token source —
+  not an optional extra. `agent-git-setup.sh` itself stays token-agnostic (it
+  only *consumes* `GH_TOKEN`), which means other backends may supply a token
+  their own way too, but for this repo's standalone flow `mint-token.sh` is what
+  the agent uses.
 - **Backend-neutral.** Works under any agent/harness.
 
 ## Prerequisites
