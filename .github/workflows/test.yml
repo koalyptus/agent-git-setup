@@ -7,9 +7,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Run hermetic tests
-        run: bash agent-git-setup-test.sh
+        run: bash tests/agent-git-setup-test.sh
       - name: Run mint-token tests
-        run: bash mint-token-test.sh
+        run: bash tests/mint-token-test.sh
 
   lint:
     runs-on: ubuntu-latest
@@ -20,6 +20,6 @@ jobs:
           sudo apt-get update && sudo apt-get install -y shellcheck
           curl -sS https://webi.sh/shfmt | sh
       - name: Run shellcheck
-        run: shellcheck agent-git-setup.sh agent-git-setup-test.sh mint-token.sh mint-token-test.sh
+        run: shellcheck agent-git-setup.sh mint-token.sh tests/agent-git-setup-test.sh tests/mint-token-test.sh
       - name: Run shfmt
-        run: shfmt -d agent-git-setup.sh agent-git-setup-test.sh mint-token.sh mint-token-test.sh
+        run: shfmt -d agent-git-setup.sh mint-token.sh tests/agent-git-setup-test.sh tests/mint-token-test.sh
