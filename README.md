@@ -13,24 +13,29 @@ Give an AI agent a bot identity in local git worktrees and/or on GitHub — back
 
 ## What it does
 
-An AI coding agent should be able to commit and push as a distinct bot identity,
+An AI coding agent should be able to **commit as a distinct bot identity**,
 without that identity leaking into your own working tree. `agent-git-setup.sh`
-creates an isolated **git worktree** and configures it so that commits and pushes
-made there are attributed to a bot, while your main checkout stays exactly as you.
+creates an isolated **git worktree** and configures it so that commits authored
+there are attributed to a bot, while your main checkout stays exactly as you.
+
+The bot identity is the **commit author** (the `user.name`/`user.email` stamped
+on each commit). It does **not** change who pushes: a plain `git push` from the
+worktree uses your normal credential, so the push actor stays you. GitHub-side
+operations driven by `GH_TOKEN` in the agent's environment (PRs, issues,
+comments via `gh`/API) are the bot. See "Commit-author isolation" below.
 
 It handles two distinct things:
 
 1. **Local worktree commit identity (required).** Inside the worktree only,
    `user.name` and `user.email` are set to the bot identity. Commits authored
    there read as the bot. This is pure local git config — no token required.
-2. **GitHub actor (PRs / API).** The bot push/API actor is provided by
-   `GH_TOKEN` in the agent's environment, which drives `gh`/API calls
-   (PRs, issues, comments) as the bot. Plain `git push` from the worktree uses
-   the repository's normal credential — by design the script does **not** rewrite
-   `origin` (git worktrees share remotes, so doing so would change your main
-   tree). The local commit *author* is the bot; the push *actor* depends on how
-   you push. This is the deliberate, safe trade-off (see "Commit-author
-   isolation" below).
+2. **GitHub actor (PRs / API).** Operations driven by `GH_TOKEN` in the
+   agent's environment (`gh`/API calls: PRs, issues, comments) act as the bot.
+   Plain `git push` from the worktree uses the repository's normal credential —
+   by design the script does **not** rewrite `origin` (git worktrees share
+   remotes, so doing so would change your main tree). The local commit *author*
+   is the bot; the push *actor* is you. This is the deliberate, safe trade-off
+   (see "Commit-author isolation" below).
 
 ## What it is not
 
