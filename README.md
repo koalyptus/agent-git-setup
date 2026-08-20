@@ -19,7 +19,18 @@ To have an agent set itself up with a bot identity, give it this prompt
 > Use the `agent-git-setup` skill. Set up a bot git identity for the repo at
 > `<repo-path>` (e.g. `~/dev/my-project`).
 >
-> The token source determines what you provide:
+> The token source determines what you provide. GitHub App is optional — you
+> can bring your own `GH_TOKEN` instead.
+
+> **Without GitHub App (bring your own `GH_TOKEN`):**
+> - `AGENT_GIT_NAME`: `<name>[bot]` (e.g. `myagent[bot]`)
+> - `AGENT_GIT_USER_ID`: the user id of whoever owns the token — run:
+>   ```bash
+>   curl -s https://api.github.com/users/<handle> | jq .id
+>   ```
+>   (or extract it from the token if your backend provides it)
+> - `GH_TOKEN`: already set in the environment (mint it however you like)
+> - `AGENT_GIT_SIGNINGKEY`: (optional) `key::ssh-ed25519 AAAA... bot@github`
 
 > **With GitHub App (uses `mint-token.sh` from this repo):**
 > - `AGENT_GIT_NAME`: `<app>[bot]` (e.g. `myagent[bot]`)
@@ -32,15 +43,12 @@ To have an agent set itself up with a bot identity, give it this prompt
 > - `GITHUB_APP_PEM`: path to the app's private key `.pem`
 > - `AGENT_GIT_SIGNINGKEY`: (optional) `key::ssh-ed25519 AAAA... bot@github`
 
-> **Without GitHub App (bring your own `GH_TOKEN`):**
-> - `AGENT_GIT_NAME`: `<name>[bot]` (e.g. `myagent[bot]`)
-> - `AGENT_GIT_USER_ID`: the user id of whoever owns the token — run the same
->   `curl` above with that user's handle, or extract from the token if your
->   backend provides it.
-> - `GH_TOKEN`: already set in the environment (mint it however you like)
-> - `AGENT_GIT_SIGNINGKEY`: (optional) `key::ssh-ed25519 AAAA... bot@github`
-
-> The skill will:\n> 1. If GitHub App info is provided: mint a token with `mint-token.sh`.\n>    Otherwise, use the existing `GH_TOKEN`.\n> 2. Set `AGENT_GIT_NAME` / `AGENT_GIT_USER_ID` / (optional) `AGENT_GIT_SIGNINGKEY`.\n> 3. Run `agent-git-setup.sh <repo-path>`.\n> 4. Do git work inside the printed worktree (main tree untouched).
+> The skill will:
+> 1. If GitHub App info is provided: mint a token with `mint-token.sh`.
+>    Otherwise, use the existing `GH_TOKEN`.
+> 2. Set `AGENT_GIT_NAME` / `AGENT_GIT_USER_ID` / (optional) `AGENT_GIT_SIGNINGKEY`.
+> 3. Run `agent-git-setup.sh <repo-path>`.
+> 4. Do git work inside the printed worktree (main tree untouched).
 
 The one-time GitHub App creation (below) is a human step done beforehand.
 
