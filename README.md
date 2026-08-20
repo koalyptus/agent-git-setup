@@ -41,20 +41,14 @@ done beforehand.
           │
           ▼
 ┌─────────────────────┐
-│  GitHub App (1-time)│
+│  Token source       │  (any push-capable GH_TOKEN)
 │  ─────────────────  │
-│  Create app         │
-│  Download PEM       │
-│  Install on repos   │
-│  Get bot user ID    │
-└─────────┬───────────┘
-          │
-          ▼
-┌─────────────────────┐
-│   mint-token.sh     │  (in-repo, neutral)
-│  ─────────────────  │
-│  --app-id --pem     │
-│  --shell            │
+│  Option A:          │  mint-token.sh + GitHub App
+│    mint-token.sh    │    (create app, download PEM,
+│    --app-id --pem   │     install, get bot user ID)
+│    --shell          │
+│  Option B:          │  Other backend (harness, PAT, etc.)
+│    your token minter│
 └─────────┬───────────┘
           │ exports GH_TOKEN
           ▼
