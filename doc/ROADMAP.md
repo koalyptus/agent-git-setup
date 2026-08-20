@@ -29,13 +29,6 @@ The script detects `treehouse` and uses it for the worktree, else falls back to
 `git worktree add`. The treehouse path is currently unexercised. Add a test
 (or CI step with treehouse installed) that confirms the treehouse branch works.
 
-## Push-as-bot variant (under consideration)
-
-The current tool isolates only the commit author (the push uses the repo's
-normal credential). A variant would also make the push actor the bot via a
-separate worktree-scoped remote. Only if there is demand; keep it opt-in so the
-default stays safe (main tree never touched).
-
 ## Test framework (no change planned)
 
 Current `agent-git-setup-test.sh` is a zero-dependency hermetic suite. `bats`
