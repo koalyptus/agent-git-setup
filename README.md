@@ -31,6 +31,65 @@ It handles two distinct things:
 - **Not touching your main tree.** All configuration is scoped to the worktree.
   Your main repository and global git config are never modified.
 
+## GitHub App setup (one-time, per bot identity)
+
+`agent-git-setup.sh` consumes a token but does not create one. The cleanest
+source of a bot token is a **GitHub App** installed on your account. This is a
+one-time, manual step (it needs the GitHub web UI + your login); everything
+afterwards is reproducible.
+
+### 1. Create the app
+
+Go to **GitHub → Settings → Developer settings → GitHub Apps → New GitHub App**.
+For an automation-only private app, set ONLY:
+
+- **GitHub App name**: e.g. `myagent` (this becomes `myagent[bot]`).
+- **Homepage URL**: required on the form — any URL works (e.g. your profile).
+- **Where can this be installed?**: *Only on this account* (keeps it private).
+- **Repository permissions**:
+  - Contents → Read & write (commits + pushes)
+  - Pull requests → Read & write (if the agent opens/merges PRs)
+  - Metadata → Read (always required)
+- Leave unchecked / blank: Redirect URI, webhook (Active **off**), events,
+  OAuth, Device Flow, and all user/org/account permissions.
+
+After creating: note the **App ID** (shown on the app page).
+
+### 2. Generate the private key
+
+On the app page, **Generate a private key (PEM)** and download the `.pem` file.
+Keep it secret — it is what mints tokens. Store it outside any git repo
+(e.g. `~/.ssh/myagent.pem`).
+
+### 3. Install the app on your repos
+
+On the app page, click **Install** and select the repositories the agent should
+touch. Installation grants permission; it does NOT change the bot name.
+
+### 4. Get the bot user ID
+
+The commit email needs the **bot user id**, which is different from the App ID.
+Fetch it:
+
+```bash
+curl -s https://api.github.com/users/myagent%5Bbot%5D | jq .id
+# => e.g. 268339505   (this is AGENT_GIT_USER_ID, NOT the App ID)
+```
+
+### 5. Mint tokens (backend's job)
+
+The app's PEM + App ID mint short-lived installation tokens (~1h). How that
+happens depends on your backend — e.g. a launch wrapper that runs
+`python mint.py --shell` and exports `GH_TOKEN`, or the harness's own App
+support. `agent-git-setup.sh` only consumes the resulting `GH_TOKEN`.
+
+### 6. Optional: verified `[bot]` signing
+
+To get the green **Verified** badge on commits, enable commit signing on the
+app and upload its SSH signing key, then pass it as `AGENT_GIT_SIGNINGKEY`
+(`key::<pubkey>`). Without this, commits still show as `myagent[bot]` but
+unverified.
+
 ## Install
 
 ```bash
