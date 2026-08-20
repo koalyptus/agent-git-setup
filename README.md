@@ -145,6 +145,21 @@ It prints each check (`ok` / `FAIL`) and exits non-zero if any fail. The same
 suite runs automatically in CI (`.github/workflows/test.yml`) on every push and
 pull request, so a regression shows up as a red check before merge.
 
+## Make targets
+
+A `Makefile` wraps the local checks so you don't have to remember the exact
+commands:
+
+| Command     | What it does                                                        |
+|-------------|---------------------------------------------------------------------|
+| `make test` | Run the hermetic test suite (`agent-git-setup-test.sh`).            |
+| `make lint` | Run `shellcheck` + `shfmt -d` on both scripts (needs those tools).  |
+| `make ci`   | Run `test` + `lint` — exactly what CI runs. Use this before push.   |
+
+`make ci` is the pre-push gate: only push when it exits green. The CI workflow
+mirrors it, and `main` is branch-protected so `test` + `lint` must be green to
+merge.
+
 ## Usage
 
 ```bash
