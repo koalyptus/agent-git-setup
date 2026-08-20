@@ -5,10 +5,6 @@ version: 1.0.0
 author: koalyptus
 license: MIT
 platforms: [linux, macos]
-metadata:
-  hermes:
-    tags: [git, worktree, github, bot-identity, automation, agent]
-    related_skills: [github-app-auth]
 ---
 
 # Agent Git Setup
