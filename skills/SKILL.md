@@ -29,11 +29,15 @@ PAT/SSH concern. This is for automation/bot attribution.
 
 ## Key concepts
 - **Two identities, two mechanisms.** (1) The *commit author* is set by local
-  `git config user.name/user.email` inside the worktree — no token needed.
-  (2) The *push/API actor* is set by a token in the agent's environment
-  (`GH_TOKEN`) used for the worktree `origin` remote and `gh`/API calls.
-- **Worktree isolation.** All bot config is scoped to the worktree. The human's
-  main tree stays theirs. No collision, no `git config` discipline required.
+  `git config user.name/user.email` written to the **worktree's own config file**
+  (not the main repo) — no token needed, and your main tree stays yours.
+  (2) The *push/API actor* is provided by `GH_TOKEN` in the agent's environment,
+  which drives `gh`/API calls (PRs, issues, comments) as the bot. Plain
+  `git push` uses the repo's normal credential — the script does NOT rewrite
+  `origin` (worktrees share remotes, so rewriting would touch the main tree).
+- **Worktree isolation.** All bot config is scoped to the worktree's own config
+  file. The human's main tree stays theirs. No collision, no `git config`
+  discipline required.
 - **Token-agnostic.** The script does NOT mint tokens. It expects `GH_TOKEN` to
   already be present in the environment (minted by whatever backend/harness the
   agent runs under — e.g. a GitHub App install token at launch). It only consumes it.
@@ -58,8 +62,9 @@ PAT/SSH concern. This is for automation/bot attribution.
    agent-git-setup.sh <repo-dir> [worktree-name] [branch]
    ```
    It creates `.worktrees/<worktree-name>/` (or uses `treehouse` if installed),
-   sets per-worktree bot `user.name`/`user.email`, rewrites the worktree `origin`
-   to `x-access-token:<GH_TOKEN>`, and optionally enables SSH signing.
+   writes the per-worktree bot `user.name`/`user.email` to the worktree's own
+   config file (so your main tree is untouched), and optionally enables SSH
+   signing. It does NOT rewrite `origin`.
 3. Direct the agent to do its git work **inside that worktree path** (printed by
    the script). Commits there are `<app>[bot]`; the human's main tree is untouched.
 

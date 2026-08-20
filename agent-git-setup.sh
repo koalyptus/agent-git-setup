@@ -44,7 +44,7 @@ fi
 # The target must actually be a git repository.
 if [ ! -d "$REPO_DIR/.git" ] && [ ! -f "$REPO_DIR/.git" ]; then
   echo "agent-git-setup.sh: $REPO_DIR is not a git repository" >&2
-  exit 1
+  exit 2
 fi
 
 # Worktree name and branch come from arguments or environment, with defaults.
@@ -99,33 +99,33 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Configure the worktree with the bot identity
+# Configure the worktree with the bot identity (model X: commit-author only)
 # ---------------------------------------------------------------------------
 
 echo "agent-git-setup.sh: configuring worktree at $WT_PATH"
 
-# (1) Commit author — local git config, scoped to the worktree only.
-git -C "$WT_PATH" config user.name "$AGENT_GIT_NAME"
-git -C "$WT_PATH" config user.email "$BOT_EMAIL"
+# IMPORTANT: a linked worktree shares the MAIN repo's config and remotes.
+# "git -C $WT_PATH config" would resolve to the main repo and LEAK the bot
+# identity into the human's tree. To truly isolate, we write to the worktree's
+# OWN config file, which git reads in preference for that worktree only.
+WT_CONFIG="$REPO_DIR/.git/worktrees/$WT_NAME/config"
+mkdir -p "$(dirname "$WT_CONFIG")"
 
-# (2) Push actor — rewrite origin to use the token for this worktree.
-if git -C "$WT_PATH" remote get-url origin >/dev/null 2>&1; then
-  # Strip any existing credentials, then inject the token.
-  BASE="$(git -C "$WT_PATH" remote get-url origin | sed -E "s#https://[^@]*@#https://#")"
-  git -C "$WT_PATH" remote set-url origin "https://x-access-token:${GH_TOKEN}@${BASE#https://}"
-  echo "agent-git-setup.sh: origin rewritten to use the bot token for pushes"
-else
-  # No origin: we cannot configure the push actor. Warn and move on,
-  # because the local commit identity above still works.
-  echo "agent-git-setup.sh: no origin remote found; push actor not configured." >&2
-  echo "  Add one manually if the agent should push as the bot." >&2
-fi
+# (1) Commit author — scoped to the worktree only (main tree untouched).
+git config -f "$WT_CONFIG" user.name "$AGENT_GIT_NAME"
+git config -f "$WT_CONFIG" user.email "$BOT_EMAIL"
+
+# (2) Push actor is NOT configured here. Git worktrees share remotes, so we
+#     do not rewrite origin (that would change the human's main tree). The bot
+#     push/API actor is provided by GH_TOKEN in the agent's environment, which
+#     drives gh/API calls as the bot. Plain `git push` uses the repo's normal
+#     credential — by design (model X), so the main tree is never touched.
 
 # (3) Optional: verified [bot] commit signing via the App SSH key.
 if [ -n "${AGENT_GIT_SIGNINGKEY:-}" ]; then
-  git -C "$WT_PATH" config gpg.format ssh
-  git -C "$WT_PATH" config user.signingkey "$AGENT_GIT_SIGNINGKEY"
-  git -C "$WT_PATH" config commit.gpgsign true
+  git config -f "$WT_CONFIG" gpg.format ssh
+  git config -f "$WT_CONFIG" user.signingkey "$AGENT_GIT_SIGNINGKEY"
+  git config -f "$WT_CONFIG" commit.gpgsign true
   echo "agent-git-setup.sh: commit signing enabled (verified [bot] badge)"
 fi
 

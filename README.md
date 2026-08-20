@@ -14,11 +14,13 @@ It handles two distinct things:
 1. **Local worktree commit identity (required).** Inside the worktree only,
    `user.name` and `user.email` are set to the bot identity. Commits authored
    there read as the bot. This is pure local git config — no token required.
-2. **GitHub actor (push / API).** The worktree's `origin` remote is rewritten to
-   use a token (`https://x-access-token:<token>@...`), so pushes are attributed
-   to that identity. The same `GH_TOKEN` in the agent's environment also drives
-   `gh`/API calls (PRs, issues, comments) as the bot — that part is owned by the
-   backend/agent, not this script.
+2. **GitHub actor (PRs / API).** The bot push/API actor is provided by
+   `GH_TOKEN` in the agent's environment, which drives `gh`/API calls
+   (PRs, issues, comments) as the bot. Plain `git push` from the worktree uses
+   the repository's normal credential — by design the script does **not** rewrite
+   `origin` (git worktrees share remotes, so doing so would change your main
+   tree). The local commit *author* is the bot; the push *actor* depends on how
+   you push. This is the deliberate, safe trade-off (see "Model X" below).
 
 ## What it is not
 
@@ -30,6 +32,24 @@ It handles two distinct things:
   obtain the worktree; otherwise a plain `git worktree add` is used. Same result.
 - **Not touching your main tree.** All configuration is scoped to the worktree.
   Your main repository and global git config are never modified.
+
+## Model X: commit-author isolation (by design)
+
+`agent-git-setup.sh` isolates the **commit author** in the worktree, not the
+**push credential**. This is a deliberate, safe choice:
+
+- A git worktree *shares* its main repo's remotes and most config. Rewriting
+  `origin` to inject a token would change your main tree too — exactly what we
+  avoid. So the script writes `user.name` / `user.email` to the worktree's own
+  config file and leaves `origin` alone.
+- **Result:** commits authored in the worktree show as `<app>[bot]`. Plain
+  `git push` uses the repo's normal credential (the push actor is you, unless
+  your push mechanism also uses `GH_TOKEN`). `gh`/API calls (PRs, issues,
+  comments) made with `GH_TOKEN` in the agent's environment are the bot.
+
+If you later want the *push* to be the bot too, do it outside this script (e.g.
+a separate remote or credential helper scoped to the worktree) — but the
+default stays safe: your main tree is never touched.
 
 ## GitHub App setup (one-time, per bot identity)
 
