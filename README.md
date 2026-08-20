@@ -5,7 +5,7 @@ Give an AI agent a bot identity in local git worktrees and/or on GitHub — back
 ## What it does
 
 An AI coding agent should be able to commit and push as a distinct bot identity,
-without that identity leaking into your own working tree. `agent-git-setup`
+without that identity leaking into your own working tree. `agent-git-setup.sh`
 creates an isolated **git worktree** and configures it so that commits and pushes
 made there are attributed to a bot, while your main checkout stays exactly as you.
 
@@ -22,8 +22,8 @@ It handles two distinct things:
 
 ## What it is not
 
-- **Not backend-specific.** Works the same under Hermes, OpenCode, Codex, Claude
-  Code, or anything else. It never mentions a particular agent.
+- **Not backend-specific.** Works the same under any agent or harness. It never
+  mentions a particular agent.
 - **Not token-agnostic by accident — by design.** It does **not** mint tokens and
   contains no secrets. It expects `GH_TOKEN` to already be present in the
   environment (minted by whatever backend/agent you use) and only *consumes* it.
@@ -35,7 +35,7 @@ It handles two distinct things:
 ## Usage
 
 ```bash
-agent-git-setup <repo-dir> [worktree-name] [branch]
+agent-git-setup.sh <repo-dir> [worktree-name] [branch]
 ```
 
 ### Required environment
@@ -43,7 +43,7 @@ agent-git-setup <repo-dir> [worktree-name] [branch]
 | Variable             | Meaning                                                              |
 |----------------------|----------------------------------------------------------------------|
 | `GH_TOKEN`           | A push-capable GitHub token (e.g. a GitHub App install token).       |
-| `AGENT_GIT_NAME`     | Commit author name, e.g. `hermes-laptop[bot]`.                       |
+| `AGENT_GIT_NAME`     | Commit author name, e.g. `myagent[bot]`.                            |
 | `AGENT_GIT_USER_ID`  | The bot **user** id (NOT the App id). Get it from                    |
 |                      | `https://api.github.com/users/<name>` -> `.id`.                     |
 
@@ -59,13 +59,13 @@ agent-git-setup <repo-dir> [worktree-name] [branch]
 
 ```bash
 export GH_TOKEN="$(mint-my-token)"            # backend-specific; not this script's job
-export AGENT_GIT_NAME="hermes-laptop[bot]"
-export AGENT_GIT_USER_ID="268339505"           # from api.github.com/users/hermes-laptop[bot]
+export AGENT_GIT_NAME="myagent[bot]"
+export AGENT_GIT_USER_ID="268339505"           # from api.github.com/users/myagent[bot]
 export AGENT_GIT_SIGNINGKEY="key::ssh-ed25519 AAAA... bot@github"  # optional
 
-agent-git-setup ~/dev/my-repo
+agent-git-setup.sh ~/dev/my-repo
 # -> worktree at ~/dev/my-repo/.worktrees/agent
-#    commits there: hermes-laptop[bot] <268339505+hermes-laptop[bot]@users.noreply.github.com>
+#    commits there: myagent[bot] <268339505+myagent[bot]@users.noreply.github.com>
 #    your ~/dev/my-repo main tree: untouched
 ```
 
@@ -77,14 +77,11 @@ yours — no `git config` discipline required, no collision.
 
 ## Backend notes (how the token gets there)
 
-`agent-git-setup` only consumes `GH_TOKEN`. How it arrives is the backend's job:
-
-- **Hermes:** a launch wrapper mints the App install token and exports `GH_TOKEN`
-  before starting the agent.
-- **OpenCode / Codex / Claude Code:** configure the GitHub App credentials in the
-  agent's settings; it mints the token for its own git/`gh` use.
-
-The script is agnostic to all of the above.
+`agent-git-setup.sh` only consumes `GH_TOKEN`. How it arrives is the backend's
+job — any mechanism that places a push-capable token in the agent's environment
+works (for example, a GitHub App install token minted at agent launch, or a
+fine-grained token provisioned by the harness). The script is agnostic to all
+of the above.
 
 ## License
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# agent-git-setup - give an AI agent its own git identity inside a worktree.
+# agent-git-setup.sh - give an AI agent its own git identity inside a worktree.
 #
 # Completely backend/agent-neutral. It does NOT mint tokens and contains no
 # secrets. It expects GH_TOKEN (already minted by whatever backend/agent) and
@@ -12,7 +12,7 @@
 #
 # Env (required):
 #   GH_TOKEN            a GitHub token with push rights (e.g. an App install token)
-#   AGENT_GIT_NAME      commit author name, e.g. hermes-laptop[bot]
+#   AGENT_GIT_NAME      commit author name, e.g. myagent[bot]
 #   AGENT_GIT_USER_ID   the bot USER id (NOT the App id) from
 #                       https://api.github.com/users/<name>  -> .id
 # Env (optional):
@@ -23,33 +23,31 @@ set -euo pipefail
 
 REPO_DIR="${1:-}"
 if [ -z "$REPO_DIR" ]; then
-  echo "usage: agent-git-setup <repo-dir> [worktree-name] [branch]" >&2
+  echo "usage: agent-git-setup.sh <repo-dir> [worktree-name] [branch]" >&2
   exit 2
 fi
 if [ ! -d "$REPO_DIR/.git" ] && [ ! -f "$REPO_DIR/.git" ]; then
-  echo "agent-git-setup: $REPO_DIR is not a git repository" >&2
+  echo "agent-git-setup.sh: $REPO_DIR is not a git repository" >&2
   exit 1
 fi
 WT_NAME="${2:-${AGENT_GIT_WORKTREE:-agent}}"
 BRANCH="${3:-${AGENT_GIT_BRANCH:-agent-work}}"
 
 : "${GH_TOKEN:?set GH_TOKEN (a push-capable GitHub token, e.g. App install token)}"
-: "${AGENT_GIT_NAME:?set AGENT_GIT_NAME, e.g. hermes-laptop[bot]}"
+: "${AGENT_GIT_NAME:?set AGENT_GIT_NAME, e.g. myagent[bot]}"
 : "${AGENT_GIT_USER_ID:?set AGENT_GIT_USER_ID (bot USER id, not the App id)}"
 
 BOT_EMAIL="${AGENT_GIT_USER_ID}+${AGENT_GIT_NAME}@users.noreply.github.com"
 
-# Resolve the worktree path. Use treehouse if available, else plain git worktree.
 cd "$REPO_DIR"
 if command -v treehouse >/dev/null 2>&1; then
-  echo "agent-git-setup: using treehouse for worktree isolation"
-  # treehouse drops you into a subshell; instead obtain the path non-interactively.
+  echo "agent-git-setup.sh: using treehouse for worktree isolation"
   WT_PATH="$(treehouse --path "$WT_NAME" 2>/dev/null || true)"
-  if [ -z "$WT_PATH" ]; then
+  if [ -z "$WT" ]; then
     WT_PATH="$(treehouse 2>/dev/null | sed -n "s/.*worktree at \(.*\)/\1/p" | head -1)"
   fi
   if [ -z "$WT_PATH" ] || [ ! -d "$WT_PATH" ]; then
-    echo "agent-git-setup: treehouse did not yield a path; falling back to git worktree add" >&2
+    echo "agent-git-setup.sh: treehouse did not yield a path; falling back to git worktree add" >&2
     WT_PATH="$REPO_DIR/.worktrees/$WT_NAME"
     git worktree add -B "$BRANCH" "$WT_PATH" 2>/dev/null || git worktree add "$WT_PATH"
   fi
@@ -58,31 +56,26 @@ else
   git worktree add -B "$BRANCH" "$WT_PATH" 2>/dev/null || git worktree add "$WT_PATH"
 fi
 
-echo "agent-git-setup: configuring worktree at $WT_PATH"
-
-# Per-worktree bot identity (does NOT touch the main repo or global config).
+echo "agent-git-setup.sh: configuring worktree at $WT_PATH"
 git -C "$WT_PATH" config user.name "$AGENT_GIT_NAME"
 git -C "$WT_PATH" config user.email "$BOT_EMAIL"
 
-# Push as the bot: rewrite origin to use the token (only if an origin exists).
 if git -C "$WT_PATH" remote get-url origin >/dev/null 2>&1; then
   BASE="$(git -C "$WT_PATH" remote get-url origin | sed -E "s#https://[^@]*@#https://#")"
   git -C "$WT_PATH" remote set-url origin "https://x-access-token:${GH_TOKEN}@${BASE#https://}"
-  echo "agent-git-setup: origin rewritten to use the bot token for pushes"
+  echo "agent-git-setup.sh: origin rewritten to use the bot token for pushes"
 else
-  echo "agent-git-setup: no 'origin' remote found; push actor not configured." >&2
-  echo "  Set one manually if the agent should push as the bot, e.g.:" >&2
-  echo "  git -C $WT_PATH remote add origin https://x-access-token:***@gi...git" >&2
+  echo "agent-git-setup.sh: no origin remote found; push actor not configured." >&2
+  echo "  Add one manually if the agent should push as the bot." >&2
 fi
 
-# Optional verified [bot] signing.
 if [ -n "${AGENT_GIT_SIGNINGKEY:-}" ]; then
   git -C "$WT_PATH" config gpg.format ssh
   git -C "$WT_PATH" config user.signingkey "$AGENT_GIT_SIGNINGKEY"
   git -C "$WT_PATH" config commit.gpgsign true
-  echo "agent-git-setup: commit signing enabled (verified [bot] badge)"
+  echo "agent-git-setup.sh: commit signing enabled (verified [bot] badge)"
 fi
 
-echo "agent-git-setup: done. Agent should work in: $WT_PATH"
+echo "agent-git-setup.sh: done. Agent should work in: $WT_PATH"
 echo "  commits there are attributed to $AGENT_GIT_NAME <$BOT_EMAIL>"
 echo "  your main tree at $REPO_DIR is untouched."
