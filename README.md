@@ -11,6 +11,22 @@ Give an AI agent a bot identity in local git worktrees and/or on GitHub — back
 - No other dependencies. `shellcheck`/`shfmt` are only needed if you run the
   lint job (they are installed automatically in CI).
 
+## Agent prompt (happy path)
+
+To have an agent set itself up with a bot identity, give it this prompt
+(assuming the agent can load the `agent-git-setup` skill from this repo):
+
+> Use the `agent-git-setup` skill. Set up a bot git identity for the repo at
+> `<repo-path>`: mint a GitHub App installation token with `mint-token.sh`,
+> set `AGENT_GIT_NAME` / `AGENT_GIT_USER_ID` for `<app>[bot]`, run
+> `agent-git-setup.sh <repo-path>`, and then do your git work inside the
+> printed worktree. Do not touch the main tree.
+
+The skill walks the agent through minting the token (via the repo's own
+`mint-token.sh`), setting the identity, and running the setup — no other
+tooling required. The one-time GitHub App creation (below) is a human step
+done beforehand.
+
 ## What it does
 
 An AI coding agent should be able to **commit as a distinct bot identity**,
@@ -111,12 +127,23 @@ curl -s https://api.github.com/users/myagent%5Bbot%5D | jq .id
 # => e.g. 268339505   (this is AGENT_GIT_USER_ID, NOT the App ID)
 ```
 
-### 5. Mint tokens (backend's job)
+### 5. Mint tokens (use the repo's `mint-token.sh`)
 
-The app's PEM + App ID mint short-lived installation tokens (~1h). How that
-happens depends on your backend — e.g. a launch wrapper that runs
-`python mint.py --shell` and exports `GH_TOKEN`, or the harness's own App
-support. `agent-git-setup.sh` only consumes the resulting `GH_TOKEN`.
+This repo ships a neutral minter — `mint-token.sh` — so you don't need any
+other tooling. It mints a GitHub App installation token (RS256 JWT, needs only
+`python3` + `cryptography`):
+
+```bash
+source <(./mint-token.sh --app-id "$APP_ID" --pem "$PEM_PATH" --shell)
+# GH_TOKEN is now exported in your shell
+```
+
+Set the env vars (`GITHUB_APP_ID`, `GITHUB_APP_PEM`) or pass `--app-id` /
+`--pem`. The token is short-lived (~1h); re-run for a fresh one.
+
+`agent-git-setup.sh` only *consumes* `GH_TOKEN` and stays token-agnostic — any
+other source works too (e.g. a harness's own App support) — but `mint-token.sh`
+is the self-contained default.
 
 ### 6. Optional: verified `[bot]` signing
 
