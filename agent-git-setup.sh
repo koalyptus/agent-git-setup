@@ -37,14 +37,14 @@ set -euo pipefail
 REPO_DIR="${1:-}"
 
 if [ -z "$REPO_DIR" ]; then
-  echo "usage: agent-git-setup.sh <repo-dir> [worktree-name] [branch]" >&2
-  exit 2
+	echo "usage: agent-git-setup.sh <repo-dir> [worktree-name] [branch]" >&2
+	exit 2
 fi
 
 # The target must actually be a git repository.
 if [ ! -d "$REPO_DIR/.git" ] && [ ! -f "$REPO_DIR/.git" ]; then
-  echo "agent-git-setup.sh: $REPO_DIR is not a git repository" >&2
-  exit 2
+	echo "agent-git-setup.sh: $REPO_DIR is not a git repository" >&2
+	exit 2
 fi
 
 # Worktree name and branch come from arguments or environment, with defaults.
@@ -75,27 +75,27 @@ WT_PATH="$REPO_DIR/.worktrees/$WT_NAME"
 
 # Prefer treehouse when it is available on PATH.
 if command -v treehouse >/dev/null 2>&1; then
-  echo "agent-git-setup.sh: treehouse detected; using it for worktree isolation"
+	echo "agent-git-setup.sh: treehouse detected; using it for worktree isolation"
 
-  # Ask treehouse for the path of this named worktree (non-interactively).
-  THPATH="$(treehouse --path "$WT_NAME" 2>/dev/null || true)"
+	# Ask treehouse for the path of this named worktree (non-interactively).
+	THPATH="$(treehouse --path "$WT_NAME" 2>/dev/null || true)"
 
-  if [ -n "$THPATH" ] && [ -d "$THPATH" ]; then
-    WT_PATH="$THPATH"
-  else
-    # treehouse did not yield a usable path; fall back to git worktree add.
-    echo "agent-git-setup.sh: treehouse did not yield a path; falling back to git worktree add" >&2
-  fi
+	if [ -n "$THPATH" ] && [ -d "$THPATH" ]; then
+		WT_PATH="$THPATH"
+	else
+		# treehouse did not yield a usable path; fall back to git worktree add.
+		echo "agent-git-setup.sh: treehouse did not yield a path; falling back to git worktree add" >&2
+	fi
 fi
 
 # Create the worktree only if it does not already exist (idempotent).
 if [ -d "$WT_PATH/.git" ] || [ -f "$WT_PATH/.git" ]; then
-  echo "agent-git-setup.sh: worktree already exists at $WT_PATH (reconfiguring)"
+	echo "agent-git-setup.sh: worktree already exists at $WT_PATH (reconfiguring)"
 else
-  # Plain git worktree add (only when we own the path).
-  if [ "$WT_PATH" = "$REPO_DIR/.worktrees/$WT_NAME" ]; then
-    git worktree add -B "$BRANCH" "$WT_PATH" 2>/dev/null || git worktree add "$WT_PATH"
-  fi
+	# Plain git worktree add (only when we own the path).
+	if [ "$WT_PATH" = "$REPO_DIR/.worktrees/$WT_NAME" ]; then
+		git worktree add -B "$BRANCH" "$WT_PATH" 2>/dev/null || git worktree add "$WT_PATH"
+	fi
 fi
 
 # ---------------------------------------------------------------------------
@@ -123,10 +123,10 @@ git config -f "$WT_CONFIG" user.email "$BOT_EMAIL"
 
 # (3) Optional: verified [bot] commit signing via the App SSH key.
 if [ -n "${AGENT_GIT_SIGNINGKEY:-}" ]; then
-  git config -f "$WT_CONFIG" gpg.format ssh
-  git config -f "$WT_CONFIG" user.signingkey "$AGENT_GIT_SIGNINGKEY"
-  git config -f "$WT_CONFIG" commit.gpgsign true
-  echo "agent-git-setup.sh: commit signing enabled (verified [bot] badge)"
+	git config -f "$WT_CONFIG" gpg.format ssh
+	git config -f "$WT_CONFIG" user.signingkey "$AGENT_GIT_SIGNINGKEY"
+	git config -f "$WT_CONFIG" commit.gpgsign true
+	echo "agent-git-setup.sh: commit signing enabled (verified [bot] badge)"
 fi
 
 # ---------------------------------------------------------------------------
