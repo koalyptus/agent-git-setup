@@ -93,14 +93,12 @@ Use the `agent-git-setup` skill. Set up a bot git identity for the repo at
 [Git-only — fill these if you already have a GH_TOKEN and no GitHub App]
 AGENT_GIT_NAME=[myagent[bot]]
 AGENT_GIT_USER_ID=[12345678]
-GH_TOKEN=[already set — do not include the value here]
 
 [OR GitHub App — fill these if using mint-token.sh]
 AGENT_GIT_NAME=[myagent[bot]]
 AGENT_GIT_USER_ID=[268339505]
 GITHUB_APP_ID=[4646191]
 GITHUB_APP_PEM=[~/.ssh/myagent.pem]
-GH_TOKEN=[set via mint-token.sh --shell during the skill — do not include the value here]
 
 [Both paths — fill these if you want verified commits, otherwise omit]
 AGENT_GIT_SIGNINGKEY=[key::ssh-ed25519 AAAA... bot@github]
@@ -113,9 +111,14 @@ Then do your git work inside the printed worktree. Do not touch the main tree.
 
 Notes:
 - `[REPO_PATH]` is the path to an existing git repository the agent should work in.
-- For the Git-only path, `GH_TOKEN` must already be in the agent's environment —
-  do **not** include the token value in the prompt.
-- For the GitHub App path, the skill runs `mint-token.sh --shell` to set
+- **`GH_TOKEN` is never a `[...]` placeholder in the prompt — it must already be in
+  the agent's environment before the prompt is sent:**
+  - **Git-only path**: you created a PAT (or fine-grained token) and exported it
+    into the agent's shell (`export GH_TOKEN=ghp_...`) *before* sending the prompt.
+  - **GitHub App path**: the skill runs `mint-token.sh --shell` at step 1, which
+    exports `GH_TOKEN` into the agent's environment — the prompt does not set it.
+- For the GitHub App path, do **not** include the PEM path value in the prompt
+  either — the skill uses the `[GITHUB_APP_PEM]` value to locate the `.pem` file.
   `GH_TOKEN`; do **not** include the token value here either.
 - `AGENT_GIT_SIGNINGKEY` can be omitted; commits then show as `<name>[bot]` but
   **unverified** (no green badge).
