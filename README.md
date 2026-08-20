@@ -17,15 +17,21 @@ To have an agent set itself up with a bot identity, give it this prompt
 (assuming the agent can load the `agent-git-setup` skill from this repo):
 
 > Use the `agent-git-setup` skill. Set up a bot git identity for the repo at
-> `<repo-path>`: mint a GitHub App installation token with `mint-token.sh`,
-> set `AGENT_GIT_NAME` / `AGENT_GIT_USER_ID` for `<app>[bot]`, run
-> `agent-git-setup.sh <repo-path>`, and then do your git work inside the
-> printed worktree. Do not touch the main tree.
+> `<repo-path>` (e.g. `~/dev/my-project`).
+>
+> Required values (fill these in before sending to the agent):
+> - `AGENT_GIT_NAME`: `<app>[bot]` (e.g. `myagent[bot]`)
+> - `AGENT_GIT_USER_ID`: bot **user** id (from `curl -s https://api.github.com/users/<AGENT_GIT_NAME> | jq .id`)
+> - `AGENT_GIT_SIGNINGKEY`: (optional) `key::ssh-ed25519 AAAA... bot@github` for verified commits
+> - GitHub App: `GITHUB_APP_ID` + `GITHUB_APP_PEM` path (if using `mint-token.sh`)
+>
+> The skill will:
+> 1. Mint a GitHub App installation token with `mint-token.sh` (if App ID/PEM provided)
+> 2. Set the env vars above
+> 3. Run `agent-git-setup.sh <repo-path>`
+> 4. Do git work inside the printed worktree (main tree untouched)
 
-The skill walks the agent through minting the token (via the repo's own
-`mint-token.sh`), setting the identity, and running the setup — no other
-tooling required. The one-time GitHub App creation (below) is a human step
-done beforehand.
+The one-time GitHub App creation (below) is a human step done beforehand.
 
 ## Flow diagram (happy path)
 
