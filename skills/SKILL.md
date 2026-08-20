@@ -1,6 +1,6 @@
 ---
 name: agent-git-setup
-description: "Set up an isolated git worktree where an AI agent commits/pushes as a distinct bot identity (<app>[bot]), leaving the human's working tree untouched."
+description: "Set up an isolated git worktree where an AI agent commits as a distinct bot identity (<app>[bot]), leaving the human's working tree untouched."
 version: 1.0.0
 author: koalyptus
 license: MIT
@@ -20,7 +20,7 @@ Give an AI agent its own bot identity in a git worktree.
   attributed to a bot identity `<app>[bot]` rather than the human's account.
 - You want that bot identity **isolated in a worktree** so the human's main
   checkout and global git config are never touched.
-- Triggers: "commit as a bot", "agent should push as <bot>", "separate bot
+- Triggers: "commit as a bot", "agent should commit as <bot>", "separate bot
   identity for the agent", "give the agent its own git identity", "worktree for
   the agent".
 
@@ -31,7 +31,7 @@ PAT/SSH concern. This is for automation/bot attribution.
 - **Two identities, two mechanisms.** (1) The *commit author* is set by local
   `git config user.name/user.email` written to the **worktree's own config file**
   (not the main repo) — no token needed, and your main tree stays yours.
-  (2) The *push/API actor* is provided by `GH_TOKEN` in the agent's environment,
+  (2) The *gh/API actor* is provided by `GH_TOKEN` in the agent's environment,
   which drives `gh`/API calls (PRs, issues, comments) as the bot. Plain
   `git push` uses the repo's normal credential — the script does NOT rewrite
   `origin` (worktrees share remotes, so rewriting would touch the main tree).
@@ -84,8 +84,9 @@ agent-git-setup.sh ~/dev/my-repo
   (`api.github.com/users/<name>` -> `.id`), which differs from the App ID shown
   in GitHub App settings. Using the App id yields an unverified/odd email.
 - **Re-running is safe (idempotent).** An existing worktree is reconfigured, not recreated.
-- **No origin = no push actor.** If the repo has no `origin`, the script skips
-  the remote rewrite and warns; add one manually if the agent should push as the bot.
+- **No origin is fine.** If the repo has no `origin`, the script still sets the
+  bot commit author; only the (optional) push remote is absent. Plain
+  `git push` uses your normal credential — the push actor is you, by design.
 - **Signing needs the App key.** `AGENT_GIT_SIGNINGKEY` only produces a Verified
   badge if the GitHub App has commit signing enabled and that SSH key uploaded.
   Without it, commits show as the bot but unverified.

@@ -7,8 +7,9 @@
 # This script is completely backend/agent-neutral. It does NOT mint tokens and
 # contains no secrets. It expects GH_TOKEN (already minted by whatever
 # backend/agent is running) and the desired bot identity in the environment,
-# then sets up a git worktree where commits and pushes are attributed to that
-# bot identity — while your main checkout stays exactly as you.
+# then sets up a git worktree where commits are authored as that bot identity
+# — while your main checkout stays exactly as you. The bot identity is the
+# commit author only; plain `git push` uses your normal credential.
 #
 # If the "treehouse" tool is installed it is used to obtain the worktree;
 # otherwise a plain "git worktree add" is used. Either way the worktree is
@@ -117,8 +118,9 @@ git config -f "$WT_CONFIG" user.email "$BOT_EMAIL"
 
 # (2) Push actor is NOT configured here. Git worktrees share remotes, so we
 #     do not rewrite origin (that would change the human's main tree). The bot
-#     push/API actor is provided by GH_TOKEN in the agent's environment, which
-#     drives gh/API calls as the bot. Plain `git push` uses the repo's normal
+#     gh/API actor (PRs, issues, comments) is provided by GH_TOKEN in the
+#     agent's environment, which drives gh/API calls as the bot. Plain
+#     `git push` uses the repo's normal credential — the push actor is you.
 #     credential — by design, so the main tree is never touched.
 
 # (3) Optional: verified [bot] commit signing via the App SSH key.
