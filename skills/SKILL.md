@@ -8,9 +8,12 @@ platforms: [linux, macos]
 metadata:
   hermes:
     tags: [git, worktree, github, bot-identity, automation, agent]
+    related_skills: [github-app-auth]
 ---
 
-# agent-git-setup
+# Agent Git Setup
+
+Give an AI agent its own bot identity in a git worktree.
 
 ## When to use
 - An agent is about to do git work (commits, pushes, PRs) and you want it
