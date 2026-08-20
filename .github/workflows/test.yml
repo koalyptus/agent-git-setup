@@ -12,3 +12,17 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run hermetic tests
         run: bash agent-git-setup-test.sh
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install shellcheck and shfmt
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+          curl -sS https://webi.sh/shfmt | sh
+      - name: shellcheck
+        run: shellcheck agent-git-setup.sh agent-git-setup-test.sh
+      - name: shfmt (check formatting)
+        run: shfmt -d agent-git-setup.sh agent-git-setup-test.sh
