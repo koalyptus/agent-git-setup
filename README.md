@@ -27,6 +27,57 @@ The skill walks the agent through minting the token (via the repo's own
 tooling required. The one-time GitHub App creation (below) is a human step
 done beforehand.
 
+## Flow diagram (happy path)
+
+```
+┌─────────────────────┐
+│  GitHub App (1-time)│
+│  ─────────────────  │
+│  Create app         │
+│  Download PEM       │
+│  Install on repos   │
+│  Get bot user ID    │
+└─────────┬───────────┘
+          │
+          ▼
+┌─────────────────────┐
+│   mint-token.sh     │  (in-repo, neutral)
+│  ─────────────────  │
+│  --app-id --pem     │
+│  --shell            │
+└─────────┬───────────┘
+          │ exports GH_TOKEN
+          ▼
+┌─────────────────────┐
+│  env: AGENT_GIT_*   │  (set by agent/skill)
+│  ─────────────────  │
+│  AGENT_GIT_NAME     │  e.g. myagent[bot]
+│  AGENT_GIT_USER_ID  │  bot user id (not App id)
+│  AGENT_GIT_SIGNINGKEY│ (optional, for verified)
+└─────────┬───────────┘
+          │
+          ▼
+┌─────────────────────┐
+│ agent-git-setup.sh  │
+│  ─────────────────  │
+│  git worktree add   │  → .worktrees/agent/
+│  write worktree     │     .git/worktrees/agent/config
+│    user.name        │     user.name = <app>[bot]
+│    user.email       │     user.email = <id>+<app>[bot]@...
+│    signingkey       │     (main tree untouched)
+└─────────┬───────────┘
+          │
+          ▼
+┌─────────────────────┐
+│   Agent works in    │
+│   the worktree      │
+│  ─────────────────  │
+│  commits → <app>[bot]     │
+│  gh/API   → <app>[bot] (GH_TOKEN)
+│  git push → your credential│
+└─────────────────────┘
+```
+
 ## What it does
 
 An AI coding agent should be able to **commit as a distinct bot identity**,
