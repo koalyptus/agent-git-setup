@@ -31,6 +31,16 @@ done beforehand.
 
 ```
 ┌─────────────────────┐
+│      Human          │
+│  gives agent prompt │
+│  ─────────────────  │
+│ "Use agent-git-     │
+│  setup skill on     │
+│  <repo-path>"       │
+└─────────┬───────────┘
+          │
+          ▼
+┌─────────────────────┐
 │  GitHub App (1-time)│
 │  ─────────────────  │
 │  Create app         │
