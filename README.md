@@ -24,11 +24,11 @@ To have an agent set itself up with a bot identity, give it this prompt
 
 > **Without GitHub App (bring your own `GH_TOKEN`):**
 > - `AGENT_GIT_NAME`: `<name>[bot]` (e.g. `myagent[bot]`)
-> - `AGENT_GIT_USER_ID`: the user id of whoever owns the token — run:
->   ```bash
->   curl -s https://api.github.com/users/<handle> | jq .id
->   ```
->   (or extract it from the token if your backend provides it)
+> - `AGENT_GIT_USER_ID`: the user id of the token owner — you can get it from
+>   `curl -s https://api.github.com/users/<handle> | jq .id`, or skip it and
+>   use the token owner's actual noreply email directly (see Usage example).
+>   (The noreply email format `<id>+<name>[bot]@users.noreply.github.com` works
+>   for any GitHub user; the ID just needs to be a real GitHub user.)
 > - `GH_TOKEN`: already set in the environment (mint it however you like)
 > - `AGENT_GIT_SIGNINGKEY`: (optional) `key::ssh-ed25519 AAAA... bot@github`
 
