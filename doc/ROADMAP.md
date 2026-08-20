@@ -11,7 +11,9 @@ The script currently targets bash on Linux/macOS. Native Windows
 Plan:
 - Add `agent-git-setup.ps1` — a PowerShell port of the same logic (git worktree
   add, write the worktree's own config file, idempotent, no origin rewrite,
-  optional signing).
+  optional signing). Scope is commit-author isolation only: like the bash
+  script, it does NOT make `git push` the bot — only the commit author and
+  gh/API actor via `GH_TOKEN`.
 - Add `agent-git-setup-test.ps1` — hermetic tests (temp repo, sandboxed
   `$env:HOME` / `$env:GIT_CONFIG_GLOBAL`, dummy token, no network, cleanup in
   `finally`).
