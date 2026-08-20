@@ -2,6 +2,15 @@
 
 Give an AI agent a bot identity in local git worktrees and/or on GitHub — backend-agnostic and token-agnostic.
 
+## Requirements
+
+- **Unix-like shell** (`bash`) and `git`. The script and tests target Linux and
+  macOS. **Windows is not supported as-is** — `bash` + `git` under WSL or Git
+  Bash will work, but native `cmd`/`PowerShell` will not (the script uses POSIX
+  shell features and git worktree paths).
+- No other dependencies. `shellcheck`/`shfmt` are only needed if you run the
+  lint job (they are installed automatically in CI).
+
 ## What it does
 
 An AI coding agent should be able to commit and push as a distinct bot identity,
