@@ -45,7 +45,7 @@ make_repo() {
 cleanup() { rm -rf "$SANDBOX"; }
 trap cleanup EXIT
 
-# 1. Happy path: worktree created, bot identity set, origin unchanged (model X)
+# 1. Happy path: worktree created, bot identity set, origin unchanged
 echo "happy path"
 REPO="$(make_repo with-origin)"
 export GH_TOKEN=dummy_token
@@ -57,8 +57,8 @@ if "$SCRIPT" "$REPO" agent testbranch >/dev/null 2>&1; then
   if [ -e "$WT/.git" ]; then ok "worktree created"; else bad "worktree not created"; fi
   assert_eq "$(git config -f "$WT_CFG" user.name)" "myagent[bot]" "worktree user.name = bot"
   assert_eq "$(git config -f "$WT_CFG" user.email)" "268339505+myagent[bot]@users.noreply.github.com" "worktree user.email = bot noreply"
-  # Model X: origin is NOT rewritten; the worktree shares the main remote.
-  assert_eq "$(git -C "$WT" remote get-url origin)" "https://github.com/example/repo.git" "worktree origin unchanged (model X)"
+  # The worktree shares the main remote; origin is NOT rewritten.
+  assert_eq "$(git -C "$WT" remote get-url origin)" "https://github.com/example/repo.git" "worktree origin unchanged"
 else
   bad "script exited non-zero on happy path"
 fi

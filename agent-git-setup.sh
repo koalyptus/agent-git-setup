@@ -99,7 +99,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Configure the worktree with the bot identity (model X: commit-author only)
+# Configure the worktree with the bot identity (commit-author isolation only)
 # ---------------------------------------------------------------------------
 
 echo "agent-git-setup.sh: configuring worktree at $WT_PATH"
@@ -119,7 +119,7 @@ git config -f "$WT_CONFIG" user.email "$BOT_EMAIL"
 #     do not rewrite origin (that would change the human's main tree). The bot
 #     push/API actor is provided by GH_TOKEN in the agent's environment, which
 #     drives gh/API calls as the bot. Plain `git push` uses the repo's normal
-#     credential — by design (model X), so the main tree is never touched.
+#     credential — by design, so the main tree is never touched.
 
 # (3) Optional: verified [bot] commit signing via the App SSH key.
 if [ -n "${AGENT_GIT_SIGNINGKEY:-}" ]; then

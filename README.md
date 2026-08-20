@@ -29,7 +29,8 @@ It handles two distinct things:
    the repository's normal credential — by design the script does **not** rewrite
    `origin` (git worktrees share remotes, so doing so would change your main
    tree). The local commit *author* is the bot; the push *actor* depends on how
-   you push. This is the deliberate, safe trade-off (see "Model X" below).
+   you push. This is the deliberate, safe trade-off (see "Commit-author
+   isolation" below).
 
 ## What it is not
 
@@ -42,7 +43,7 @@ It handles two distinct things:
 - **Not touching your main tree.** All configuration is scoped to the worktree.
   Your main repository and global git config are never modified.
 
-## Model X: commit-author isolation (by design)
+## Commit-author isolation (by design)
 
 `agent-git-setup.sh` isolates the **commit author** in the worktree, not the
 **push credential**. This is a deliberate, safe choice:

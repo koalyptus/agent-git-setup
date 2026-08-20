@@ -10,8 +10,8 @@ The script currently targets bash on Linux/macOS. Native Windows
 
 Plan:
 - Add `agent-git-setup.ps1` — a PowerShell port of the same logic (git worktree
-  add, write the worktree's own config file, idempotent, no origin rewrite /
-  model X, optional signing).
+  add, write the worktree's own config file, idempotent, no origin rewrite,
+  optional signing).
 - Add `agent-git-setup-test.ps1` — hermetic tests (temp repo, sandboxed
   `$env:HOME` / `$env:GIT_CONFIG_GLOBAL`, dummy token, no network, cleanup in
   `finally`).
@@ -29,10 +29,10 @@ The script detects `treehouse` and uses it for the worktree, else falls back to
 `git worktree add`. The treehouse path is currently unexercised. Add a test
 (or CI step with treehouse installed) that confirms the treehouse branch works.
 
-## Model Y opt-in (under consideration)
+## Push-as-bot variant (under consideration)
 
-Model X isolates only the commit author (push uses the repo's normal
-credential). A model Y variant would also make the push actor the bot via a
+The current tool isolates only the commit author (the push uses the repo's
+normal credential). A variant would also make the push actor the bot via a
 separate worktree-scoped remote. Only if there is demand; keep it opt-in so the
 default stays safe (main tree never touched).
 
