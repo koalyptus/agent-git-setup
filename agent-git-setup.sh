@@ -40,20 +40,26 @@ BRANCH="${3:-${AGENT_GIT_BRANCH:-agent-work}}"
 BOT_EMAIL="${AGENT_GIT_USER_ID}+${AGENT_GIT_NAME}@users.noreply.github.com"
 
 cd "$REPO_DIR"
+
+# Resolve the worktree path. Use treehouse if available, else plain git worktree.
+WT_PATH="$REPO_DIR/.worktrees/$WT_NAME"
 if command -v treehouse >/dev/null 2>&1; then
-  echo "agent-git-setup.sh: using treehouse for worktree isolation"
-  WT_PATH="$(treehouse --path "$WT_NAME" 2>/dev/null || true)"
-  if [ -z "$WT" ]; then
-    WT_PATH="$(treehouse 2>/dev/null | sed -n "s/.*worktree at \(.*\)/\1/p" | head -1)"
-  fi
-  if [ -z "$WT_PATH" ] || [ ! -d "$WT_PATH" ]; then
+  echo "agent-git-setup.sh: treehouse detected; using it for worktree isolation"
+  THPATH="$(treehouse --path "$WT_NAME" 2>/dev/null || true)"
+  if [ -n "$THPATH" ] && [ -d "$THPATH" ]; then
+    WT_PATH="$THPATH"
+  else
     echo "agent-git-setup.sh: treehouse did not yield a path; falling back to git worktree add" >&2
-    WT_PATH="$REPO_DIR/.worktrees/$WT_NAME"
+  fi
+fi
+
+# Create the worktree if it does not already exist (idempotent).
+if [ -d "$WT_PATH/.git" ] || [ -f "$WT_PATH/.git" ]; then
+  echo "agent-git-setup.sh: worktree already exists at $WT_PATH (reconfiguring)"
+else
+  if [ "$WT_PATH" = "$REPO_DIR/.worktrees/$WT_NAME" ]; then
     git worktree add -B "$BRANCH" "$WT_PATH" 2>/dev/null || git worktree add "$WT_PATH"
   fi
-else
-  WT_PATH="$REPO_DIR/.worktrees/$WT_NAME"
-  git worktree add -B "$BRANCH" "$WT_PATH" 2>/dev/null || git worktree add "$WT_PATH"
 fi
 
 echo "agent-git-setup.sh: configuring worktree at $WT_PATH"

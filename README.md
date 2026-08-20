@@ -22,8 +22,7 @@ It handles two distinct things:
 
 ## What it is not
 
-- **Not backend-specific.** Works the same under any agent or harness. It never
-  mentions a particular agent.
+- **Not backend-specific.** Works the same under any agent or harness.
 - **Not token-agnostic by accident — by design.** It does **not** mint tokens and
   contains no secrets. It expects `GH_TOKEN` to already be present in the
   environment (minted by whatever backend/agent you use) and only *consumes* it.
@@ -31,6 +30,18 @@ It handles two distinct things:
   obtain the worktree; otherwise a plain `git worktree add` is used. Same result.
 - **Not touching your main tree.** All configuration is scoped to the worktree.
   Your main repository and global git config are never modified.
+
+## Install
+
+```bash
+git clone https://github.com/koalyptus/agent-git-setup
+# put the script on PATH (or call it by absolute path):
+ln -s "$PWD/agent-git-setup.sh" ~/.local/bin/agent-git-setup.sh
+# or just:  cp agent-git-setup.sh ~/.local/bin/
+```
+
+A skill definition (`skills/SKILL.md`) ships in the repo so agents that load
+skills from a repo can pick it up directly.
 
 ## Usage
 
@@ -57,7 +68,8 @@ variables above — it is **not** optional.
 | `AGENT_GIT_SIGNINGKEY` | An SSH public key (`key::<pubkey>`) for a **verified** `[bot]` badge. |
 
 Without this, commits still show as `<name>[bot]` but **unverified**. With it,
-they get the green Verified checkmark.
+they get the green Verified checkmark. Requires the GitHub App to have commit
+signing enabled and its SSH key uploaded.
 
 ### Defaults (override via environment or arguments)
 
@@ -79,6 +91,8 @@ agent-git-setup.sh ~/dev/my-repo
 #    commits there: myagent[bot] <268339505+myagent[bot]@users.noreply.github.com>
 #    your ~/dev/my-repo main tree: untouched
 ```
+
+Re-running is **idempotent**: an existing worktree is reconfigured, not recreated.
 
 ## Why a worktree
 
