@@ -21,12 +21,13 @@ To have an agent set itself up with a bot identity, give it this prompt
 >
 > Required values (fill these in before sending to the agent):
 > - `AGENT_GIT_NAME`: `<app>[bot]` (e.g. `myagent[bot]`)
-> - `AGENT_GIT_USER_ID`: bot **user** id — get it by running:
+> - `AGENT_GIT_USER_ID`: bot **user** id — for GitHub App, get it by running:
 >   ```bash
 >   curl -s https://api.github.com/users/myagent[bot] | jq .id
 >   # => e.g. 268339505
 >   ```
->   (This is the **bot user id**, NOT the GitHub App ID. They are different.)
+>   (This is the **bot user id** created by GitHub for the App, NOT the App ID shown in settings.)
+>   For other token sources, use that token owner's user id from the same API.
 > - `AGENT_GIT_SIGNINGKEY`: (optional) `key::ssh-ed25519 AAAA... bot@github` for verified commits
 > - GitHub App: `GITHUB_APP_ID` + `GITHUB_APP_PEM` path (if using `mint-token.sh`)
 >
