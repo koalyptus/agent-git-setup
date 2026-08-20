@@ -1,86 +1,137 @@
 #!/usr/bin/env bash
-# agent-git-setup.sh - give an AI agent its own git identity inside a worktree.
 #
-# Completely backend/agent-neutral. It does NOT mint tokens and contains no
-# secrets. It expects GH_TOKEN (already minted by whatever backend/agent) and
-# the desired bot identity in the environment, then sets up a git worktree
-# where commits/pushes are attributed to that bot identity.
+# agent-git-setup.sh
 #
-# If "treehouse" is installed it is used to obtain the worktree; otherwise a
-# plain "git worktree add" is used. Either way the worktree is configured the
-# same way.
+# Give an AI agent its own git identity inside an isolated worktree.
 #
-# Env (required):
-#   GH_TOKEN            a GitHub token with push rights (e.g. an App install token)
-#   AGENT_GIT_NAME      commit author name, e.g. myagent[bot]
-#   AGENT_GIT_USER_ID   the bot USER id (NOT the App id) from
-#                       https://api.github.com/users/<name>  -> .id
-# Env (optional):
-#   AGENT_GIT_SIGNINGKEY  an SSH public key (key::<pubkey>) for verified [bot] commits
-#   AGENT_GIT_WORKTREE   worktree name (default: agent)
-#   AGENT_GIT_BRANCH     branch to create in the worktree (default: agent-work)
+# This script is completely backend/agent-neutral. It does NOT mint tokens and
+# contains no secrets. It expects GH_TOKEN (already minted by whatever
+# backend/agent is running) and the desired bot identity in the environment,
+# then sets up a git worktree where commits and pushes are attributed to that
+# bot identity — while your main checkout stays exactly as you.
+#
+# If the "treehouse" tool is installed it is used to obtain the worktree;
+# otherwise a plain "git worktree add" is used. Either way the worktree is
+# configured the same way afterwards.
+#
+# Required environment variables:
+#   GH_TOKEN          A push-capable GitHub token (e.g. an App install token).
+#   AGENT_GIT_NAME    Commit author name, e.g. myagent[bot].
+#   AGENT_GIT_USER_ID The bot USER id (NOT the App id). Fetch it from
+#                     https://api.github.com/users/<name>  ->  .id
+#
+# Optional environment variables:
+#   AGENT_GIT_SIGNINGKEY  An SSH public key (key::<pubkey>) for a verified
+#                         [bot] commit badge.
+#   AGENT_GIT_WORKTREE    Worktree name (default: agent).
+#   AGENT_GIT_BRANCH      Branch created in the worktree (default: agent-work).
+#
+
 set -euo pipefail
 
+# ---------------------------------------------------------------------------
+# Argument handling
+# ---------------------------------------------------------------------------
+
+# First argument is the target repository; remaining args are optional.
 REPO_DIR="${1:-}"
+
 if [ -z "$REPO_DIR" ]; then
   echo "usage: agent-git-setup.sh <repo-dir> [worktree-name] [branch]" >&2
   exit 2
 fi
+
+# The target must actually be a git repository.
 if [ ! -d "$REPO_DIR/.git" ] && [ ! -f "$REPO_DIR/.git" ]; then
   echo "agent-git-setup.sh: $REPO_DIR is not a git repository" >&2
   exit 1
 fi
+
+# Worktree name and branch come from arguments or environment, with defaults.
 WT_NAME="${2:-${AGENT_GIT_WORKTREE:-agent}}"
 BRANCH="${3:-${AGENT_GIT_BRANCH:-agent-work}}"
 
+# ---------------------------------------------------------------------------
+# Required environment
+# ---------------------------------------------------------------------------
+
+# Bail out early (with a helpful message) if a required var is missing.
 : "${GH_TOKEN:?set GH_TOKEN (a push-capable GitHub token, e.g. App install token)}"
 : "${AGENT_GIT_NAME:?set AGENT_GIT_NAME, e.g. myagent[bot]}"
 : "${AGENT_GIT_USER_ID:?set AGENT_GIT_USER_ID (bot USER id, not the App id)}"
 
+# GitHub noreply email derived from the bot user id + name.
+# This is what makes the commit author show as <name>[bot] on GitHub.
 BOT_EMAIL="${AGENT_GIT_USER_ID}+${AGENT_GIT_NAME}@users.noreply.github.com"
+
+# ---------------------------------------------------------------------------
+# Locate / create the worktree
+# ---------------------------------------------------------------------------
 
 cd "$REPO_DIR"
 
-# Resolve the worktree path. Use treehouse if available, else plain git worktree.
+# Default location for a plain git worktree.
 WT_PATH="$REPO_DIR/.worktrees/$WT_NAME"
+
+# Prefer treehouse when it is available on PATH.
 if command -v treehouse >/dev/null 2>&1; then
   echo "agent-git-setup.sh: treehouse detected; using it for worktree isolation"
+
+  # Ask treehouse for the path of this named worktree (non-interactively).
   THPATH="$(treehouse --path "$WT_NAME" 2>/dev/null || true)"
+
   if [ -n "$THPATH" ] && [ -d "$THPATH" ]; then
     WT_PATH="$THPATH"
   else
+    # treehouse did not yield a usable path; fall back to git worktree add.
     echo "agent-git-setup.sh: treehouse did not yield a path; falling back to git worktree add" >&2
   fi
 fi
 
-# Create the worktree if it does not already exist (idempotent).
+# Create the worktree only if it does not already exist (idempotent).
 if [ -d "$WT_PATH/.git" ] || [ -f "$WT_PATH/.git" ]; then
   echo "agent-git-setup.sh: worktree already exists at $WT_PATH (reconfiguring)"
 else
+  # Plain git worktree add (only when we own the path).
   if [ "$WT_PATH" = "$REPO_DIR/.worktrees/$WT_NAME" ]; then
     git worktree add -B "$BRANCH" "$WT_PATH" 2>/dev/null || git worktree add "$WT_PATH"
   fi
 fi
 
+# ---------------------------------------------------------------------------
+# Configure the worktree with the bot identity
+# ---------------------------------------------------------------------------
+
 echo "agent-git-setup.sh: configuring worktree at $WT_PATH"
+
+# (1) Commit author — local git config, scoped to the worktree only.
 git -C "$WT_PATH" config user.name "$AGENT_GIT_NAME"
 git -C "$WT_PATH" config user.email "$BOT_EMAIL"
 
+# (2) Push actor — rewrite origin to use the token for this worktree.
 if git -C "$WT_PATH" remote get-url origin >/dev/null 2>&1; then
+  # Strip any existing credentials, then inject the token.
   BASE="$(git -C "$WT_PATH" remote get-url origin | sed -E "s#https://[^@]*@#https://#")"
   git -C "$WT_PATH" remote set-url origin "https://x-access-token:${GH_TOKEN}@${BASE#https://}"
   echo "agent-git-setup.sh: origin rewritten to use the bot token for pushes"
 else
+  # No origin: we cannot configure the push actor. Warn and move on,
+  # because the local commit identity above still works.
   echo "agent-git-setup.sh: no origin remote found; push actor not configured." >&2
   echo "  Add one manually if the agent should push as the bot." >&2
 fi
 
+# (3) Optional: verified [bot] commit signing via the App SSH key.
 if [ -n "${AGENT_GIT_SIGNINGKEY:-}" ]; then
   git -C "$WT_PATH" config gpg.format ssh
   git -C "$WT_PATH" config user.signingkey "$AGENT_GIT_SIGNINGKEY"
   git -C "$WT_PATH" config commit.gpgsign true
   echo "agent-git-setup.sh: commit signing enabled (verified [bot] badge)"
 fi
+
+# ---------------------------------------------------------------------------
+# Done
+# ---------------------------------------------------------------------------
 
 echo "agent-git-setup.sh: done. Agent should work in: $WT_PATH"
 echo "  commits there are attributed to $AGENT_GIT_NAME <$BOT_EMAIL>"
