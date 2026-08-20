@@ -27,7 +27,7 @@ agent).
 
 ### 1. Gather the values
 
-#### Git-only path (minimal — no GitHub App)
+#### Git-only setup (minimal)
 
 If you already have a `GH_TOKEN` (PAT, fine-grained token, etc.) and just want
 the bot commit-author in a worktree:
@@ -41,27 +41,25 @@ the bot commit-author in a worktree:
   ```
   This is **your** user id, not anything GitHub-App-related. It is used to build
   the noreply email `<id>+<name>[bot]@users.noreply.github.com`.
-+- **`GH_TOKEN`**: **already set** in your shell/environment. If you are using a
-+  PAT or fine-grained token, export it: `export GH_TOKEN=ghp_...`. (Do **not**
-+  include the token value in the prompt you send to the agent.)
-+
-+  How to get a `GH_TOKEN`:
-+  - **PAT (classic)**: GitHub → Settings → Developer settings → Personal access
-+    tokens → Tokens (classic) → Generate new token (classic). Give it `repo`
-+    scope (for read/write to repos). Copy the `ghp_...` value.
-+  - **Fine-grained token**: GitHub → Settings → Developer settings → Fine-grained
-+    tokens → Generate new token. Select the repos the agent should touch, give
-+    Contents read/write (commits) and Pull requests read/write (PRs). Copy the
-+    `github_pat_...` value.
-+  - Either works; the token is what `git push` uses (push actor = you) and what
-+    `gh`/API calls use (the bot actor, since `gh` picks up `GH_TOKEN`).
-+  - The token is short-lived only if you set an expiration; classic PATs don't
-+    expire by default. Set an expiration and rotate as needed.
-+
-+- **`AGENT_GIT_SIGNINGKEY`** *(optional)*: an SSH public key in `key::<pubkey>`
-+  form for a verified `[bot]` badge. Omit if you don't want verified commits.
+- **`GH_TOKEN`**: **prerequisite — already in your environment.** You created a
+  PAT (or fine-grained token) *before* starting. Export it in the agent's shell
+  before sending the prompt:
+  ```bash
+  export GH_TOKEN=ghp_...
+  ```
+  Do **not** include the token value in the prompt you send to the agent.
 
-#### GitHub App path (uses `mint-token.sh` from this repo)
+  How to create a `GH_TOKEN` (do this once, before you need it):
+  - **PAT (classic)**: GitHub → Settings → Developer settings → Personal access
+    tokens → Tokens (classic) → Generate new token (classic). Check the `repo`
+    scope. Copy the `ghp_...` value.
+  - **Fine-grained token**: GitHub → Settings → Developer settings → Fine-grained
+    tokens → Generate new token. Select repos, give Contents read/write and
+    Pull requests read/write. Copy the `github_pat_...` value.
+- **`AGENT_GIT_SIGNINGKEY`** *(optional)*: SSH public key as `key::<pubkey>`
+  for a verified `[bot]` badge. Omit if you don't want verified commits.
+
+#### GitHub App setup (uses `mint-token.sh` from this repo)
 
 If you have a GitHub App and want `mint-token.sh` to mint the token in the
 prompt:
