@@ -44,9 +44,10 @@ without needing any other tooling. Everything lives in this repo
    export AGENT_GIT_NAME="myagent[bot]"
    export GIT_USER_NAME="my-git-user-name"   # handle; the skill/script resolves it to the numeric id
    # optional, for a verified [bot] badge — only if you want the green Verified check:
-   # generate: ssh-keygen -t ed25519 -f /path/to/myagent-signing -C "myagent[bot]" -N ""
-   # Git-only: add the .pub as Signing Key to the user account (Settings → SSH and GPG keys → New SSH key → Key type: Signing Key)
-   # GitHub App: add the .pub to the App (Settings → Developer settings → GitHub Apps → your app → Public keys / Commit signing)
+   # generate: ssh-keygen -t ed25519 -f /path/to/myagent-signing -C "myagent[bot]" -N "" — creates /path/to/myagent-signing (private) and /path/to/myagent-signing.pub (public)
+   # paste ONLY the .pub — one line ssh-ed25519 AAAA... myagent[bot] (cat /path/to/myagent-signing.pub) — as Signing Key, not Authentication:
+   # Git-only: user account → Settings → SSH and GPG keys → New SSH key → Key type: Signing Key (not the private file, not fingerprint/randomart)
+   # GitHub App: App → Settings → Developer settings → GitHub Apps → your app → Public keys / Commit signing → paste the same .pub line
    # then pass the full pubkey line with the key:: prefix:
    export AGENT_GIT_SIGNINGKEY="key::ssh-ed25519 AAAA... myagent[bot]"
    ```

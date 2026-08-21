@@ -39,7 +39,7 @@ You will fill the `[...]` placeholders in step 3 with these values.
 - **`GIT_USER_NAME`**: your GitHub handle, e.g. `my-git-user-name`. The agent/skill
   resolves it to the numeric id via the **public** GitHub API (`GET /users/<handle>`).
 - **Optional** `AGENT_GIT_SIGNINGKEY` — only if you want the green **Verified** badge on bot commits. Without it, commits still show as `myagent[bot]` but **unverified** (grey badge) — fine to omit.
-  To get Verified **without a GitHub App**: generate an SSH signing key in terminal: `ssh-keygen -t ed25519 -f ~/.ssh/myagent-signing -C "myagent[bot]" -N ""`, then add the `.pub` as a **Signing Key** to the GitHub account that owns `GIT_USER_NAME` (**Settings → SSH and GPG keys → New SSH key → Key type: Signing Key** → paste `ssh-ed25519 AAAA... myagent[bot]`). Then pass `AGENT_GIT_SIGNINGKEY="key::ssh-ed25519 AAAA... myagent[bot]"` (note the `key::` prefix + full pubkey line). The script writes it to the worktree as `gpg.format ssh` / `user.signingKey`.
+  To get Verified **without a GitHub App**: run `ssh-keygen -t ed25519 -f ~/.ssh/myagent-signing -C "myagent[bot]" -N ""` — this creates `~/.ssh/myagent-signing` (private, keep it) and `~/.ssh/myagent-signing.pub` (public). Paste **only** the `.pub` file — one line `ssh-ed25519 AAAA... myagent[bot]` (`cat ~/.ssh/myagent-signing.pub`) — as a **Signing Key** on the GitHub account that owns `GIT_USER_NAME` (**Settings → SSH and GPG keys → New SSH key → Key type: Signing Key**; not Authentication, not the fingerprint/randomart). Then pass `AGENT_GIT_SIGNINGKEY="key::ssh-ed25519 AAAA... myagent[bot]"` (note the `key::` prefix + full pubkey line from the same `.pub`). The script writes it to the worktree as `gpg.format ssh` / `user.signingKey`.
 
 ### GitHub App
 
@@ -86,12 +86,12 @@ source <(./mint-token.sh --app-id "$GITHUB_APP_ID" --pem "$GITHUB_APP_PEM" --she
 
 - Without this, commits still show as `myagent[bot]` but **unverified** (grey badge) — fine for most setups.
 - To get the green **Verified** badge:
-  1. Generate an SSH signing key: `ssh-keygen -t ed25519 -f ~/.ssh/myagent-signing -C "myagent[bot]" -N ""`
-  2. Upload the **public** key to GitHub:
-      - your App → **Settings → Developer settings → GitHub Apps → your app → Public keys / Commit signing** → 
-      - paste the contents of `~/.ssh/myagent-signing.pub` (a line like `ssh-ed25519 AAAA... myagent[bot]`). 
+  1. Run: `ssh-keygen -t ed25519 -f ~/.ssh/myagent-signing -C "myagent[bot]" -N ""` — creates `~/.ssh/myagent-signing` (private, keep it) and `~/.ssh/myagent-signing.pub` (public).
+  2. Upload the **public** `.pub` to GitHub:
+      - your App → **Settings → Developer settings → GitHub Apps → your app → Public keys / Commit signing** →
+      - paste **only** `~/.ssh/myagent-signing.pub` — one line `ssh-ed25519 AAAA... myagent[bot]` (`cat ~/.ssh/myagent-signing.pub`; not the private file, not the fingerprint/randomart).
       - Enable commit signing if the App shows that toggle.
-  3. Pass it to the agent as `AGENT_GIT_SIGNINGKEY="key::ssh-ed25519 AAAA... myagent[bot]"` — note the `key::` prefix + the full pubkey line. The script writes it to the worktree's git config as `gpg.format ssh` / `user.signingKey`.
+  3. Pass the same `.pub` line to the agent as `AGENT_GIT_SIGNINGKEY="key::ssh-ed25519 AAAA... myagent[bot]"` — note the `key::` prefix + the full pubkey line. The script writes it to the worktree's git config as `gpg.format ssh` / `user.signingKey`.
 
 You can set up Verified later — omit `AGENT_GIT_SIGNINGKEY` for now and add it when you want the badge.
 
