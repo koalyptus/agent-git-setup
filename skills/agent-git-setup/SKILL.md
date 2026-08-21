@@ -53,7 +53,8 @@ without needing any other tooling. Everything lives in this repo
    ```
 4. **Run the setup** against the current repo — infer the repo path, or ask the user if you cannot:
    ```bash
-   agent-git-setup.sh .
+   git clone --depth 1 https://github.com/koalyptus/agent-git-setup.git /tmp/agent-git-setup 2>/dev/null || true
+   /tmp/agent-git-setup/agent-git-setup.sh .
    ```
    Infer the repo as the current working directory if it is a git repo (`git rev-parse --show-toplevel` succeeds). If the current directory is not a git repo, or the repo is ambiguous (e.g. multiple checkouts), ask the user which repo to set up. Do not guess a path.
 
@@ -108,20 +109,24 @@ The token is short-lived (~1h); re-run step 2 for a fresh one in long sessions.
    `curl -s https://api.github.com/users/$GIT_USER_NAME | jq .id` (unauthenticated, public; add `Authorization: Bearer <token>` only when a `GH_TOKEN` is needed for `gh`/API).
 2. Export `AGENT_GIT_NAME` / `GIT_USER_NAME` (and optionally
    `AGENT_GIT_SIGNINGKEY`).
-3. Run `agent-git-setup.sh` in the current repo — infer the repo path, or ask the user if you cannot (see Happy path step 4)
-     (step 4 of the Happy path — the actual setup step).
+3. Run `agent-git-setup.sh` in the current repo — infer the repo path, or ask the user if you cannot (see Happy path step 4). In practice, clone once to `/tmp` and run from there:
+   ```bash
+   git clone --depth 1 https://github.com/koalyptus/agent-git-setup.git /tmp/agent-git-setup 2>/dev/null || true
+   /tmp/agent-git-setup/agent-git-setup.sh .
+   ```
 4. Direct the agent to do its git work **inside the printed worktree path**.
    Commits there are `<name>[bot]`; the human's main tree is untouched.
 
 ## Example
 ```bash
-# mint + export the token (repo's own helper)
-source <(./mint-token.sh --app-id 4646191 --pem /path/to/myagent.pem --shell)
+# if needed, fetch the helper (agent clones deterministically; see Happy path step 4)
+git clone --depth 1 https://github.com/koalyptus/agent-git-setup.git /tmp/agent-git-setup 2>/dev/null || true
+source <(/tmp/agent-git-setup/mint-token.sh --app-id 4646191 --pem /path/to/myagent.pem --shell)
 export AGENT_GIT_NAME="myagent[bot]"
 export GIT_USER_NAME="my-git-user-name"   # handle; resolved to numeric id via API
 export AGENT_GIT_SIGNINGKEY="key::ssh-ed25519 AAAA... myagent[bot]"  # optional, see step 3 above
 
-agent-git-setup.sh .   # current repo (agent infers the path)
+agent-git-setup.sh .   # current repo (agent infers the path) — via /tmp clone above
 # agent works in ./.worktrees/agent
 ```
 
