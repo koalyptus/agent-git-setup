@@ -12,6 +12,23 @@ Give an AI agent a bot identity in local git worktrees and/or on GitHub to easil
   lint job (they are installed automatically in CI).
 - `Python` 3 and `cryptography`
 
+## 0. Install the skill in your harness
+
+Pick one of these — whichever harness your agent runs in. This is a one-time
+human step so the prompt in §2 ("Use the `agent-git-setup` skill…") resolves.
+
+- **Hermes:**
+  ```bash
+  hermes skills install https://raw.githubusercontent.com/koalyptus/agent-git-setup/main/skills/agent-git-setup/SKILL.md
+  # or clone and point at the local copy:
+  # hermes skills install ./skills/agent-git-setup --category agent --name agent-git-setup
+  ```
+- **Other harnesses (Claude Code, OpenCode, Codex, etc.):** copy
+  `skills/agent-git-setup/SKILL.md` into the harness's skills folder
+  (the standard `<skills>/<skill-name>/SKILL.md` layout this repo uses), or
+  point the harness at the raw URL above. Consult that harness's docs for the
+  exact install / "load skill from repo" command.
+
 ## 1. Gather values
 
 You will fill the `[...]` placeholders in step 2 with these values.
