@@ -31,8 +31,9 @@ without needing any other tooling. Everything lives in this repo
 
 0. **One-time, outside the agent:** create a GitHub App (see README "GitHub App
    setup"), download its PEM, install it on the target repos, and note the
-   App ID, the PEM path, and the bot user id (`curl
-   https://api.github.com/users/<name> | jq .id`).
+   App ID, the PEM path, and your handle `GIT_USER_NAME`
+   (e.g. `my-git-user-name` — the skill/script will resolve it to the numeric id
+   via the GitHub API; you never run `curl | jq`).
 1. **Mint a token** with the repo's own helper:
    ```bash
    source <(./mint-token.sh --app-id "$APP_ID" --pem "$PEM_PATH" --shell)
