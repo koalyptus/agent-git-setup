@@ -29,23 +29,29 @@ human step so the prompt in §3 ("Use the `agent-git-setup` skill…") resolves.
   point the harness at the raw URL above. Consult that harness's docs for the
   exact install / "load skill from repo" command.
 
-## 2. Gather values
+## 2. Prepare relevant Git information
 
 You will fill the `[...]` placeholders in step 3 with these values.
 
-### Git-only (minimal — no GitHub App, you already have a `GH_TOKEN`)
+### Git-only (minimal)
 
 - **`AGENT_GIT_NAME`**: the bot commit author, e.g. `myagent[bot]` (any name works).
 - **`GIT_USER_NAME`**: your GitHub handle, e.g. `my-git-user-name`. The agent/skill
   resolves it to the numeric id via the GitHub API — you never run `curl | jq`.
-- **`GH_TOKEN`**: must already be exported in the agent's shell (`export GH_TOKEN=ghp_...`).
+- **Optional** `AGENT_GIT_SIGNINGKEY` — only if you want the green **Verified** badge on bot commits. Without it, commits still show as `myagent[bot]` but **unverified** (grey badge). To get Verified:
+  - generate an SSH signing key in terminal: `ssh-keygen -t ed25519 -f ~/.ssh/myagent-signing -C "myagent[bot]" -N ""`
+  - upload the `.pub` to your GitHub App → **Settings → Developer settings → GitHub Apps → your app → Public keys / Commit signing**
+  - then pass `AGENT_GIT_SIGNINGKEY="key::ssh-ed25519 AAAA... myagent[bot]"` (note the `key::` prefix + full pubkey line).
+
+Note:
+
+**`GH_TOKEN`**: must already be exported in the agent's shell (`export GH_TOKEN=ghp_...`).
   Do **not** put the token value in the prompt. How to get one: GitHub → Settings →
   Developer settings → Personal access tokens → generate a PAT or fine-grained token.
-- **Optional** `AGENT_GIT_SIGNINGKEY` — only if you want the green **Verified** badge on bot commits. Without it, commits still show as `myagent[bot]` but **unverified** (grey badge). To get Verified: generate an SSH signing key (`ssh-keygen -t ed25519 -f ~/.ssh/myagent-signing -C "myagent[bot]" -N ""`), upload the `.pub` to your GitHub App → **Settings → Developer settings → GitHub Apps → your app → Public keys / Commit signing**, then pass `AGENT_GIT_SIGNINGKEY="key::ssh-ed25519 AAAA... myagent[bot]"` (note the `key::` prefix + full pubkey line).
 
-### GitHub App (uses `mint-token.sh` from this repo)
+### GitHub App
 
-Like Git-only, but the skill mints `GH_TOKEN` for you via `mint-token.sh` (needs only `python3` + `cryptography`). Do the one-time App setup first, then give the agent the values below — no jumping to another section.
+Like Git-only, but the skill mints `GH_TOKEN` for you via `mint-token.sh`. Do the one-time App setup first, then give the agent the values below.
 
 **One-time App setup (do once, in the GitHub web UI — needs your login):**
 
@@ -53,17 +59,26 @@ Like Git-only, but the skill mints `GH_TOKEN` for you via `mint-token.sh` (needs
    - **GitHub App name**: e.g. `myagent` (this becomes `myagent[bot]` on GitHub).
    - **Homepage URL**: required on the form — any URL works (e.g. your profile).
    - **Where can this be installed?**: *Only on this account* (keeps it private).
-   - **Repository permissions**: Contents → Read & write (commits/pushes), Pull requests → Read & write (if the agent opens PRs), Metadata → Read (always required).
-   - Leave blank/unchecked: Redirect URI, webhook (Active **off**), events, OAuth, Device Flow, and all user/org permissions.
+   - **Repository permissions**:
+      - Contents → Read & write (commits/pushes)
+      - Pull requests → Read & write (if the agent opens PRs)
+      - Metadata → Read (always required).
+   - Leave blank/unchecked:
+      - Redirect URI
+      - webhook (Active **off**)
+      - events
+      - OAuth
+      - Device Flow
+      - and all user/org permissions.
    - After creating, note the **App ID** shown on the app page.
 2. **Generate the private key** — on the app page click **Generate a private key (PEM)**, download the `.pem`, keep it secret and store it **outside any git repo** (e.g. `~/.ssh/myagent.pem`).
 3. **Install the app** — on the app page click **Install** and select the repositories the agent should touch. This grants permission; it does not change the bot name.
 4. **(Optional) Verified commits** — see below; you can skip this and add it later.
 
-**Values you then give the agent (fill the `[...]` in §3):**
+**Information you then give the agent (fill the `[...]` in §3):**
 
 - `AGENT_GIT_NAME` — the bot author, e.g. `myagent[bot]` (matches the App name).
-- `GIT_USER_NAME` — human GitHub account that owns the token/App, e.g. `my-git-user-name`. Distinct from `AGENT_GIT_NAME` (the commit author `...[bot]`). The agent resolves the handle to the numeric id via the GitHub API — you never run `curl | jq`.
+- `GIT_USER_NAME` — the GitHub account that owns the token/App, e.g. `my-git-user-name`, that is, your username. Distinct from `AGENT_GIT_NAME` (the commit author `...[bot]`).
 - `GITHUB_APP_ID` — the App ID from step 1.
 - `GITHUB_APP_PEM` — path to the `.pem` from step 2 (e.g. `~/.ssh/myagent.pem`).
 - `AGENT_GIT_SIGNINGKEY` *(optional)* — only if you want the green **Verified** badge; see below.
@@ -80,7 +95,10 @@ source <(./mint-token.sh --app-id "$GITHUB_APP_ID" --pem "$GITHUB_APP_PEM" --she
 - Without this, commits still show as `myagent[bot]` but **unverified** (grey badge) — fine for most setups.
 - To get the green **Verified** badge:
   1. Generate an SSH signing key: `ssh-keygen -t ed25519 -f ~/.ssh/myagent-signing -C "myagent[bot]" -N ""`
-  2. Upload the **public** key to GitHub: your App → **Settings → Developer settings → GitHub Apps → your app → Public keys / Commit signing** → paste the contents of `~/.ssh/myagent-signing.pub` (a line like `ssh-ed25519 AAAA... myagent[bot]`). Enable commit signing if the App shows that toggle.
+  2. Upload the **public** key to GitHub:
+      - your App → **Settings → Developer settings → GitHub Apps → your app → Public keys / Commit signing** → 
+      - paste the contents of `~/.ssh/myagent-signing.pub` (a line like `ssh-ed25519 AAAA... myagent[bot]`). 
+      - Enable commit signing if the App shows that toggle.
   3. Pass it to the agent as `AGENT_GIT_SIGNINGKEY="key::ssh-ed25519 AAAA... myagent[bot]"` — note the `key::` prefix + the full pubkey line. The script writes it to the worktree's git config as `gpg.format ssh` / `user.signingKey`.
 
 You can set up Verified later — omit `AGENT_GIT_SIGNINGKEY` for now and add it when you want the badge.
@@ -90,10 +108,7 @@ You can set up Verified later — omit `AGENT_GIT_SIGNINGKEY` for now and add it
 Replace every `[...]` with the value you gathered, then send the whole block:
 
 ```text
-[USER PROMPT — replace every [value] below]
-
-Use the agent-git-setup skill. Set up a bot git identity for the repo at
-[REPO_PATH] (e.g. ~/dev/my-project).
+Use the agent-git-setup skill. Set up a bot git identity for current repo.
 
 [Git-only — fill these if you already have a GH_TOKEN and no GitHub App]
 AGENT_GIT_NAME=[myagent[bot]]
@@ -114,12 +129,12 @@ agent-git-setup.sh [REPO_PATH]
 Then do your git work inside the printed worktree. Do not touch the main tree.
 ```
 
-- `[REPO_PATH]` is an existing local git repository.
+Notes:
+- Delete `[GITHUB_APP_ID]`/`[GITHUB_APP_PEM]` if you use Git-only; omit
+  `AGENT_GIT_SIGNINGKEY` if you don't want verified commits.
 - `GH_TOKEN` is **not** a placeholder — it must already be in the agent's
   environment (Git-only: you exported it; GitHub App: skill mints it via
   `mint-token.sh --shell`).
-- Delete `[GITHUB_APP_ID]`/`[GITHUB_APP_PEM]` if you use Git-only; omit
-  `AGENT_GIT_SIGNINGKEY` if you don't want verified commits.
 
 ## 4. What happens
 
@@ -220,7 +235,7 @@ It handles two distinct things:
 - **Not token-agnostic by accident — by design.** It does **not** mint tokens and
   contains no secrets. It expects `GH_TOKEN` to already be present in the
   environment (minted by whatever backend/agent you use) and only *consumes* it.
-- **Not coupled to any worktree tool.** If `treehouse` is installed it is used to
+- **Not coupled to any worktree tool.** If [treehouse](https://github.com/kunchenguid/treehouse) is installed it is used to
   obtain the worktree; otherwise a plain `git worktree add` is used. Same result.
 - **Not touching your main tree.** All configuration is scoped to the worktree.
   Your main repository and global git config are never modified.
