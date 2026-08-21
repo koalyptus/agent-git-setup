@@ -152,6 +152,10 @@ git config -f "$WT_CONFIG" user.email "$BOT_EMAIL"
 #     credential — by design, so the main tree is never touched.
 
 # (3) Optional: verified [bot] commit signing via the App SSH key.
+# The key is the public key literal (key::<pubkey>). For SSH signing to actually
+# work, the corresponding PRIVATE key must be loaded in ssh-agent:
+#   eval "$(ssh-agent -s)" && ssh-add /path/to/myagent-signing
+# Add that to your shell rc so it's always available when the agent commits.
 if [ -n "${AGENT_GIT_SIGNINGKEY:-}" ]; then
 	git config -f "$WT_CONFIG" gpg.format ssh
 	git config -f "$WT_CONFIG" user.signingkey "$AGENT_GIT_SIGNINGKEY"
