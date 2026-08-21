@@ -33,23 +33,22 @@ human step so the prompt in §3 ("Use the `agent-git-setup` skill…") resolves.
 
 You will fill the `[...]` placeholders in step 3 with these values.
 
-### Git-only (minimal — no token needed for commit author)
+### Git-only
 
 - **`AGENT_GIT_NAME`**: the bot commit author, e.g. `myagent[bot]` (any name works).
 - **`GIT_USER_NAME`**: your GitHub handle, e.g. `my-git-user-name`. The agent/skill
-  resolves it to the numeric id via the **public** GitHub API (`GET /users/<handle>` — no token needed, you never run `curl | jq`).
-- **Optional** `AGENT_GIT_SIGNINGKEY` — only if you want the green **Verified** badge on bot commits. Without it, commits still show as `myagent[bot]` but **unverified** (grey badge). To get Verified:
+  resolves it to the numeric id via the **public** GitHub API (`GET /users/<handle>`).
+- **Optional** `AGENT_GIT_SIGNINGKEY` — only if you want the green **Verified** badge on bot commits. Without it, commits still show as `myagent[bot]` but **unverified** (grey badge).
+To get Verified:
   - generate an SSH signing key in terminal: `ssh-keygen -t ed25519 -f ~/.ssh/myagent-signing -C "myagent[bot]" -N ""`
   - upload the `.pub` to your GitHub App → **Settings → Developer settings → GitHub Apps → your app → Public keys / Commit signing**
   - then pass `AGENT_GIT_SIGNINGKEY="key::ssh-ed25519 AAAA... myagent[bot]"` (note the `key::` prefix + full pubkey line).
-
-**Optional, only for GitHub API as the bot** (PRs/issues/comments via `gh`/API): `GH_TOKEN`. Not needed for the local commit author above. If you need it, export it **before** the prompt (`export GH_TOKEN=ghp_...` — do not put the token value in the prompt). How to get one: GitHub → Settings → Developer settings → Personal access tokens → generate a PAT or fine-grained token. With no `GH_TOKEN` the commits are still `myagent[bot]`; only `gh`/API as the bot requires it.
 
 ### GitHub App
 
 Like Git-only, but the skill mints `GH_TOKEN` for you via `mint-token.sh`. Do the one-time App setup first, then give the agent the values below.
 
-**One-time App setup (do once, in the GitHub web UI — needs your login):**
+**One-time App setup**
 
 1. **Create the app** — GitHub → **Settings → Developer settings → GitHub Apps → New GitHub App**. For a private automation-only app set only:
    - **GitHub App name**: e.g. `myagent` (this becomes `myagent[bot]` on GitHub).
@@ -119,8 +118,7 @@ GITHUB_APP_PEM=[~/.ssh/myagent.pem]
 [Both paths — fill these if you want verified commits, otherwise omit]
 AGENT_GIT_SIGNINGKEY=[key::ssh-ed25519 AAAA... bot@github]
 
-After minting and setting env, run:
-agent-git-setup.sh [REPO_PATH]
+After setting the env vars above (mint the token first if using the GitHub App), run `agent-git-setup.sh` in the current repo.
 
 Then do your git work inside the printed worktree. Do not touch the main tree.
 ```
