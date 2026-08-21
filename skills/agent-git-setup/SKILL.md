@@ -44,7 +44,7 @@ without needing any other tooling. Everything lives in this repo
    export AGENT_GIT_NAME="myagent[bot]"
    export GIT_USER_NAME="my-git-user-name"   # handle; the skill/script resolves it to the numeric id
    # optional, for a verified [bot] badge — only if you want the green Verified check:
-   # generate: ssh-keygen -t ed25519 -f ~/.ssh/myagent-signing -C "myagent[bot]" -N ""
+   # generate: ssh-keygen -t ed25519 -f /path/to/myagent-signing -C "myagent[bot]" -N ""
    # upload the .pub to your GitHub App → Settings → Developer settings → GitHub Apps → your app → Public keys / Commit signing
    # then pass the full pubkey line with the key:: prefix:
    export AGENT_GIT_SIGNINGKEY="key::ssh-ed25519 AAAA... myagent[bot]"
@@ -104,7 +104,7 @@ The token is short-lived (~1h); re-run step 2 for a fresh one in long sessions.
 
 ## Steps
 1. If you need `gh`/API as the bot (PRs, issues), mint and export `GH_TOKEN` (step 2 of the Happy path) or otherwise ensure a push-capable token is in the environment. Not needed for commit author alone. Then resolve `GIT_USER_NAME` to a numeric id via the public GitHub API (`GET /users/<handle>` — unauthenticated; add `Authorization: Bearer $GH_TOKEN` only when a token is set):
-   `curl -s https://api.github.com/users/$GIT_USER_NAME | jq .id` — or with auth: `curl -s -H "Authorization: Bearer $GH_TOKEN" https://api.github.com/users/$GIT_USER_NAME | jq .id`.
+   `curl -s https://api.github.com/users/$GIT_USER_NAME | jq .id` (unauthenticated, public; add `Authorization: Bearer <token>` only when a `GH_TOKEN` is needed for `gh`/API).
 2. Export `AGENT_GIT_NAME` / `GIT_USER_NAME` (and optionally
    `AGENT_GIT_SIGNINGKEY`).
 3. Run `agent-git-setup.sh` in the current repo — infer the repo path, or ask the user if you cannot (see Happy path step 4)
@@ -115,7 +115,7 @@ The token is short-lived (~1h); re-run step 2 for a fresh one in long sessions.
 ## Example
 ```bash
 # mint + export the token (repo's own helper)
-source <(./mint-token.sh --app-id 4646191 --pem ~/.ssh/myagent.pem --shell)
+source <(./mint-token.sh --app-id 4646191 --pem /path/to/myagent.pem --shell)
 export AGENT_GIT_NAME="myagent[bot]"
 export GIT_USER_NAME="my-git-user-name"   # handle; resolved to numeric id via API
 export AGENT_GIT_SIGNINGKEY="key::ssh-ed25519 AAAA... myagent[bot]"  # optional, see step 3 above
