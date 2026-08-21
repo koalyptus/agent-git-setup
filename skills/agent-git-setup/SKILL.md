@@ -44,15 +44,15 @@ without needing any other tooling. Everything lives in this repo
    export AGENT_GIT_NAME="myagent[bot]"
    export GIT_USER_NAME="my-git-user-name"   # handle; the skill/script resolves it to the numeric id
    # optional, for a verified [bot] badge — only if you want the green Verified check:
-   # generate: ssh-keygen -t ed25519 -f /path/to/myagent-signing -C "myagent[bot]" -N "" — creates /path/to/myagent-signing (private) and /path/to/myagent-signing.pub (public)
-   # paste ONLY the .pub — one line ssh-ed25519 AAAA... myagent[bot] (cat /path/to/myagent-signing.pub) — as Signing Key, not Authentication:
+   # generate: ssh-keygen -t ed25519 -f /path/to/${AGENT_GIT_NAME//[^a-zA-Z0-9]/-}-signing -C "${AGENT_GIT_NAME}" -N "" — creates /path/to/${AGENT_GIT_NAME//[^a-zA-Z0-9]/-}-signing (private) and .pub (public)
+   # paste ONLY the .pub — one line ssh-ed25519 AAAA... ${AGENT_GIT_NAME} (cat /path/to/${AGENT_GIT_NAME//[^a-zA-Z0-9]/-}-signing.pub) — as Signing Key, not Authentication:
    # Git-only: user account → Settings → SSH and GPG keys → New SSH key → Key type: Signing Key (not the private file, not fingerprint/randomart)
    # GitHub App: App → Settings → Developer settings → GitHub Apps → your app → Public keys / Commit signing → paste the same .pub line
    # then pass the full pubkey line with the key:: prefix:
-   export AGENT_GIT_SIGNINGKEY="key::ssh-ed25519 AAAA... myagent[bot]"
+   export AGENT_GIT_SIGNINGKEY="key::ssh-ed25519 AAAA... ${AGENT_GIT_NAME}"
    # IMPORTANT: the private key must be loaded in ssh-agent for signing to work:
    eval "$(ssh-agent -s)"
-   ssh-add /path/to/myagent-signing
+   ssh-add /path/to/${AGENT_GIT_NAME//[^a-zA-Z0-9]/-}-signing
    ```
 4. **Run the setup** against the current repo — infer the repo path, or ask the user if you cannot:
    ```bash
@@ -148,7 +148,7 @@ agent-git-setup.sh .   # current repo (agent infers the path) — via /tmp clone
   `git push` uses the human account owner's push credential — the push actor is
   the human, by design.
 - **Signing needs the key + agent.** `AGENT_GIT_SIGNINGKEY` only produces a Verified
-  badge if the key is uploaded: Git-only → user **SSH and GPG keys → Signing Key**; GitHub App → App **Public keys / Commit signing**. Additionally, the private key must be loaded in `ssh-agent` (`eval "$(ssh-agent -s)" && ssh-add /path/to/myagent-signing`) for `git commit` to actually sign. Without it, commits show as the bot but unverified.
+  badge if the key is uploaded: Git-only → user **SSH and GPG keys → Signing Key**; GitHub App → App **Public keys / Commit signing**. Additionally, the private key must be loaded in `ssh-agent` (`eval "$(ssh-agent -s)" && ssh-add /path/to/${AGENT_GIT_NAME//[^a-zA-Z0-9]/-}-signing`) for `git commit` to actually sign. Without it, commits show as the bot but unverified.
 - **Token expiry.** `GH_TOKEN` is typically short-lived (~1h). If a token
   expires while a sub-agent is still working, commits using that token will
   fail. The agent should detect the failure, re-run `mint-token.sh` (or its
