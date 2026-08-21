@@ -1,6 +1,6 @@
 ---
 name: agent-git-setup
-description: "Set up an isolated git worktree where an AI agent commits as a distinct bot identity (<app>[bot]), leaving the human's working tree untouched."
+description: "Set up an isolated git worktree where an AI agent commits as a distinct bot identity (<name>[bot]), leaving the human's working tree untouched."
 version: 1.0.0
 author: koalyptus
 license: MIT
@@ -12,8 +12,8 @@ platforms: [linux, macos]
 Give an AI agent its own bot identity in a git worktree.
 
 ## When to use
-- An agent is about to do git work (commits, pushes, PRs) and you want it
-  attributed to a bot identity `<app>[bot]` rather than the human's account.
+- An agent is about to do git work (commits, PRs) and you want it
+  attributed to a bot identity `<name>[bot]` rather than the human's account.
 - You want that bot identity **isolated in a worktree** so the human's main
   checkout and global git config are never touched.
 - Triggers: "commit as a bot", "agent should commit as <bot>", "separate bot
@@ -41,7 +41,7 @@ without needing any other tooling. Everything lives in this repo
 2. **Set the bot identity:**
    ```bash
    export AGENT_GIT_NAME="myagent[bot]"
-   export AGENT_GIT_USER_ID="268339505"   # bot USER id, not App id
+   export GIT_USER_ID="268339505"   # bot USER id, not App id
    # optional, for a verified [bot] badge:
    export AGENT_GIT_SIGNINGKEY="key::ssh-ed25519 AAAA... bot@github"
    ```
@@ -49,20 +49,22 @@ without needing any other tooling. Everything lives in this repo
    ```bash
    agent-git-setup.sh <repo-dir> [worktree-name] [branch]
    ```
-   It creates `.worktrees/<worktree-name>/`, writes the bot `user.name`/
-   `user.email` to the worktree's own config file (main tree untouched), and
-   optionally enables SSH signing. It does NOT rewrite `origin`.
+   The `agent-git-setup.sh` script creates `.worktrees/<worktree-name>/`, writes
+   the bot `user.name`/`user.email` to the worktree's own config file (main
+   tree untouched), and optionally enables SSH signing. It does NOT rewrite
+   `origin`.
 4. **Work inside the worktree** the script printed. Commits there are
-   `<app>[bot]`; `gh`/API calls use the bot; your main tree is untouched.
+   `<name>[bot]`; `gh`/API calls use the bot; your main tree is untouched.
 
 The token is short-lived (~1h); re-run step 1 for a fresh one in long sessions.
 
 ## Key concepts
-- **Commit author = bot, push actor = you, gh/API = bot.** The worktree's own
+- **Commit author = bot, push actor = human, gh/API = bot.** The worktree's own
   config file gets `user.name`/`user.email` (the commit author). `GH_TOKEN` in
   the environment drives `gh`/API (PRs, issues, comments) as the bot. Plain
-  `git push` uses the repo's normal credential — the script never rewrites
-  `origin` (worktrees share remotes, so rewriting would touch the main tree).
+  `git push` uses the human account owner's credential — the push actor is the
+  human, by design. (The `agent-git-setup.sh` script never rewrites `origin`,
+  because worktrees share remotes and rewriting would touch the main tree.)
 - **Worktree isolation.** All bot config is scoped to the worktree's own config
   file. The human's main tree stays theirs. No collision, no `git config`
   discipline required.
@@ -77,11 +79,12 @@ The token is short-lived (~1h); re-run step 1 for a fresh one in long sessions.
 
 ## Prerequisites
 - A git repository the agent should work in.
-- A GitHub App (App ID + PEM) — one-time, see README "GitHub App setup".
+- A GitHub App (App ID + PEM) — one-time, set up by the GitHub account owner
+  (the human), not by the agent — see README "GitHub App setup".
 - The bot identity:
   - `AGENT_GIT_NAME` — e.g. `myagent[bot]`.
-  - `AGENT_GIT_USER_ID` — the bot **user** id (NOT the App id). Fetch it:
-    `curl -s https://api.github.com/users/<AGENT_GIT_NAME> | jq .id`
+  - `GIT_USER_ID` — the bot **user** id (NOT the App id). Fetch it:
+    `curl -s https://api.github.com/users/<name>[bot] | jq .id   # => e.g. 268339505`
 - `python3` with the `cryptography` package (for `mint-token.sh`).
 - (Optional) `AGENT_GIT_SIGNINGKEY` — an SSH public key (`key::<pubkey>`) for a
   verified `[bot]` commit badge. Requires the GitHub App to have commit signing
@@ -90,18 +93,19 @@ The token is short-lived (~1h); re-run step 1 for a fresh one in long sessions.
 ## Steps
 1. Mint and export `GH_TOKEN` (step 1 of the Happy path), or otherwise ensure a
    push-capable token is in the environment.
-2. Export `AGENT_GIT_NAME` / `AGENT_GIT_USER_ID` (and optionally
+2. Export `AGENT_GIT_NAME` / `GIT_USER_ID` (and optionally
    `AGENT_GIT_SIGNINGKEY`).
-3. Run `agent-git-setup.sh <repo-dir> [worktree-name] [branch]` (step 3 above).
+3. Run `agent-git-setup.sh <repo-dir> [worktree-name] [branch]`
+     (step 3 of the Happy path — the actual setup step).
 4. Direct the agent to do its git work **inside the printed worktree path**.
-   Commits there are `<app>[bot]`; the human's main tree is untouched.
+   Commits there are `<name>[bot]`; the human's main tree is untouched.
 
 ## Example
 ```bash
 # mint + export the token (repo's own helper)
 source <(./mint-token.sh --app-id 4646191 --pem ~/.ssh/myagent.pem --shell)
 export AGENT_GIT_NAME="myagent[bot]"
-export AGENT_GIT_USER_ID="268339505"
+export GIT_USER_ID="268339505"
 export AGENT_GIT_SIGNINGKEY="key::ssh-ed25519 AAAA... bot@github"  # optional
 
 agent-git-setup.sh ~/dev/my-repo
@@ -109,18 +113,23 @@ agent-git-setup.sh ~/dev/my-repo
 ```
 
 ## Pitfalls
-- **Bot user id, not App id.** The commit email needs the *bot user* id
-  (`api.github.com/users/<name>` -> `.id`), which differs from the App ID shown
-  in GitHub App settings. Using the App id yields an unverified/odd email.
+- **Bot user id, not App id.** For the GitHub App path, the commit email needs
+  the *bot user* id (`api.github.com/users/<name>[bot]` -> `.id`), which differs
+  from the App ID shown in GitHub App settings. Using the App id yields an
+  unverified/odd email. For the Git-only path, `GIT_USER_ID` is the GitHub
+  account owner id of whoever holds the token.
 - **Re-running is safe (idempotent).** An existing worktree is reconfigured, not recreated.
 - **No origin is fine.** If the repo has no `origin`, the script still sets the
   bot commit author; only the (optional) push remote is absent. Plain
-  `git push` uses your normal credential — the push actor is you, by design.
+  `git push` uses the human account owner's push credential — the push actor is
+  the human, by design.
 - **Signing needs the App key.** `AGENT_GIT_SIGNINGKEY` only produces a Verified
   badge if the GitHub App has commit signing enabled and that SSH key uploaded.
   Without it, commits show as the bot but unverified.
-- **Token expiry.** `GH_TOKEN` is typically short-lived (~1h). Re-run
-  `mint-token.sh` for a fresh one in long sessions.
+- **Token expiry.** `GH_TOKEN` is typically short-lived (~1h). If a token
+  expires while a sub-agent is still working, commits using that token will
+  fail. The agent should detect the failure, re-run `mint-token.sh` (or its
+  configured token minter) for a fresh `GH_TOKEN`, and retry the work.
 - **`cryptography` required for minting.** `mint-token.sh` needs
   `python3 -c "import cryptography"`. `agent-git-setup.sh` does NOT need it.
 

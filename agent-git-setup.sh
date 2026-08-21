@@ -18,7 +18,7 @@
 # Required environment variables:
 #   GH_TOKEN          A push-capable GitHub token (e.g. an App install token).
 #   AGENT_GIT_NAME    Commit author name, e.g. myagent[bot].
-#   AGENT_GIT_USER_ID The bot USER id (NOT the App id). Fetch it from
+#   GIT_USER_ID The bot USER id (NOT the App id). Fetch it from
 #                     https://api.github.com/users/<name>  ->  .id
 #
 # Optional environment variables:
@@ -59,11 +59,11 @@ BRANCH="${3:-${AGENT_GIT_BRANCH:-agent-work}}"
 # Bail out early (with a helpful message) if a required var is missing.
 : "${GH_TOKEN:?set GH_TOKEN (a push-capable GitHub token, e.g. App install token)}"
 : "${AGENT_GIT_NAME:?set AGENT_GIT_NAME, e.g. myagent[bot]}"
-: "${AGENT_GIT_USER_ID:?set AGENT_GIT_USER_ID (bot USER id, not the App id)}"
+: "${GIT_USER_ID:?set GIT_USER_ID (bot USER id, not the App id)}"
 
 # GitHub noreply email derived from the bot user id + name.
 # This is what makes the commit author show as <name>[bot] on GitHub.
-BOT_EMAIL="${AGENT_GIT_USER_ID}+${AGENT_GIT_NAME}@users.noreply.github.com"
+BOT_EMAIL="${GIT_USER_ID}+${AGENT_GIT_NAME}@users.noreply.github.com"
 
 # ---------------------------------------------------------------------------
 # Locate / create the worktree

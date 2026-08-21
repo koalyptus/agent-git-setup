@@ -57,7 +57,7 @@ echo "happy path"
 REPO="$(make_repo with-origin)"
 export GH_TOKEN=dummy_token
 export AGENT_GIT_NAME="myagent[bot]"
-export AGENT_GIT_USER_ID=268339505
+export GIT_USER_ID=268339505
 if "$SCRIPT" "$REPO" agent testbranch >/dev/null 2>&1; then
 	WT="$REPO/.worktrees/agent"
 	WT_CFG="$REPO/.git/worktrees/agent/config"
@@ -90,7 +90,7 @@ echo "no-origin repo"
 REPO2="$(make_repo)"
 export GH_TOKEN=dummy_token
 export AGENT_GIT_NAME="myagent[bot]"
-export AGENT_GIT_USER_ID=268339505
+export GIT_USER_ID=268339505
 if "$SCRIPT" "$REPO2" agent testbranch >/dev/null 2>&1; then
 	WT_CFG="$REPO2/.git/worktrees/agent/config"
 	assert_eq "$(git config -f "$WT_CFG" user.name)" "myagent[bot]" "identity set even without origin"
@@ -101,7 +101,7 @@ fi
 # 5. Missing required env: errors with message, non-zero exit
 echo "missing env"
 REPO3="$(make_repo with-origin)"
-unset GH_TOKEN AGENT_GIT_NAME AGENT_GIT_USER_ID
+unset GH_TOKEN AGENT_GIT_NAME GIT_USER_ID
 if "$SCRIPT" "$REPO3" agent testbranch 2>/dev/null; then
 	bad "script should fail without required env"
 else
@@ -112,7 +112,7 @@ fi
 # 6. Not-a-git-dir argument: errors, exit 2
 echo "not-a-git-dir"
 NOTREPO="$(mktemp -d)"
-export GH_TOKEN=dummy_token AGENT_GIT_NAME="myagent[bot]" AGENT_GIT_USER_ID=268339505
+export GH_TOKEN=dummy_token AGENT_GIT_NAME="myagent[bot]" GIT_USER_ID=268339505
 "$SCRIPT" "$NOTREPO" agent testbranch >/dev/null 2>&1
 rc=$?
 assert_eq "$rc" "2" "exits 2 on non-git dir"

@@ -21,10 +21,6 @@ Plan:
   `windows-latest` that runs the `.ps1` tests. The Windows runner is the
   verification loop (the Linux box cannot run PowerShell).
 
-Caveats: the `.ps1` would be written without a local Windows shell, so expect a
-few CI round-trips before green. Two implementations must be kept in sync on
-every behaviour change (drift cost).
-
 ## Verify treehouse integration (planned)
 
 The script detects `treehouse` and uses it for the worktree, else falls back to
