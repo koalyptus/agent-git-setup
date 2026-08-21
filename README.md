@@ -345,7 +345,7 @@ commands:
 |-------------|---------------------------------------------------------------------|
 | `make test` | Run the hermetic test suite (`agent-git-setup-test.sh`).            |
 | `make lint` | Run `shellcheck` + `shfmt -d` on both scripts (needs those tools).  |
-| `make install` | Install `shellcheck` + `shfmt` if missing (idempotent). |
+| `make install` | Install `shellcheck` + `shfmt` + `python3`/`cryptography` if missing (idempotent). |
 | `make ci`   | Run `test` + `lint` — exactly what CI runs. Use this before push.   |
 
 `make ci` is the pre-push gate: only push when it exits green. The CI workflow
