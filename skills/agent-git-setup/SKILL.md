@@ -85,23 +85,26 @@ The token is short-lived (~1h); re-run step 2 for a fresh one in long sessions.
 
 ## Prerequisites
 - A git repository the agent should work in.
-- A GitHub App (App ID + PEM) — one-time, set up by the GitHub account owner
-  (the human), not by the agent — see README "GitHub App setup".
 - The bot identity:
   - `AGENT_GIT_NAME` — e.g. `myagent[bot]`.
   - `GIT_USER_NAME` — the GitHub handle whose numeric id becomes the noreply
     prefix (e.g. `my-git-user-name`). The skill resolves it to
-    the numeric id via the GitHub API (needs `GH_TOKEN`).
-- `python3` with the `cryptography` package (for `mint-token.sh`).
+    the numeric id via the public GitHub API (`GET /users/<handle>` — no
+    token needed; when `GH_TOKEN` is set it is used as Bearer for higher
+    rate limits / private).
+  - (Optional) `GH_TOKEN` — only if you also want `gh`/API as the bot
+    (PRs, issues, comments). Not needed for the local commit author.
+- `python3` with the `cryptography` package if you use `mint-token.sh`
+  (GitHub App path). Not needed for Git-only commit author.
 - (Optional) `AGENT_GIT_SIGNINGKEY` — an SSH public key (`key::<pubkey>`) for a
   verified `[bot]` commit badge. Requires the GitHub App to have commit signing
-  enabled and its SSH key uploaded.
+  enabled and its SSH key uploaded. Skip for a minimal setup.
+- A GitHub App (App ID + PEM) — only if you use the GitHub App path
+  (see README §2). Not needed for Git-only.
 
 ## Steps
-1. Mint and export `GH_TOKEN` (step 2 of the Happy path), or otherwise ensure a
-   push-capable token is in the environment. Then resolve `GIT_USER_NAME` to a
-   numeric id via the GitHub API (using `GH_TOKEN`):
-   `curl -s -H "Authorization: Bearer ***" https://api.github.com/users/$GIT_USER_NAME | jq .id`.
+1. If you need `gh`/API as the bot (PRs, issues), mint and export `GH_TOKEN` (step 2 of the Happy path) or otherwise ensure a push-capable token is in the environment. Not needed for commit author alone. Then resolve `GIT_USER_NAME` to a numeric id via the public GitHub API (`GET /users/<handle>` — unauthenticated; add `Authorization: Bearer $GH_TOKEN` only when a token is set):
+   `curl -s https://api.github.com/users/$GIT_USER_NAME | jq .id` — or with auth: `curl -s -H "Authorization: Bearer $GH_TOKEN" https://api.github.com/users/$GIT_USER_NAME | jq .id`.
 2. Export `AGENT_GIT_NAME` / `GIT_USER_NAME` (and optionally
    `AGENT_GIT_SIGNINGKEY`).
 3. Run `agent-git-setup.sh` in the current repo — infer the repo path, or ask the user if you cannot (see Happy path step 4)
@@ -125,7 +128,7 @@ agent-git-setup.sh .   # current repo (agent infers the path)
 - **GitHub handle, not numeric id.** The human provides `GIT_USER_NAME` (e.g.
   `my-git-user-name`). Either the skill (step 2 above) or
   `agent-git-setup.sh` resolves it to the numeric id via
-  `curl -H "Authorization: Bearer $GH_TOKEN" https://api.github.com/users/$GIT_USER_NAME | jq .id`
+  the public API (`GET https://api.github.com/users/$GIT_USER_NAME` — no auth; Bearer added only when `GH_TOKEN` is set)
   and builds the noreply email. For the Git-only path the handle is the GitHub
   account owner; for the GitHub App path it is the bot handle itself (the id is
   the bot user's id). `GIT_USER_ID` can still be set directly for hermetic

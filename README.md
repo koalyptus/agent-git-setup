@@ -33,21 +33,17 @@ human step so the prompt in §3 ("Use the `agent-git-setup` skill…") resolves.
 
 You will fill the `[...]` placeholders in step 3 with these values.
 
-### Git-only (minimal)
+### Git-only (minimal — no token needed for commit author)
 
 - **`AGENT_GIT_NAME`**: the bot commit author, e.g. `myagent[bot]` (any name works).
 - **`GIT_USER_NAME`**: your GitHub handle, e.g. `my-git-user-name`. The agent/skill
-  resolves it to the numeric id via the GitHub API — you never run `curl | jq`.
+  resolves it to the numeric id via the **public** GitHub API (`GET /users/<handle>` — no token needed, you never run `curl | jq`).
 - **Optional** `AGENT_GIT_SIGNINGKEY` — only if you want the green **Verified** badge on bot commits. Without it, commits still show as `myagent[bot]` but **unverified** (grey badge). To get Verified:
   - generate an SSH signing key in terminal: `ssh-keygen -t ed25519 -f ~/.ssh/myagent-signing -C "myagent[bot]" -N ""`
   - upload the `.pub` to your GitHub App → **Settings → Developer settings → GitHub Apps → your app → Public keys / Commit signing**
   - then pass `AGENT_GIT_SIGNINGKEY="key::ssh-ed25519 AAAA... myagent[bot]"` (note the `key::` prefix + full pubkey line).
 
-Note:
-
-**`GH_TOKEN`**: must already be exported in the agent's shell (`export GH_TOKEN=ghp_...`).
-  Do **not** put the token value in the prompt. How to get one: GitHub → Settings →
-  Developer settings → Personal access tokens → generate a PAT or fine-grained token.
+**Optional, only for GitHub API as the bot** (PRs/issues/comments via `gh`/API): `GH_TOKEN`. Not needed for the local commit author above. If you need it, export it **before** the prompt (`export GH_TOKEN=ghp_...` — do not put the token value in the prompt). How to get one: GitHub → Settings → Developer settings → Personal access tokens → generate a PAT or fine-grained token. With no `GH_TOKEN` the commits are still `myagent[bot]`; only `gh`/API as the bot requires it.
 
 ### GitHub App
 
@@ -132,15 +128,12 @@ Then do your git work inside the printed worktree. Do not touch the main tree.
 Notes:
 - Delete `[GITHUB_APP_ID]`/`[GITHUB_APP_PEM]` if you use Git-only; omit
   `AGENT_GIT_SIGNINGKEY` if you don't want verified commits.
-- `GH_TOKEN` is **not** a placeholder — it must already be in the agent's
-  environment (Git-only: you exported it; GitHub App: skill mints it via
-  `mint-token.sh --shell`).
+- `GH_TOKEN` is **not** a placeholder in the prompt. For commit author alone you don't need it; for `gh`/API as the bot you do — Git-only: export `GH_TOKEN` beforehand, GitHub App: the skill mints it via `mint-token.sh --shell`.
 
 ## 4. What happens
 
-1. `GH_TOKEN` exported (by you, or by `mint-token.sh` for the App path).
-2. `GIT_USER_NAME` resolved to numeric id via `GET /users/$GIT_USER_NAME`
-   (skill/script does this with `GH_TOKEN`).
+1. (Only if you need `gh`/API as the bot) `GH_TOKEN` exported — by you (Git-only) or by `mint-token.sh` (App path). Not needed for the local commit author.
+2. `GIT_USER_NAME` resolved to numeric id via the public `GET /users/$GIT_USER_NAME` (no token; `GH_TOKEN` added as Bearer only when set for higher rate limits / private).
 3. `agent-git-setup.sh [REPO_PATH]` creates `.worktrees/agent` and writes
    `user.name` / `user.email` scoped to that worktree only.
 4. Agent works inside the printed worktree: `commits → <name>[bot]`,
@@ -162,7 +155,7 @@ Full details, diagrams, and reference tables are below (GitHub App setup is alre
           │
           ▼
 ┌─────────────────────┐
-│  Token source       │  (any push-capable GH_TOKEN)
+│  Token source       │  (only if you need gh/API as the bot)
 │  ─────────────────  │
 │  Option A:          │  mint-token.sh + GitHub App
 │    mint-token.sh    │    (create app, download PEM,
@@ -309,9 +302,9 @@ agent-git-setup.sh <repo-dir> [worktree-name] [branch]
 
 | Variable             | Meaning                                                              |
 |----------------------|----------------------------------------------------------------------|
-| `GH_TOKEN`           | A push-capable GitHub token (e.g. a GitHub App install token).       |
 | `AGENT_GIT_NAME`     | Commit author name, e.g. `myagent[bot]`.                            |
-| `GIT_USER_NAME` | GitHub handle (e.g. `my-git-user-name`) — the agent/script resolves it to the numeric id via the GitHub API (needs `GH_TOKEN`). |
+| `GIT_USER_NAME` | GitHub handle (e.g. `my-git-user-name`) — resolved via the public GitHub API (`GET /users/<handle>` — no `GH_TOKEN` needed). |
+| `GH_TOKEN`           | *(Optional)* A push-capable GitHub token (e.g. a GitHub App install token) — only for `gh`/API as the bot. Not needed for the local commit author.       |
 | `GIT_USER_ID`        | *(hidden fallback)* Numeric id, alternative to `GIT_USER_NAME`. Only for hermetic tests / offline use; never in the prompt. |
 
 The commit author (`user.name` / `user.email`) is set from the required

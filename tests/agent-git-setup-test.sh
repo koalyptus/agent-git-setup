@@ -101,12 +101,29 @@ fi
 # 5. Missing required env: errors with message, non-zero exit
 echo "missing env"
 REPO3="$(make_repo with-origin)"
-unset GH_TOKEN AGENT_GIT_NAME GIT_USER_ID
+unset AGENT_GIT_NAME
+export GIT_USER_ID=268339505 GH_TOKEN=dummy_token
 if "$SCRIPT" "$REPO3" agent testbranch 2>/dev/null; then
-	bad "script should fail without required env"
+	bad "script should fail without AGENT_GIT_NAME"
 else
 	rc=$?
-	if [ "$rc" -ne 0 ]; then ok "exits non-zero without required env"; else bad "exit code wrong"; fi
+	if [ "$rc" -ne 0 ]; then ok "exits non-zero without AGENT_GIT_NAME"; else bad "exit code wrong"; fi
+fi
+unset GIT_USER_ID GIT_USER_NAME
+export AGENT_GIT_NAME="myagent[bot]" GH_TOKEN=dummy_token
+if "$SCRIPT" "$REPO3" agent testbranch 2>/dev/null; then
+	bad "script should fail without GIT_USER_NAME/GIT_USER_ID"
+else
+	rc=$?
+	if [ "$rc" -ne 0 ]; then ok "exits non-zero without GIT_USER_NAME/GIT_USER_ID"; else bad "exit code wrong"; fi
+fi
+# GH_TOKEN is now optional for the commit-author path (public GET /users/<handle>)
+unset GH_TOKEN
+export AGENT_GIT_NAME="myagent[bot]" GIT_USER_ID=268339505
+if "$SCRIPT" "$REPO3" agent testbranch >/dev/null 2>&1; then
+	ok "succeeds without GH_TOKEN when GIT_USER_ID set (GH_TOKEN optional)"
+else
+	bad "should succeed without GH_TOKEN when GIT_USER_ID is set"
 fi
 
 # 6. Not-a-git-dir argument: errors, exit 2

@@ -16,16 +16,20 @@
 # configured the same way afterwards.
 #
 # Required environment variables:
-#   GH_TOKEN          A push-capable GitHub token (e.g. an App install token).
 #   AGENT_GIT_NAME    Commit author name, e.g. myagent[bot].
 #   GIT_USER_NAME     GitHub handle whose numeric id becomes the noreply
 #                     prefix (e.g. my-git-user-name). The script resolves
-#                     it to an id via the GitHub API; see GIT_USER_ID below.
+#                     it to an id via the GitHub API (public endpoint
+#                     https://api.github.com/users/<handle>); no token
+#                     needed for this step. See GIT_USER_ID below.
 #   GIT_USER_ID       Numeric GitHub user id (alternative to GIT_USER_NAME).
 #                     If set, used directly. If only GIT_USER_NAME is set,
-#                     the script fetches the id via the API (needs GH_TOKEN).
+#                     the script fetches the id via the public API.
 #
 # Optional environment variables:
+#   GH_TOKEN              A push-capable GitHub token (e.g. an App install token).
+#                         Only needed for gh/API as the bot (PRs, issues).
+#                         Not needed for the local commit author.
 #   AGENT_GIT_SIGNINGKEY  An SSH public key (key::<pubkey>) for a verified
 #                         [bot] commit badge.
 #   AGENT_GIT_WORKTREE    Worktree name (default: agent).
@@ -61,17 +65,22 @@ BRANCH="${3:-${AGENT_GIT_BRANCH:-agent-work}}"
 # ---------------------------------------------------------------------------
 
 # Bail out early (with a helpful message) if a required var is missing.
-: "${GH_TOKEN:?set GH_TOKEN (a push-capable GitHub token, e.g. App install token)}"
 : "${AGENT_GIT_NAME:?set AGENT_GIT_NAME, e.g. myagent[bot]}"
 # GIT_USER_NAME (handle) is the human-facing input. GIT_USER_ID is a hidden
 # fallback for hermetic tests / offline use. If only the handle is set, resolve
-# it via the GitHub API (needs GH_TOKEN).
+# it via the public GitHub API (GET /users/<handle> is unauthenticated);
+# when GH_TOKEN is set, use it as Bearer for higher rate limits / private.
 if [ -n "${GIT_USER_ID:-}" ]; then
 	_GIT_UID="$GIT_USER_ID"
 elif [ -n "${GIT_USER_NAME:-}" ]; then
-	_GIT_UID="$(curl -sf -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github.v3+json" "https://api.github.com/users/$GIT_USER_NAME" 2>/dev/null | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])' 2>/dev/null || true)"
+	# GET /users/<handle> is public; add Bearer only when GH_TOKEN is set.
+	if [ -n "${GH_TOKEN:-}" ]; then
+		_GIT_UID="$(curl -sf -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github.v3+json" "https://api.github.com/users/$GIT_USER_NAME" 2>/dev/null | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])' 2>/dev/null || true)"
+	else
+		_GIT_UID="$(curl -sf -H "Accept: application/vnd.github.v3+json" "https://api.github.com/users/$GIT_USER_NAME" 2>/dev/null | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])' 2>/dev/null || true)"
+	fi
 	if [ -z "${_GIT_UID:-}" ] || [ "$_GIT_UID" = "None" ]; then
-		echo "agent-git-setup.sh: failed to resolve GIT_USER_NAME=$GIT_USER_NAME to an id (check handle / GH_TOKEN)" >&2
+		echo "agent-git-setup.sh: failed to resolve GIT_USER_NAME=$GIT_USER_NAME to an id (check handle; GH_TOKEN optional but helps for rate limits/private)" >&2
 		exit 1
 	fi
 	GIT_USER_ID="$_GIT_UID"
