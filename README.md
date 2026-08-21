@@ -12,77 +12,48 @@ Give an AI agent a bot identity in local git worktrees and/or on GitHub to easil
   lint job (they are installed automatically in CI).
 - `Python` 3 and `cryptography`
 
-## Agent prompt (happy path)
+## 1. Gather values
 
-To have an agent set itself up with a bot identity, give it a prompt like the
-one below. The prompt is a copy-paste template: replace every `[...]` placeholder
-with the actual value, then send the filled-in prompt to the agent.
+You will fill the `[...]` placeholders in step 2 with these values.
 
-The flow has two steps:
+### Git-only (minimal — no GitHub App, you already have a `GH_TOKEN`)
 
-**Step 1 — Gather the values**
-Fill in the bracketed values.
+- **`AGENT_GIT_NAME`**: the bot commit author, e.g. `myagent[bot]` (any name works).
+- **`GIT_USER_NAME`**: your GitHub handle, e.g. `my-git-user-name`. The agent/skill
+  resolves it to the numeric id via the GitHub API — you never run `curl | jq`.
+- **`GH_TOKEN`**: must already be exported in the agent's shell (`export GH_TOKEN=ghp_...`).
+  Do **not** put the token value in the prompt. How to get one: GitHub → Settings →
+  Developer settings → Personal access tokens → generate a PAT or fine-grained token.
+- **Optional** `AGENT_GIT_SIGNINGKEY`: `key::<ssh-pubkey>` for a verified `[bot]` badge.
 
-**Step 2 — Prompt with replaced values**
+### GitHub App (uses `mint-token.sh` from this repo)
 
-### 1. Gather the values
+Like Git-only, but the skill mints `GH_TOKEN` with:
 
-#### Git-only setup (minimal)
+```bash
+source <(./mint-token.sh --app-id "$GITHUB_APP_ID" --pem "$GITHUB_APP_PEM" --shell)
+```
 
-If you already have a `GH_TOKEN` (PAT, fine-grained token, etc.) and just want
-the bot commit-author in a worktree:
+You provide:
 
-- **`AGENT_GIT_NAME`**: pick a bot name, e.g. `myagent`. The full name is
-  `<name>[bot]` → `myagent[bot]`, any name works and it becomes the commit author.
-- **`GIT_USER_NAME`**: your GitHub handle (e.g. `my-git-user-name`). The agent resolves
-  it to the numeric id via the GitHub API; you never run `curl | jq` yourself.
-  It is the **GitHub account owner** of whoever holds the `GH_TOKEN` and is used
-  to build the noreply email `<id>+<name>[bot]@users.noreply.github.com`.
-- **`GH_TOKEN`**: **normally already in your environment.** Export it in the
-  agent's shell *before* sending the prompt. Do **not** include the token value in
-  the prompt.
+- `AGENT_GIT_NAME` — the bot author, e.g. `myagent[bot]`.
+- `GIT_USER_NAME` — human GitHub account that owns the token/app, e.g. `my-git-user-name`.
+- `GITHUB_APP_ID` — App ID from GitHub App settings.
+- `GITHUB_APP_PEM` — path to the `.pem` private key (outside any repo).
+- Optional `AGENT_GIT_SIGNINGKEY` as above.
 
-  ```bash
-  export GH_TOKEN=ghp_...
-  ```
+The one-time GitHub App creation (create app → download PEM → install on repos)
+is a separate human step; see the full README ("GitHub App setup") for details.
 
-  (Git-only users: create a PAT or fine-grained token once, beforehand — see
-  "**How to get a `GH_TOKEN`**" below. GitHub App users: `mint-token.sh --shell`
-  exports it for you — the prompt does not set it.)
-- **`AGENT_GIT_SIGNINGKEY`** *(optional)*: SSH public key as `key::<pubkey>`
-  for a verified `[bot]` badge. Omit if you don't want verified commits.
+## 2. Paste this prompt to the agent
 
-#### GitHub App setup (uses `mint-token.sh` from this repo)
-
-If you have a GitHub App and want `mint-token.sh` to mint the token in the
-prompt:
-
-- **`AGENT_GIT_NAME`**: the bot name = your app name, e.g. app named `myagent`
-  → `myagent[bot]`. This is what the App's bot user is called on GitHub.
-- **`GIT_USER_NAME`**: the bot's GitHub account — the human GitHub username that
-  owns the token / GitHub App (e.g. `my-git-user-name`). Distinct from `AGENT_GIT_NAME`
-  (the commit author `...[bot]`). The agent resolves the handle to the numeric id
-  via the GitHub API — you never run `curl | jq` yourself.
-- **`GITHUB_APP_ID`**: the App ID (the number from the GitHub App's settings page).
-- **`GITHUB_APP_PEM`**: path to the app's private key `.pem` file (downloaded when
-  you generated the key; store outside any git repo, e.g. `~/.ssh/myagent.pem`).
-- **`AGENT_GIT_SIGNINGKEY`** *(optional)*: same as above.
-
-### How to get a `GH_TOKEN`
-
-Do this once, before you need it. You only need this for the Git-only path;
-the GitHub App path mints its token automatically via `mint-token.sh`.
-
-- **PAT (classic)**: GitHub → Settings →...[truncated]
-
-Copy the block below. Replace every `[...]` with your gathered value, then send
-the entire block to the agent.
+Replace every `[...]` with the value you gathered, then send the whole block:
 
 ```text
 [USER PROMPT — replace every [value] below]
 
-Use the `agent-git-setup` skill. Set up a bot git identity for the repo at
-`[REPO_PATH]` (e.g. `~/dev/my-project`).
+Use the agent-git-setup skill. Set up a bot git identity for the repo at
+[REPO_PATH] (e.g. ~/dev/my-project).
 
 [Git-only — fill these if you already have a GH_TOKEN and no GitHub App]
 AGENT_GIT_NAME=[myagent[bot]]
@@ -103,26 +74,24 @@ agent-git-setup.sh [REPO_PATH]
 Then do your git work inside the printed worktree. Do not touch the main tree.
 ```
 
-Notes:
-- `[REPO_PATH]` is the path to an existing git repository the agent should work in.
-- **`GH_TOKEN`** (reserved — not in the prompt): the token must already be in the
-  agent's shell environment *before* the prompt is sent. It is never listed as a
-  `[...]` placeholder in the prompt template below.
+- `[REPO_PATH]` is an existing local git repository.
+- `GH_TOKEN` is **not** a placeholder — it must already be in the agent's
+  environment (Git-only: you exported it; GitHub App: skill mints it via
+  `mint-token.sh --shell`).
+- Delete `[GITHUB_APP_ID]`/`[GITHUB_APP_PEM]` if you use Git-only; omit
+  `AGENT_GIT_SIGNINGKEY` if you don't want verified commits.
 
-  - For the **Git-only path**: you (the human) created a PAT or fine-grained token
-    beforehand and exported it (`export GH_TOKEN=ghp_...`) in the agent's shell.
-    See the "**How to get a `GH_TOKEN`**" section for creation steps.
-  - For the **GitHub App path**: the skill runs `mint-token.sh --shell` at step 1,
-    which exports `GH_TOKEN`. The prompt does not set it.
+## 3. What happens
 
-  Do **not** include the token value or the PEM file contents in the prompt.
-- `[GITHUB_APP_ID]` and `[GITHUB_APP_PEM]` are only needed if you choose the
-  GitHub App path — **delete those two lines if you are using the Git-only path.**
-- `[AGENT_GIT_SIGNINGKEY]` can be omitted; commits then show as `<name>[bot]`
-  but **unverified** (no green badge).
-- The agent's skill reads this prompt, gathers the values, and runs the steps.
+1. `GH_TOKEN` exported (by you, or by `mint-token.sh` for the App path).
+2. `GIT_USER_NAME` resolved to numeric id via `GET /users/$GIT_USER_NAME`
+   (skill/script does this with `GH_TOKEN`).
+3. `agent-git-setup.sh [REPO_PATH]` creates `.worktrees/agent` and writes
+   `user.name` / `user.email` scoped to that worktree only.
+4. Agent works inside the printed worktree: `commits → <name>[bot]`,
+   `gh/API → <name>[bot]`, `git push → your credential` (main tree untouched).
 
-The one-time GitHub App creation (below) is a human step done beforehand.
+Full details, diagrams, GitHub App setup, and reference tables are below.
 
 ## Flow diagram (happy path)
 
