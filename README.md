@@ -34,7 +34,7 @@ the bot commit-author in a worktree:
 
 - **`AGENT_GIT_NAME`**: pick a bot name, e.g. `myagent`. The full name is
   `<name>[bot]` → `myagent[bot]`, any name works and it becomes the commit author.
-- **`GIT_USER_NAME`**: your GitHub handle (e.g. `koalyptus`). The agent resolves
+- **`GIT_USER_NAME`**: your GitHub handle (e.g. `my-git-user-name`). The agent resolves
   it to the numeric id via the GitHub API; you never run `curl | jq` yourself.
   It is the **GitHub account owner** of whoever holds the `GH_TOKEN` and is used
   to build the noreply email `<id>+<name>[bot]@users.noreply.github.com`.
@@ -60,7 +60,7 @@ prompt:
 - **`AGENT_GIT_NAME`**: the bot name = your app name, e.g. app named `myagent`
   → `myagent[bot]`. This is what the App's bot user is called on GitHub.
 - **`GIT_USER_NAME`**: the bot's GitHub account — the human GitHub username that
-  owns the token / GitHub App (e.g. `koalyptus`). Distinct from `AGENT_GIT_NAME`
+  owns the token / GitHub App (e.g. `my-git-user-name`). Distinct from `AGENT_GIT_NAME`
   (the commit author `...[bot]`). The agent resolves the handle to the numeric id
   via the GitHub API — you never run `curl | jq` yourself.
 - **`GITHUB_APP_ID`**: the App ID (the number from the GitHub App's settings page).
@@ -86,11 +86,11 @@ Use the `agent-git-setup` skill. Set up a bot git identity for the repo at
 
 [Git-only — fill these if you already have a GH_TOKEN and no GitHub App]
 AGENT_GIT_NAME=[myagent[bot]]
-GIT_USER_NAME=[koalyptus]
+GIT_USER_NAME=[my-git-user-name]
 
 [OR GitHub App — fill these if using mint-token.sh]
 AGENT_GIT_NAME=[myagent[bot]]
-GIT_USER_NAME=[koalyptus]
+GIT_USER_NAME=[my-git-user-name]
 GITHUB_APP_ID=[4646191]
 GITHUB_APP_PEM=[~/.ssh/myagent.pem]
 
@@ -272,7 +272,7 @@ touch. Installation grants permission; it does NOT change the bot name.
 ### 4. Get the bot handle
 
 The commit email needs the **bot user id**, which the skill resolves from
-`GIT_USER_NAME`. For `GIT_USER_NAME` use your GitHub username (e.g. `koalyptus`)
+`GIT_USER_NAME`. For `GIT_USER_NAME` use your GitHub username (e.g. `my-git-user-name`)
 — distinct from `AGENT_GIT_NAME` (`myagent[bot]`, the commit author). The script
 fetches the numeric id via the API at setup time using `GH_TOKEN`
 (`GET /users/<GIT_USER_NAME>`). No `curl | jq .id` needed from you.
@@ -355,7 +355,7 @@ agent-git-setup.sh <repo-dir> [worktree-name] [branch]
 |----------------------|----------------------------------------------------------------------|
 | `GH_TOKEN`           | A push-capable GitHub token (e.g. a GitHub App install token).       |
 | `AGENT_GIT_NAME`     | Commit author name, e.g. `myagent[bot]`.                            |
-| `GIT_USER_NAME` | GitHub handle (e.g. `koalyptus`) — the agent/script resolves it to the numeric id via the GitHub API (needs `GH_TOKEN`). |
+| `GIT_USER_NAME` | GitHub handle (e.g. `my-git-user-name`) — the agent/script resolves it to the numeric id via the GitHub API (needs `GH_TOKEN`). |
 | `GIT_USER_ID`        | *(hidden fallback)* Numeric id, alternative to `GIT_USER_NAME`. Only for hermetic tests / offline use; never in the prompt. |
 
 The commit author (`user.name` / `user.email`) is set from the required
@@ -383,7 +383,7 @@ signing enabled and its SSH key uploaded.
 ```bash
 export GH_TOKEN="$(mint-my-token)"            # backend-specific; not this script's job
 export AGENT_GIT_NAME="myagent[bot]"
-export GIT_USER_NAME="koalyptus"           # handle; script/skill resolves to numeric id
+export GIT_USER_NAME="my-git-user-name"           # handle; script/skill resolves to numeric id
 export AGENT_GIT_SIGNINGKEY="key::ssh-ed25519 AAAA... bot@github"  # optional
 
 agent-git-setup.sh ~/dev/my-repo

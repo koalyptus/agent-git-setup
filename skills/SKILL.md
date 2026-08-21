@@ -41,7 +41,7 @@ without needing any other tooling. Everything lives in this repo
 2. **Set the bot identity (human gives the handle, agent resolves the id):**
    ```bash
    export AGENT_GIT_NAME="myagent[bot]"
-   export GIT_USER_NAME="koalyptus"   # handle; the skill/script resolves it to the numeric id
+   export GIT_USER_NAME="my-git-user-name"   # handle; the skill/script resolves it to the numeric id
    # optional, for a verified [bot] badge:
    export AGENT_GIT_SIGNINGKEY="key::ssh-ed25519 AAAA... bot@github"
    ```
@@ -84,7 +84,7 @@ The token is short-lived (~1h); re-run step 1 for a fresh one in long sessions.
 - The bot identity:
   - `AGENT_GIT_NAME` — e.g. `myagent[bot]`.
   - `GIT_USER_NAME` — the GitHub handle whose numeric id becomes the noreply
-    prefix (e.g. `koalyptus`). The skill resolves it to
+    prefix (e.g. `my-git-user-name`). The skill resolves it to
     the numeric id via the GitHub API (needs `GH_TOKEN`).
 - `python3` with the `cryptography` package (for `mint-token.sh`).
 - (Optional) `AGENT_GIT_SIGNINGKEY` — an SSH public key (`key::<pubkey>`) for a
@@ -108,7 +108,7 @@ The token is short-lived (~1h); re-run step 1 for a fresh one in long sessions.
 # mint + export the token (repo's own helper)
 source <(./mint-token.sh --app-id 4646191 --pem ~/.ssh/myagent.pem --shell)
 export AGENT_GIT_NAME="myagent[bot]"
-export GIT_USER_NAME="koalyptus"   # handle; resolved to numeric id via API
+export GIT_USER_NAME="my-git-user-name"   # handle; resolved to numeric id via API
 export AGENT_GIT_SIGNINGKEY="key::ssh-ed25519 AAAA... bot@github"  # optional
 
 agent-git-setup.sh ~/dev/my-repo
@@ -117,7 +117,7 @@ agent-git-setup.sh ~/dev/my-repo
 
 ## Pitfalls
 - **GitHub handle, not numeric id.** The human provides `GIT_USER_NAME` (e.g.
-  `koalyptus`). Either the skill (step 1 above) or
+  `my-git-user-name`). Either the skill (step 1 above) or
   `agent-git-setup.sh` resolves it to the numeric id via
   `curl -H "Authorization: Bearer $GH_TOKEN" https://api.github.com/users/$GIT_USER_NAME | jq .id`
   and builds the noreply email. For the Git-only path the handle is the GitHub

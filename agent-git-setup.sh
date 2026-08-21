@@ -19,7 +19,7 @@
 #   GH_TOKEN          A push-capable GitHub token (e.g. an App install token).
 #   AGENT_GIT_NAME    Commit author name, e.g. myagent[bot].
 #   GIT_USER_NAME     GitHub handle whose numeric id becomes the noreply
-#                     prefix (e.g. myagent or koalyptus). The script resolves
+#                     prefix (e.g. my-git-user-name). The script resolves
 #                     it to an id via the GitHub API; see GIT_USER_ID below.
 #   GIT_USER_ID       Numeric GitHub user id (alternative to GIT_USER_NAME).
 #                     If set, used directly. If only GIT_USER_NAME is set,
@@ -76,7 +76,7 @@ elif [ -n "${GIT_USER_NAME:-}" ]; then
 	fi
 	GIT_USER_ID="$_GIT_UID"
 else
-	echo "agent-git-setup.sh: set GIT_USER_NAME (GitHub handle, e.g. koalyptus) or GIT_USER_ID" >&2
+	echo "agent-git-setup.sh: set GIT_USER_NAME (GitHub handle, e.g. my-git-user-name) or GIT_USER_ID" >&2
 	exit 2
 fi
 
