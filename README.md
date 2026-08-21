@@ -1,6 +1,6 @@
 # agent-git-setup
 
-Give an AI agent a bot identity in local git worktrees and/or on GitHub — backend-agnostic and token-agnostic.
+Give an AI agent a bot identity in local git worktrees and/or on GitHub to easily distinguish agentic authors on Git and GitHub. 
 
 ## Requirements
 
@@ -8,8 +8,9 @@ Give an AI agent a bot identity in local git worktrees and/or on GitHub — back
   macOS. **Windows is not supported as-is** — `bash` + `git` under WSL or Git
   Bash will work, but native `cmd`/`PowerShell` will not (the script uses POSIX
   shell features and git worktree paths).
-- No other dependencies. `shellcheck`/`shfmt` are only needed if you run the
+- `shellcheck`/`shfmt` are only needed if you run the
   lint job (they are installed automatically in CI).
+- `Python` 3 and `cryptography`
 
 ## Agent prompt (happy path)
 
@@ -19,11 +20,10 @@ with the actual value, then send the filled-in prompt to the agent.
 
 The flow has two steps:
 
-**Step 1 — Gather the values** (do this once, before sending the prompt).
-Each value below needs detailed instruction. Fill in the bracketed values.
+**Step 1 — Gather the values**
+Fill in the bracketed values.
 
-**Step 2 — Prompt with replaced values** (the filled-in prompt to send to the
-agent).
+**Step 2 — Prompt with replaced values**
 
 ### 1. Gather the values
 
@@ -33,7 +33,7 @@ If you already have a `GH_TOKEN` (PAT, fine-grained token, etc.) and just want
 the bot commit-author in a worktree:
 
 - **`AGENT_GIT_NAME`**: pick a bot name, e.g. `myagent`. The full name is
-  `<name>[bot]` → `myagent[bot]`. Any name works; it becomes the commit author.
+  `<name>[bot]` → `myagent[bot]`, any name works and it becomes the commit author.
 - **`GIT_USER_ID`**: the numeric GitHub user id of whoever owns the token.
   Get it with:
   ```bash
@@ -43,7 +43,7 @@ the bot commit-author in a worktree:
   anything GitHub-App-related. It is used to build the noreply email
   `<id>+<name>[bot]@users.noreply.github.com` (so commits show as `<name>[bot]`
   on GitHub).
-- **`GH_TOKEN`**: **prerequisite — already in your environment.** Export it in the
+- **`GH_TOKEN`**: **normally already in your environment.** Export it in the
   agent's shell *before* sending the prompt. Do **not** include the token value in
   the prompt.
 
