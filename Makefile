@@ -4,7 +4,7 @@ TEST_DIR := tests
 TEST := $(TEST_DIR)/agent-git-setup-test.sh
 MINT_TEST := $(TEST_DIR)/mint-token-test.sh
 
-.PHONY: test lint tools-install ci
+.PHONY: test lint install ci
 
 test:
 	bash $(TEST)
@@ -14,7 +14,7 @@ lint:
 	shellcheck $(SCRIPT) $(MINT) $(TEST) $(MINT_TEST)
 	shfmt -d $(SCRIPT) $(MINT) $(TEST) $(MINT_TEST)
 
-tools-install:
+install:
 	@command -v shellcheck >/dev/null 2>&1 && echo "shellcheck: ok ($$(shellcheck --version | head -1))" || \
 	  (echo "shellcheck: installing…" && \
 	   if command -v brew >/dev/null 2>&1; then brew install shellcheck; \
