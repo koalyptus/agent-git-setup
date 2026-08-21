@@ -43,13 +43,18 @@ without needing any other tooling. Everything lives in this repo
    ```bash
    export AGENT_GIT_NAME="myagent[bot]"
    export GIT_USER_NAME="my-git-user-name"   # handle; the skill/script resolves it to the numeric id
-   # optional, for a verified [bot] badge:
-   export AGENT_GIT_SIGNINGKEY="key::ssh-ed25519 AAAA... bot@github"
+   # optional, for a verified [bot] badge — only if you want the green Verified check:
+   # generate: ssh-keygen -t ed25519 -f ~/.ssh/myagent-signing -C "myagent[bot]" -N ""
+   # upload the .pub to your GitHub App → Settings → Developer settings → GitHub Apps → your app → Public keys / Commit signing
+   # then pass the full pubkey line with the key:: prefix:
+   export AGENT_GIT_SIGNINGKEY="key::ssh-ed25519 AAAA... myagent[bot]"
    ```
-4. **Run the setup** against the repo:
+4. **Run the setup** against the current repo — infer the repo path, or ask the user if you cannot:
    ```bash
-   agent-git-setup.sh <repo-dir> [worktree-name] [branch]
+   agent-git-setup.sh .
    ```
+   Infer the repo as the current working directory if it is a git repo (`git rev-parse --show-toplevel` succeeds). If the current directory is not a git repo, or the repo is ambiguous (e.g. multiple checkouts), ask the user which repo to set up. Do not guess a path.
+
    The `agent-git-setup.sh` script creates `.worktrees/<worktree-name>/`, writes
    the bot `user.name`/`user.email` to the worktree's own config file (main
    tree untouched), and optionally enables SSH signing. It does NOT rewrite
@@ -99,7 +104,7 @@ The token is short-lived (~1h); re-run step 2 for a fresh one in long sessions.
    `curl -s -H "Authorization: Bearer ***" https://api.github.com/users/$GIT_USER_NAME | jq .id`.
 2. Export `AGENT_GIT_NAME` / `GIT_USER_NAME` (and optionally
    `AGENT_GIT_SIGNINGKEY`).
-3. Run `agent-git-setup.sh <repo-dir> [worktree-name] [branch]`
+3. Run `agent-git-setup.sh` in the current repo — infer the repo path, or ask the user if you cannot (see Happy path step 4)
      (step 4 of the Happy path — the actual setup step).
 4. Direct the agent to do its git work **inside the printed worktree path**.
    Commits there are `<name>[bot]`; the human's main tree is untouched.
@@ -110,10 +115,10 @@ The token is short-lived (~1h); re-run step 2 for a fresh one in long sessions.
 source <(./mint-token.sh --app-id 4646191 --pem ~/.ssh/myagent.pem --shell)
 export AGENT_GIT_NAME="myagent[bot]"
 export GIT_USER_NAME="my-git-user-name"   # handle; resolved to numeric id via API
-export AGENT_GIT_SIGNINGKEY="key::ssh-ed25519 AAAA... bot@github"  # optional
+export AGENT_GIT_SIGNINGKEY="key::ssh-ed25519 AAAA... myagent[bot]"  # optional, see step 3 above
 
-agent-git-setup.sh ~/dev/my-repo
-# agent works in ~/dev/my-repo/.worktrees/agent
+agent-git-setup.sh .   # current repo (agent infers the path)
+# agent works in ./.worktrees/agent
 ```
 
 ## Pitfalls
