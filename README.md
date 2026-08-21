@@ -38,11 +38,8 @@ You will fill the `[...]` placeholders in step 3 with these values.
 - **`AGENT_GIT_NAME`**: the bot commit author, e.g. `myagent[bot]` (any name works).
 - **`GIT_USER_NAME`**: your GitHub handle, e.g. `my-git-user-name`. The agent/skill
   resolves it to the numeric id via the **public** GitHub API (`GET /users/<handle>`).
-- **Optional** `AGENT_GIT_SIGNINGKEY` — only if you want the green **Verified** badge on bot commits. Without it, commits still show as `myagent[bot]` but **unverified** (grey badge).
-To get Verified:
-  - generate an SSH signing key in terminal: `ssh-keygen -t ed25519 -f ~/.ssh/myagent-signing -C "myagent[bot]" -N ""`
-  - upload the `.pub` to your GitHub App → **Settings → Developer settings → GitHub Apps → your app → Public keys / Commit signing**
-  - then pass `AGENT_GIT_SIGNINGKEY="key::ssh-ed25519 AAAA... myagent[bot]"` (note the `key::` prefix + full pubkey line).
+- **Optional** `AGENT_GIT_SIGNINGKEY` — only if you want the green **Verified** badge on bot commits. Without it, commits still show as `myagent[bot]` but **unverified** (grey badge) — fine to omit.
+  To get Verified **without a GitHub App**: generate an SSH signing key in terminal: `ssh-keygen -t ed25519 -f ~/.ssh/myagent-signing -C "myagent[bot]" -N ""`, then add the `.pub` as a **Signing Key** to the GitHub account that owns `GIT_USER_NAME` (**Settings → SSH and GPG keys → New SSH key → Key type: Signing Key** → paste `ssh-ed25519 AAAA... myagent[bot]`). Then pass `AGENT_GIT_SIGNINGKEY="key::ssh-ed25519 AAAA... myagent[bot]"` (note the `key::` prefix + full pubkey line). The script writes it to the worktree as `gpg.format ssh` / `user.signingKey`.
 
 ### GitHub App
 
@@ -100,32 +97,43 @@ You can set up Verified later — omit `AGENT_GIT_SIGNINGKEY` for now and add it
 
 ## 3. Paste this prompt to the agent
 
-Replace every `[...]` with the value you gathered, then send the whole block:
+Pick **one** of these — whichever matches your setup. Replace every `[...]` then send the whole block (no line-deleting, no `REPO_PATH` — agent infers the current repo):
+
+### Git-only — paste as-is (omit `AGENT_GIT_SIGNINGKEY` if you don't want Verified)
 
 ```text
 Use the agent-git-setup skill. Set up a bot git identity for current repo.
 
-[Git-only — fill these if you already have a GH_TOKEN and no GitHub App]
 AGENT_GIT_NAME=[myagent[bot]]
 GIT_USER_NAME=[my-git-user-name]
+AGENT_GIT_SIGNINGKEY=[key::ssh-ed25519 AAAA... myagent[bot]]
 
-[OR GitHub App — fill these if using mint-token.sh]
+After setting the env vars above, run `agent-git-setup.sh` in the current repo.
+
+Then do your git work inside the printed worktree. Do not touch the main tree.
+```
+
+Omit the `AGENT_GIT_SIGNINGKEY=` line entirely if you don't want the green Verified badge. Git-only Verified goes to the *user* account: **Settings → SSH and GPG keys → New SSH key → Key type: Signing Key** (not an App).
+
+### GitHub App — paste as-is (omit `AGENT_GIT_SIGNINGKEY` if you don't want Verified)
+
+```text
+Use the agent-git-setup skill. Set up a bot git identity for current repo.
+
 AGENT_GIT_NAME=[myagent[bot]]
 GIT_USER_NAME=[my-git-user-name]
 GITHUB_APP_ID=[4646191]
-GITHUB_APP_PEM=[~/.ssh/myagent.pem]
-
-[Both paths — fill these if you want verified commits, otherwise omit]
-AGENT_GIT_SIGNINGKEY=[key::ssh-ed25519 AAAA... bot@github]
+GITHUB_APP_PEM=[/path/to/myagent.pem]
+AGENT_GIT_SIGNINGKEY=[key::ssh-ed25519 AAAA... myagent[bot]]
 
 After setting the env vars above (mint the token first if using the GitHub App), run `agent-git-setup.sh` in the current repo.
 
 Then do your git work inside the printed worktree. Do not touch the main tree.
 ```
 
+Same omit rule for `AGENT_GIT_SIGNINGKEY`; App Verified stays **GitHub Apps → your app → Public keys / Commit signing**.
+
 Notes:
-- Delete `[GITHUB_APP_ID]`/`[GITHUB_APP_PEM]` if you use Git-only; omit
-  `AGENT_GIT_SIGNINGKEY` if you don't want verified commits.
 - `GH_TOKEN` is **not** a placeholder in the prompt. For commit author alone you don't need it; for `gh`/API as the bot you do — Git-only: export `GH_TOKEN` beforehand, GitHub App: the skill mints it via `mint-token.sh --shell`.
 
 ## 4. What happens
