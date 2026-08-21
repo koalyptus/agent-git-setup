@@ -280,7 +280,7 @@ ln -s "$PWD/agent-git-setup.sh" ~/.local/bin/agent-git-setup.sh
 # or just:  cp agent-git-setup.sh ~/.local/bin/
 ```
 
-A skill definition (`skills/SKILL.md`) ships in the repo so agents that load
+A skill definition (`skills/agent-git-setup/SKILL.md`) ships in the repo so agents that load
 skills from a repo can pick it up directly.
 
 ## Tests
