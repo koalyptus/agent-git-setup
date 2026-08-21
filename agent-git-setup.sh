@@ -18,8 +18,12 @@
 # Required environment variables:
 #   GH_TOKEN          A push-capable GitHub token (e.g. an App install token).
 #   AGENT_GIT_NAME    Commit author name, e.g. myagent[bot].
-#   GIT_USER_ID The bot USER id (NOT the App id). Fetch it from
-#                     https://api.github.com/users/<name>  ->  .id
+#   GIT_USER_NAME     GitHub handle whose numeric id becomes the noreply
+#                     prefix (e.g. myagent or koalyptus). The script resolves
+#                     it to an id via the GitHub API; see GIT_USER_ID below.
+#   GIT_USER_ID       Numeric GitHub user id (alternative to GIT_USER_NAME).
+#                     If set, used directly. If only GIT_USER_NAME is set,
+#                     the script fetches the id via the API (needs GH_TOKEN).
 #
 # Optional environment variables:
 #   AGENT_GIT_SIGNINGKEY  An SSH public key (key::<pubkey>) for a verified
@@ -59,7 +63,22 @@ BRANCH="${3:-${AGENT_GIT_BRANCH:-agent-work}}"
 # Bail out early (with a helpful message) if a required var is missing.
 : "${GH_TOKEN:?set GH_TOKEN (a push-capable GitHub token, e.g. App install token)}"
 : "${AGENT_GIT_NAME:?set AGENT_GIT_NAME, e.g. myagent[bot]}"
-: "${GIT_USER_ID:?set GIT_USER_ID (bot USER id, not the App id)}"
+# GIT_USER_NAME (handle) is the human-facing input. GIT_USER_ID is a hidden
+# fallback for hermetic tests / offline use. If only the handle is set, resolve
+# it via the GitHub API (needs GH_TOKEN).
+if [ -n "${GIT_USER_ID:-}" ]; then
+	_GIT_UID="$GIT_USER_ID"
+elif [ -n "${GIT_USER_NAME:-}" ]; then
+	_GIT_UID="$(curl -sf -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github.v3+json" "https://api.github.com/users/$GIT_USER_NAME" 2>/dev/null | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])' 2>/dev/null || true)"
+	if [ -z "${_GIT_UID:-}" ] || [ "$_GIT_UID" = "None" ]; then
+		echo "agent-git-setup.sh: failed to resolve GIT_USER_NAME=$GIT_USER_NAME to an id (check handle / GH_TOKEN)" >&2
+		exit 1
+	fi
+	GIT_USER_ID="$_GIT_UID"
+else
+	echo "agent-git-setup.sh: set GIT_USER_NAME (GitHub handle, e.g. koalyptus) or GIT_USER_ID" >&2
+	exit 2
+fi
 
 # GitHub noreply email derived from the bot user id + name.
 # This is what makes the commit author show as <name>[bot] on GitHub.

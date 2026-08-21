@@ -38,10 +38,10 @@ without needing any other tooling. Everything lives in this repo
    source <(./mint-token.sh --app-id "$APP_ID" --pem "$PEM_PATH" --shell)
    # GH_TOKEN is now exported in the agent's shell
    ```
-2. **Set the bot identity:**
+2. **Set the bot identity (human gives the handle, agent resolves the id):**
    ```bash
    export AGENT_GIT_NAME="myagent[bot]"
-   export GIT_USER_ID="268339505"   # bot USER id, not App id
+   export GIT_USER_NAME="koalyptus"   # handle; the skill/script resolves it to the numeric id
    # optional, for a verified [bot] badge:
    export AGENT_GIT_SIGNINGKEY="key::ssh-ed25519 AAAA... bot@github"
    ```
@@ -83,8 +83,9 @@ The token is short-lived (~1h); re-run step 1 for a fresh one in long sessions.
   (the human), not by the agent — see README "GitHub App setup".
 - The bot identity:
   - `AGENT_GIT_NAME` — e.g. `myagent[bot]`.
-  - `GIT_USER_ID` — the bot **user** id (NOT the App id). Fetch it:
-    `curl -s https://api.github.com/users/<name>[bot] | jq .id   # => e.g. 268339505`
+  - `GIT_USER_NAME` — the GitHub handle whose numeric id becomes the noreply
+    prefix (e.g. `koalyptus`). The skill resolves it to
+    the numeric id via the GitHub API (needs `GH_TOKEN`).
 - `python3` with the `cryptography` package (for `mint-token.sh`).
 - (Optional) `AGENT_GIT_SIGNINGKEY` — an SSH public key (`key::<pubkey>`) for a
   verified `[bot]` commit badge. Requires the GitHub App to have commit signing
@@ -92,8 +93,10 @@ The token is short-lived (~1h); re-run step 1 for a fresh one in long sessions.
 
 ## Steps
 1. Mint and export `GH_TOKEN` (step 1 of the Happy path), or otherwise ensure a
-   push-capable token is in the environment.
-2. Export `AGENT_GIT_NAME` / `GIT_USER_ID` (and optionally
+   push-capable token is in the environment. Then resolve `GIT_USER_NAME` to a
+   numeric id via the GitHub API (using `GH_TOKEN`):
+   `curl -s -H "Authorization: Bearer $GH_TOKEN" https://api.github.com/users/$GIT_USER_NAME | jq .id`.
+2. Export `AGENT_GIT_NAME` / `GIT_USER_NAME` (and optionally
    `AGENT_GIT_SIGNINGKEY`).
 3. Run `agent-git-setup.sh <repo-dir> [worktree-name] [branch]`
      (step 3 of the Happy path — the actual setup step).
@@ -105,7 +108,7 @@ The token is short-lived (~1h); re-run step 1 for a fresh one in long sessions.
 # mint + export the token (repo's own helper)
 source <(./mint-token.sh --app-id 4646191 --pem ~/.ssh/myagent.pem --shell)
 export AGENT_GIT_NAME="myagent[bot]"
-export GIT_USER_ID="268339505"
+export GIT_USER_NAME="koalyptus"   # handle; resolved to numeric id via API
 export AGENT_GIT_SIGNINGKEY="key::ssh-ed25519 AAAA... bot@github"  # optional
 
 agent-git-setup.sh ~/dev/my-repo
@@ -113,11 +116,14 @@ agent-git-setup.sh ~/dev/my-repo
 ```
 
 ## Pitfalls
-- **Bot user id, not App id.** For the GitHub App path, the commit email needs
-  the *bot user* id (`api.github.com/users/<name>[bot]` -> `.id`), which differs
-  from the App ID shown in GitHub App settings. Using the App id yields an
-  unverified/odd email. For the Git-only path, `GIT_USER_ID` is the GitHub
-  account owner id of whoever holds the token.
+- **GitHub handle, not numeric id.** The human provides `GIT_USER_NAME` (e.g.
+  `koalyptus`). Either the skill (step 1 above) or
+  `agent-git-setup.sh` resolves it to the numeric id via
+  `curl -H "Authorization: Bearer $GH_TOKEN" https://api.github.com/users/$GIT_USER_NAME | jq .id`
+  and builds the noreply email. For the Git-only path the handle is the GitHub
+  account owner; for the GitHub App path it is the bot handle itself (the id is
+  the bot user's id). `GIT_USER_ID` can still be set directly for hermetic
+  tests or offline use, but it is never asked for in the prompt.
 - **Re-running is safe (idempotent).** An existing worktree is reconfigured, not recreated.
 - **No origin is fine.** If the repo has no `origin`, the script still sets the
   bot commit author; only the (optional) push remote is absent. Plain
