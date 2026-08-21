@@ -27,7 +27,7 @@ PAT/SSH concern. This is for automation/bot attribution.
 
 This skill is meant to be used standalone: the agent installs the bot identity
 without needing any other tooling. Everything lives in this repo
-(`agent-git-setup.sh`, `mint-token.sh`, `skills/SKILL.md`).
+(`agent-git-setup.sh`, `mint-token.sh`, `skills/agent-git-setup/SKILL.md`).
 
 0. **One-time, outside the agent:** create a GitHub App (see README "GitHub App
    setup"), download its PEM, install it on the target repos, and note the
