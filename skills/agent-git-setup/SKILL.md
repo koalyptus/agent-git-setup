@@ -29,24 +29,24 @@ This skill is meant to be used standalone: the agent installs the bot identity
 without needing any other tooling. Everything lives in this repo
 (`agent-git-setup.sh`, `mint-token.sh`, `skills/agent-git-setup/SKILL.md`).
 
-0. **One-time, outside the agent:** create a GitHub App (see README "GitHub App
+1. **One-time, outside the agent:** create a GitHub App (see README "GitHub App
    setup"), download its PEM, install it on the target repos, and note the
    App ID, the PEM path, and your handle `GIT_USER_NAME`
    (e.g. `my-git-user-name` — the skill/script will resolve it to the numeric id
    via the GitHub API; you never run `curl | jq`).
-1. **Mint a token** with the repo's own helper:
+2. **Mint a token** with the repo's own helper:
    ```bash
    source <(./mint-token.sh --app-id "$APP_ID" --pem "$PEM_PATH" --shell)
    # GH_TOKEN is now exported in the agent's shell
    ```
-2. **Set the bot identity (human gives the handle, agent resolves the id):**
+3. **Set the bot identity (human gives the handle, agent resolves the id):**
    ```bash
    export AGENT_GIT_NAME="myagent[bot]"
    export GIT_USER_NAME="my-git-user-name"   # handle; the skill/script resolves it to the numeric id
    # optional, for a verified [bot] badge:
    export AGENT_GIT_SIGNINGKEY="key::ssh-ed25519 AAAA... bot@github"
    ```
-3. **Run the setup** against the repo:
+4. **Run the setup** against the repo:
    ```bash
    agent-git-setup.sh <repo-dir> [worktree-name] [branch]
    ```
@@ -54,10 +54,10 @@ without needing any other tooling. Everything lives in this repo
    the bot `user.name`/`user.email` to the worktree's own config file (main
    tree untouched), and optionally enables SSH signing. It does NOT rewrite
    `origin`.
-4. **Work inside the worktree** the script printed. Commits there are
+5. **Work inside the worktree** the script printed. Commits there are
    `<name>[bot]`; `gh`/API calls use the bot; your main tree is untouched.
 
-The token is short-lived (~1h); re-run step 1 for a fresh one in long sessions.
+The token is short-lived (~1h); re-run step 2 for a fresh one in long sessions.
 
 ## Key concepts
 - **Commit author = bot, push actor = human, gh/API = bot.** The worktree's own
@@ -93,14 +93,14 @@ The token is short-lived (~1h); re-run step 1 for a fresh one in long sessions.
   enabled and its SSH key uploaded.
 
 ## Steps
-1. Mint and export `GH_TOKEN` (step 1 of the Happy path), or otherwise ensure a
+1. Mint and export `GH_TOKEN` (step 2 of the Happy path), or otherwise ensure a
    push-capable token is in the environment. Then resolve `GIT_USER_NAME` to a
    numeric id via the GitHub API (using `GH_TOKEN`):
-   `curl -s -H "Authorization: Bearer $GH_TOKEN" https://api.github.com/users/$GIT_USER_NAME | jq .id`.
+   `curl -s -H "Authorization: Bearer ***" https://api.github.com/users/$GIT_USER_NAME | jq .id`.
 2. Export `AGENT_GIT_NAME` / `GIT_USER_NAME` (and optionally
    `AGENT_GIT_SIGNINGKEY`).
 3. Run `agent-git-setup.sh <repo-dir> [worktree-name] [branch]`
-     (step 3 of the Happy path — the actual setup step).
+     (step 4 of the Happy path — the actual setup step).
 4. Direct the agent to do its git work **inside the printed worktree path**.
    Commits there are `<name>[bot]`; the human's main tree is untouched.
 
@@ -118,7 +118,7 @@ agent-git-setup.sh ~/dev/my-repo
 
 ## Pitfalls
 - **GitHub handle, not numeric id.** The human provides `GIT_USER_NAME` (e.g.
-  `my-git-user-name`). Either the skill (step 1 above) or
+  `my-git-user-name`). Either the skill (step 2 above) or
   `agent-git-setup.sh` resolves it to the numeric id via
   `curl -H "Authorization: Bearer $GH_TOKEN" https://api.github.com/users/$GIT_USER_NAME | jq .id`
   and builds the noreply email. For the Git-only path the handle is the GitHub

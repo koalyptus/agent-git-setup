@@ -12,10 +12,10 @@ Give an AI agent a bot identity in local git worktrees and/or on GitHub to easil
   lint job (they are installed automatically in CI).
 - `Python` 3 and `cryptography`
 
-## 0. Install the skill in your harness
+## 1. Install the skill in your harness
 
 Pick one of these — whichever harness your agent runs in. This is a one-time
-human step so the prompt in §2 ("Use the `agent-git-setup` skill…") resolves.
+human step so the prompt in §3 ("Use the `agent-git-setup` skill…") resolves.
 
 - **Hermes:**
   ```bash
@@ -29,9 +29,9 @@ human step so the prompt in §2 ("Use the `agent-git-setup` skill…") resolves.
   point the harness at the raw URL above. Consult that harness's docs for the
   exact install / "load skill from repo" command.
 
-## 1. Gather values
+## 2. Gather values
 
-You will fill the `[...]` placeholders in step 2 with these values.
+You will fill the `[...]` placeholders in step 3 with these values.
 
 ### Git-only (minimal — no GitHub App, you already have a `GH_TOKEN`)
 
@@ -62,7 +62,7 @@ You provide:
 The one-time GitHub App creation (create app → download PEM → install on repos)
 is a separate human step; see the full README ("GitHub App setup") for details.
 
-## 2. Paste this prompt to the agent
+## 3. Paste this prompt to the agent
 
 Replace every `[...]` with the value you gathered, then send the whole block:
 
@@ -98,7 +98,7 @@ Then do your git work inside the printed worktree. Do not touch the main tree.
 - Delete `[GITHUB_APP_ID]`/`[GITHUB_APP_PEM]` if you use Git-only; omit
   `AGENT_GIT_SIGNINGKEY` if you don't want verified commits.
 
-## 3. What happens
+## 4. What happens
 
 1. `GH_TOKEN` exported (by you, or by `mint-token.sh` for the App path).
 2. `GIT_USER_NAME` resolved to numeric id via `GET /users/$GIT_USER_NAME`
