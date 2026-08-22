@@ -192,9 +192,8 @@ Full details, diagrams, and reference tables are below (GitHub App setup is alre
 │  ─────────────────  │
 │  git worktree add   │  → .worktrees/agent/
 │  write worktree     │     .git/worktrees/agent/config
-│    user.name        │     user.name = <name>[bot]
-│    user.email       │     user.email = <id>+<name>[bot]@...
-│    signingkey       │     (main tree untouched)
+│    user.name        │     user.name = <name>[bot] (history reads as bot)
+│    user.email       │     user.email = <id>+<GIT_USER_NAME>@... (verifies)
 └─────────┬───────────┘
           │
           ▼
@@ -344,7 +343,10 @@ export AGENT_GIT_SIGNINGKEY="key::ssh-ed25519 AAAA... bot@github"  # optional
 
 agent-git-setup.sh ~/dev/my-repo
 # -> worktree at ~/dev/my-repo/.worktrees/agent
-#    commits there: myagent[bot] <id+myagent[bot]@users.noreply.github.com>
+#    commits there: myagent[bot] <id+my-git-user-name@users.noreply.github.com>
+#                  (user.name = myagent[bot] so history still reads as the bot;
+#                   email uses GIT_USER_NAME so the SSH signing key on that
+#                   account verifies → green Verified)
 #    your ~/dev/my-repo main tree: untouched
 ```
 

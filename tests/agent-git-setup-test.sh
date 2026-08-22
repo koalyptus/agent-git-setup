@@ -58,11 +58,12 @@ REPO="$(make_repo with-origin)"
 export GH_TOKEN=dummy_token
 export AGENT_GIT_NAME="myagent[bot]"
 export GIT_USER_ID=268339505
+export GIT_USER_NAME=my-git-user-name
 if "$SCRIPT" "$REPO" agent testbranch >/dev/null 2>&1; then
 	WT="$REPO/.worktrees/agent"
 	if [ -e "$WT/.git" ]; then ok "worktree created"; else bad "worktree not created"; fi
 	assert_eq "$(git -C "$WT" config user.name)" "myagent[bot]" "worktree user.name = bot"
-	assert_eq "$(git -C "$WT" config user.email)" "268339505+myagent[bot]@users.noreply.github.com" "worktree user.email = bot noreply"
+	assert_eq "$(git -C "$WT" config user.email)" "268339505+my-git-user-name@users.noreply.github.com" "worktree user.email = noreply using GIT_USER_NAME so signing verifies"
 	# The worktree shares the main remote; origin is NOT rewritten.
 	assert_eq "$(git -C "$WT" remote get-url origin)" "https://github.com/example/repo.git" "worktree origin unchanged"
 else

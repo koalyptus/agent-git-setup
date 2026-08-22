@@ -89,9 +89,14 @@ else
 	exit 2
 fi
 
-# GitHub noreply email derived from the bot user id + name.
-# This is what makes the commit author show as <name>[bot] on GitHub.
-BOT_EMAIL="${GIT_USER_ID}+${AGENT_GIT_NAME}@users.noreply.github.com"
+# GitHub noreply email: use the verified login when we have it so the SSH
+# signing key (uploaded on that user) matches and GitHub shows Verified.
+# When only GIT_USER_ID is set (hermetic tests) fall back to AGENT_GIT_NAME.
+if [ -n "${GIT_USER_NAME:-}" ]; then
+	BOT_EMAIL="${GIT_USER_ID}+${GIT_USER_NAME}@users.noreply.github.com"
+else
+	BOT_EMAIL="${GIT_USER_ID}+${AGENT_GIT_NAME}@users.noreply.github.com"
+fi
 
 # ---------------------------------------------------------------------------
 # Locate / create the worktree
