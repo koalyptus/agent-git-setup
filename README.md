@@ -52,17 +52,17 @@ You will fill the `[...]` placeholders in step 3 with these values.
 
 `AGENT_GIT_SIGNINGKEY` — only if you want the green **Verified** badge on bot commits. Without it, commits still show as `myagent[bot]`.
 
-To get Verified **without a GitHub App**
+To get the `Verified` badge
 
-- Run command below by replacing `[AGENT_GIT_NAME]` with your bot name, e.g. `agent-laptop[bot]` → `agent-laptop[bot]-signing`
+- Run command below by replacing `[AGENT_GIT_NAME]` your agent name stripped off the `[` and `]` special characters, e.g. `agent-laptop[bot]` → `agent-laptop-bot-signing`, to avoid file system annoyances:
 ```bash
-ssh-keygen -t ed25519 -f ~/.ssh/[AGENT_GIT_NAME]-signing -C "[AGENT_GIT_NAME]" -N ""
+ssh-keygen -t ed25519 -f ~/.ssh/[AGENT_GIT_NAME with no [] characters]-signing -C "[AGENT_GIT_NAME]" -N ""
 ```
-- This creates `~/.ssh/[AGENT_GIT_NAME]-signing` (private key) and a `.pub` (public key)
+- This creates `~/.ssh/[AGENT_GIT_NAME with no [] characters]-signing` (private key) and a `.pub` (public key)
 
 - Copy **only** the `.pub` file contents, **Signing Key**, using a command for example
 ```bash
-cat ~/.ssh/[AGENT_GIT_NAME]-signing.pub
+cat ~/.ssh/[AGENT_GIT_NAME with no [] characters]-signing.pub
 ```
 - Then in GitHub access **Settings → SSH and GPG keys → New SSH key → Key type: Signing Key**, create a new SSH key and paste the Signing Key copied above in the `Key` textbox, make sure you use `Signing Key` key type
 - Later you will assign in the prompt the same public key to `AGENT_GIT_SIGNINGKEY="key::ssh-ed25519 AAAA... ${AGENT_GIT_NAME}"`note the `key::` prefix + full pubkey line from the same `.pub`.
@@ -74,16 +74,16 @@ Do the one-time App setup first, then give the agent the values below.
 **One-time App setup**
 
 1. **Create the app** — GitHub → **Settings → Developer settings → GitHub Apps → New GitHub App**. For a private automation-only app set only:
-   - **GitHub App name**: e.g. `myagent` (this becomes `myagent[bot]` on GitHub).
+   - **GitHub App name**: e.g. `myagent` (this becomes `myagent[bot]` on GitHub), matches `AGENT_GIT_NAME` without the `[bot]` part.
    - **Homepage URL**: required on the form — any URL works (e.g. your profile).
-   - **Where can this be installed?**: *Only on this account* (keeps it private).
+   - **Webhook**: Active **off**
    - **Repository permissions**:
       - Contents → Read & write (commits/pushes)
       - Pull requests → Read & write (if the agent opens PRs)
       - Metadata → Read (always required).
+   - **Where can this be installed?**: *Only on this account* (keeps it private).
    - Leave blank/unchecked:
       - Redirect URI
-      - webhook (Active **off**)
       - events
       - OAuth
       - Device Flow
@@ -104,15 +104,15 @@ Do the one-time App setup first, then give the agent the values below.
 *Optional*
 
 To get the green **Verified** badge:
-- Run command below by replacing `[AGENT_GIT_NAME]` with your bot name, e.g. `agent-laptop[bot]` → `agent-laptop[bot]-signing`
+- Run command below by replacing `[AGENT_GIT_NAME]` your agent name stripped off the `[` and `]` special characters, e.g. `agent-laptop[bot]` → `agent-laptop-bot-signing`, to avoid file system annoyances:
 ```bash
-ssh-keygen -t ed25519 -f ~/.ssh/[AGENT_GIT_NAME]-signing -C "[AGENT_GIT_NAME]" -N ""
+ssh-keygen -t ed25519 -f ~/.ssh/[AGENT_GIT_NAME with no [] characters]-signing -C "[AGENT_GIT_NAME]" -N ""
 ```
-- This creates `~/.ssh/[AGENT_GIT_NAME]-signing` (private key) and a `.pub` (public key)
+- This creates `~/.ssh/[AGENT_GIT_NAME with no [] characters]-signing` (private key) and a `.pub` (public key)
 
 - Copy **only** the `.pub` file contents, **Signing Key**, using a command for example
 ```bash
-cat ~/.ssh/[AGENT_GIT_NAME]-signing.pub
+cat ~/.ssh/[AGENT_GIT_NAME with no [] characters]-signing.pub
 ```
 
 - Upload the **public** `.pub` to GitHub \
