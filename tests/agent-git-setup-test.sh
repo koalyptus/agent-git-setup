@@ -134,6 +134,51 @@ export GH_TOKEN=dummy_token AGENT_GIT_NAME="myagent[bot]" GIT_USER_ID=268339505
 rc=$?
 assert_eq "$rc" "2" "exits 2 on non-git dir"
 
+# 7. Email uses GIT_USER_NAME so signing verifies (Verified, not Unverified)
+echo "noreply email construction"
+REPO7="$(make_repo with-origin)"
+export GH_TOKEN=dummy_token AGENT_GIT_NAME="agent-laptop[bot]" GIT_USER_ID=8214629 GIT_USER_NAME=koalyptus
+if "$SCRIPT" "$REPO7" agent testbranch >/dev/null 2>&1; then
+	WT7="$REPO7/.worktrees/agent"
+	assert_eq "$(git -C "$WT7" config user.name)" "agent-laptop[bot]" "email test: user.name still the bot"
+	assert_eq "$(git -C "$WT7" config user.email)" "8214629+koalyptus@users.noreply.github.com" "email uses GIT_USER_NAME (koalyptus) so signing verifies"
+else
+	bad "email construction test: script failed unexpectedly"
+fi
+
+# 8. Fallback when only GIT_USER_ID is set (hermetic, no GIT_USER_NAME)
+echo "noreply fallback without GIT_USER_NAME"
+REPO8="$(make_repo with-origin)"
+unset GIT_USER_NAME
+export GH_TOKEN=dummy_token AGENT_GIT_NAME="myagent[bot]" GIT_USER_ID=268339505
+if "$SCRIPT" "$REPO8" agent testbranch >/dev/null 2>&1; then
+	WT8="$REPO8/.worktrees/agent"
+	assert_eq "$(git -C "$WT8" config user.email)" "268339505+myagent[bot]@users.noreply.github.com" "fallback: email uses AGENT_GIT_NAME when GIT_USER_NAME unset"
+else
+	bad "fallback test: script failed unexpectedly"
+fi
+
+# 9. Signing enables commit.gpgsign scoped to worktree, not main
+echo "signing isolation"
+REPO9="$(make_repo with-origin)"
+export GH_TOKEN=dummy_token AGENT_GIT_NAME="myagent[bot]" GIT_USER_ID=268339505 GIT_USER_NAME=my-git-user-name
+export AGENT_GIT_SIGNINGKEY="key::ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest myagent[bot]"
+if "$SCRIPT" "$REPO9" agent testbranch >/dev/null 2>&1; then
+	WT9="$REPO9/.worktrees/agent"
+	assert_eq "$(git -C "$WT9" config commit.gpgsign)" "true" "worktree commit.gpgsign true when signing key set"
+	assert_eq "$(git -C "$WT9" config gpg.format)" "ssh" "worktree gpg.format ssh"
+	assert_eq "$(git -C "$WT9" config user.signingkey)" "key::ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest myagent[bot]" "worktree signingkey set"
+	if git -C "$REPO9" config commit.gpgsign >/dev/null 2>&1; then
+		bad "main tree must not have commit.gpgsign"
+	else
+		ok "main tree commit.gpgsign untouched"
+	fi
+else
+	bad "signing test: script failed unexpectedly"
+fi
+unset AGENT_GIT_SIGNINGKEY
+
 echo
+
 echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]
