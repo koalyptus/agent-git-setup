@@ -1,0 +1,12 @@
+# Enforce LF line endings for shell scripts, config and docs.
+# Prevents Windows `core.autocrlf=true` from checking out CRLF on C:\ mounts,
+# which breaks bash under WSL (`$'\r': command not found`, `set: pipefail` fails).
+* text=auto
+*.sh text eol=lf
+*.ps1 text eol=lf
+Makefile text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+.gitattributes text eol=lf
