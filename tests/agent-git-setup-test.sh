@@ -15,6 +15,7 @@ SANDBOX="$(mktemp -d)"
 export HOME="$SANDBOX"
 export GIT_CONFIG_GLOBAL="$SANDBOX/.gitconfig"
 export GIT_CONFIG_NOSYSTEM=1
+export AGENT_GIT_WORKTREE_ROOT="$SANDBOX/worktrees"
 
 PASS=0
 FAIL=0
@@ -60,7 +61,7 @@ export AGENT_GIT_NAME="myagent[bot]"
 export GIT_USER_ID=268339505
 export GIT_USER_NAME=my-git-user-name
 if "$SCRIPT" "$REPO" agent testbranch >/dev/null 2>&1; then
-	WT="$REPO/.worktrees/agent"
+	WT="$SANDBOX/worktrees/$(basename "$REPO")/agent"
 	if [ -e "$WT/.git" ]; then ok "worktree created"; else bad "worktree not created"; fi
 	assert_eq "$(git -C "$WT" config user.name)" "myagent[bot]" "worktree user.name = bot"
 	assert_eq "$(git -C "$WT" config user.email)" "268339505+my-git-user-name@users.noreply.github.com" "worktree user.email = noreply using GIT_USER_NAME so signing verifies"
@@ -92,7 +93,7 @@ export GH_TOKEN=dummy_token
 export AGENT_GIT_NAME="myagent[bot]"
 export GIT_USER_ID=268339505
 if "$SCRIPT" "$REPO2" agent testbranch >/dev/null 2>&1; then
-	WT2="$REPO2/.worktrees/agent"
+	WT2="$SANDBOX/worktrees/$(basename "$REPO2")/agent"
 	assert_eq "$(git -C "$WT2" config user.name)" "myagent[bot]" "identity set even without origin"
 else
 	bad "script failed on no-origin repo"
@@ -139,7 +140,7 @@ echo "noreply email construction"
 REPO7="$(make_repo with-origin)"
 export GH_TOKEN=dummy_token AGENT_GIT_NAME="agent-laptop[bot]" GIT_USER_ID=8214629 GIT_USER_NAME=koalyptus
 if "$SCRIPT" "$REPO7" agent testbranch >/dev/null 2>&1; then
-	WT7="$REPO7/.worktrees/agent"
+	WT7="$SANDBOX/worktrees/$(basename "$REPO7")/agent"
 	assert_eq "$(git -C "$WT7" config user.name)" "agent-laptop[bot]" "email test: user.name still the bot"
 	assert_eq "$(git -C "$WT7" config user.email)" "8214629+koalyptus@users.noreply.github.com" "email uses GIT_USER_NAME (koalyptus) so signing verifies"
 else
@@ -152,7 +153,7 @@ REPO8="$(make_repo with-origin)"
 unset GIT_USER_NAME
 export GH_TOKEN=dummy_token AGENT_GIT_NAME="myagent[bot]" GIT_USER_ID=268339505
 if "$SCRIPT" "$REPO8" agent testbranch >/dev/null 2>&1; then
-	WT8="$REPO8/.worktrees/agent"
+	WT8="$SANDBOX/worktrees/$(basename "$REPO8")/agent"
 	assert_eq "$(git -C "$WT8" config user.email)" "268339505+myagent[bot]@users.noreply.github.com" "fallback: email uses AGENT_GIT_NAME when GIT_USER_NAME unset"
 else
 	bad "fallback test: script failed unexpectedly"
@@ -164,7 +165,7 @@ REPO9="$(make_repo with-origin)"
 export GH_TOKEN=dummy_token AGENT_GIT_NAME="myagent[bot]" GIT_USER_ID=268339505 GIT_USER_NAME=my-git-user-name
 export AGENT_GIT_SIGNINGKEY="key::ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest myagent[bot]"
 if "$SCRIPT" "$REPO9" agent testbranch >/dev/null 2>&1; then
-	WT9="$REPO9/.worktrees/agent"
+	WT9="$SANDBOX/worktrees/$(basename "$REPO9")/agent"
 	assert_eq "$(git -C "$WT9" config commit.gpgsign)" "true" "worktree commit.gpgsign true when signing key set"
 	assert_eq "$(git -C "$WT9" config gpg.format)" "ssh" "worktree gpg.format ssh"
 	assert_eq "$(git -C "$WT9" config user.signingkey)" "key::ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest myagent[bot]" "worktree signingkey set"

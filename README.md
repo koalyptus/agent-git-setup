@@ -170,7 +170,7 @@ Then do your git work inside the printed worktree. Do not touch the main tree.
 
 2. The agent resolves your GitHub handle (GIT_USER_NAME) to the numeric ID GitHub requires.
 
-3. The agent creates an isolated worktree at .worktrees/agent and sets the bot identity only there. Requires git ≥ 2.43. It prints isolation verified — main tree untouched on success; if it prints ERROR, update git and re-run.
+3. The agent creates an isolated worktree (standalone: `~/.agent-git-setup/<repo>/agent`; with [treehouse](https://github.com/kunchenguid/treehouse): the treehouse pool) and sets the bot identity only there. Requires git ≥ 2.43. It prints isolation verified — main tree untouched on success; if it prints ERROR, update git and re-run.
 
 4. The agent does all its work inside that worktree. Commits appear as {agent-name}[bot], GitHub actions appear as {agent-name}[bot] (when a token was needed), and git push still uses your account. Your main checkout is never changed.
 
@@ -213,7 +213,7 @@ Full details, diagrams, and reference tables are below (GitHub App setup is alre
 ┌─────────────────────┐
 │ agent-git-setup.sh  │
 │  ─────────────────  │
-│  git worktree add   │  → .worktrees/agent/
+│  git worktree add   │  → ~/.agent-git-setup/<repo>/agent (or treehouse pool)
 │  write worktree     │     .git/worktrees/agent/config
 │    user.name        │     user.name = <name>[bot] (history reads as bot)
 │    user.email       │     user.email = <id>+<GIT_USER_NAME>@... (verifies)
@@ -353,7 +353,7 @@ export GIT_USER_NAME="my-git-user-name"           # handle; script/skill resolve
 export AGENT_GIT_SIGNINGKEY="key::ssh-ed25519 AAAA... bot@github"  # optional
 
 agent-git-setup.sh ~/dev/my-repo
-# -> worktree at ~/dev/my-repo/.worktrees/agent
+# -> worktree at ~/.agent-git-setup/my-repo/agent (or treehouse pool)
 #    commits there: myagent[bot] <id+my-git-user-name@users.noreply.github.com>
 #                  (user.name = myagent[bot] so history still reads as the bot;
 #                   email uses GIT_USER_NAME so the SSH signing key on that

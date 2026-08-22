@@ -34,6 +34,8 @@
 #                         [bot] commit badge.
 #   AGENT_GIT_WORKTREE    Worktree name (default: agent).
 #   AGENT_GIT_BRANCH      Branch created in the worktree (default: agent-work).
+#   AGENT_GIT_WORKTREE_ROOT Worktree root for standalone mode (default: ~/.agent-git-setup).
+#                           Treehouse, when present, overrides this.
 #
 
 set -euo pipefail
@@ -104,8 +106,13 @@ fi
 
 cd "$REPO_DIR"
 
-# Default location for a plain git worktree.
-WT_PATH="$REPO_DIR/.worktrees/$WT_NAME"
+# Default location for a plain git worktree: outside the repo so the host repo
+# is never polluted (no .gitignore commit, no git add . accident).
+# Standalone (no treehouse): ~/.agent-git-setup/<repo-basename>/<WT_NAME>
+# Override with AGENT_GIT_WORKTREE_ROOT (e.g. for tests / custom XDG).
+REPO_SLUG="$(basename "$REPO_DIR")"
+WT_ROOT="${AGENT_GIT_WORKTREE_ROOT:-$HOME/.agent-git-setup}"
+WT_PATH="$WT_ROOT/$REPO_SLUG/$WT_NAME"
 
 # Prefer treehouse when it is available on PATH.
 if command -v treehouse >/dev/null 2>&1; then
@@ -126,8 +133,10 @@ fi
 if [ -d "$WT_PATH/.git" ] || [ -f "$WT_PATH/.git" ]; then
 	echo "agent-git-setup.sh: worktree already exists at $WT_PATH (reconfiguring)"
 else
-	# Plain git worktree add (only when we own the path).
-	if [ "$WT_PATH" = "$REPO_DIR/.worktrees/$WT_NAME" ]; then
+	# Standalone worktree (we own the path when treehouse is absent).
+	# When treehouse is present, WT_PATH was overridden above; don't add twice.
+	if [ "$WT_PATH" = "$WT_ROOT/$REPO_SLUG/$WT_NAME" ]; then
+		mkdir -p "$(dirname "$WT_PATH")"
 		git worktree add -B "$BRANCH" "$WT_PATH" 2>/dev/null || git worktree add "$WT_PATH"
 	fi
 fi

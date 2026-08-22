@@ -139,7 +139,7 @@ export GIT_USER_NAME="my-git-user-name"   # handle; resolved to numeric id via A
 export AGENT_GIT_SIGNINGKEY="key::ssh-ed25519 AAAA... myagent[bot]"  # optional, see step 3 above
 
 agent-git-setup.sh .   # current repo (agent infers the path) — via /tmp clone above
-# agent works in ./.worktrees/agent
+# agent works in ~/.agent-git-setup/<repo>/agent (or treehouse pool if treehouse is installed)
 ```
 
 ## Pitfalls
