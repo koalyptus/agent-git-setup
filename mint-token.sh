@@ -94,8 +94,8 @@ payload = {"iat": now - 60, "exp": now + 540, "iss": int(app_id)}
 seg = b64u(json.dumps(header).encode()) + b"." + b64u(json.dumps(payload).encode())
 with open(pem_path, "rb") as f:
     key = serialization.load_pem_private_key(f.read(), password=None)
-sig = key.sign(seg, __import__("cryptography.hazmat.primitives.asymmetric").padding.PKCS1v15(),
-             __import__("cryptography.hazmat.primitives").hashes.SHA256())
+sig = key.sign(seg, __import__("cryptography.hazmat.primitives.asymmetric.padding", fromlist=["PKCS1v15"]).PKCS1v15(),
+             __import__("cryptography.hazmat.primitives.hashes", fromlist=["SHA256"]).SHA256())
 bearer = (seg + b"." + b64u(sig)).decode()
 
 def api(path, method="GET", data=None):

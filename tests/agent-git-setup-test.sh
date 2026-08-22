@@ -179,6 +179,36 @@ else
 fi
 unset AGENT_GIT_SIGNINGKEY
 
+# 10. Relative REPO_DIR '.' still creates worktree outside (not ~/.agent-git-setup/./agent)
+echo "relative REPO_DIR '.'"
+REPO10="$(make_repo with-origin)"
+export GH_TOKEN=dummy_token AGENT_GIT_NAME="myagent[bot]" GIT_USER_ID=268339505 GIT_USER_NAME=my-git-user-name
+if (cd "$REPO10" && "$SCRIPT" . agent testbranch >/dev/null 2>&1); then
+	WT10="$SANDBOX/worktrees/$(basename "$REPO10")/agent"
+	if [ -e "$WT10/.git" ]; then ok "relative '.' worktree created outside"; else bad "relative '.' worktree not at expected outside path"; fi
+	assert_eq "$(git -C "$WT10" config user.name)" "myagent[bot]" "relative '.' worktree user.name = bot"
+	if [ -e "$REPO10/.worktrees" ]; then bad "relative '.' must not create inside-repo .worktrees"; else ok "relative '.' did not pollute repo with .worktrees"; fi
+else
+	bad "relative '.' invocation failed"
+fi
+
+# 11. Actual git commit in worktree is authored as bot (local commits appear with agent identity)
+echo "commit author isolation"
+REPO11="$(make_repo with-origin)"
+export GH_TOKEN=dummy_token AGENT_GIT_NAME="myagent[bot]" GIT_USER_ID=268339505 GIT_USER_NAME=my-git-user-name
+if "$SCRIPT" "$REPO11" agent testbranch >/dev/null 2>&1; then
+	WT11="$SANDBOX/worktrees/$(basename "$REPO11")/agent"
+	echo "hello" >"$WT11/hello.txt"
+	git -C "$WT11" add hello.txt
+	git -C "$WT11" commit -q -m "test commit as bot"
+	AUTHOR="$(git -C "$WT11" log -1 --format='%an %ae')"
+	assert_eq "$AUTHOR" "myagent[bot] 268339505+my-git-user-name@users.noreply.github.com" "worktree commit author is bot"
+	MAIN_AUTHOR="$(git -C "$REPO11" log -1 --format='%an %ae')"
+	assert_eq "$MAIN_AUTHOR" "human human@example.com" "main tree commit still human"
+else
+	bad "commit isolation test: setup failed"
+fi
+
 echo
 
 echo "PASS=$PASS FAIL=$FAIL"

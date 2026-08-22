@@ -104,6 +104,8 @@ fi
 # Locate / create the worktree
 # ---------------------------------------------------------------------------
 
+# Resolve REPO_DIR to absolute so basename is correct when invoked as "."
+REPO_DIR="$(cd "$REPO_DIR" && pwd)"
 cd "$REPO_DIR"
 
 # Default location for a plain git worktree: outside the repo so the host repo
