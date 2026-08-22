@@ -127,22 +127,55 @@ else
 	fi
 fi
 
-# ---------------------------------------------------------------------------
-# Configure the worktree with the bot identity (commit-author isolation only)
-# ---------------------------------------------------------------------------
+# Enable git 2.43+ `extensions.worktreeConfig` — without this, git ignores the
+# per-worktree config file (.git/worktrees/<name>/config) and the bot identity
+# still leaks into the shared main config. Enabling it is safe and only tells git
+# to read each worktree's own config.
+if ! git config --get extensions.worktreeConfig >/dev/null 2>&1; then
+	if ! git config extensions.worktreeConfig true >/dev/null 2>&1; then
+		echo "agent-git-setup.sh: ERROR: could not enable worktreeConfig extension" >&2
+		echo "agent-git-setup.sh: the bot identity will leak into the main tree without it" >&2
+		echo "agent-git-setup.sh: upgrade git to 2.43+ or enable the extension manually" >&2
+		exit 1
+	fi
+	echo "agent-git-setup.sh: enabled worktreeConfig extension (per-worktree config isolation)"
+fi
 
 echo "agent-git-setup.sh: configuring worktree at $WT_PATH"
 
 # IMPORTANT: a linked worktree shares the MAIN repo's config and remotes.
 # "git -C $WT_PATH config" would resolve to the main repo and LEAK the bot
 # identity into the human's tree. To truly isolate, we write to the worktree's
-# OWN config file, which git reads in preference for that worktree only.
-WT_CONFIG="$REPO_DIR/.git/worktrees/$WT_NAME/config"
+# OWN config file. On git 2.43+ with extensions.worktreeConfig enabled,
+# git reads from config.worktree; otherwise from config.
+if git config --get extensions.worktreeConfig >/dev/null 2>&1; then
+	WT_CONFIG="$REPO_DIR/.git/worktrees/$WT_NAME/config.worktree"
+else
+	WT_CONFIG="$REPO_DIR/.git/worktrees/$WT_NAME/config"
+fi
 mkdir -p "$(dirname "$WT_CONFIG")"
 
 # (1) Commit author — scoped to the worktree only (main tree untouched).
 git config -f "$WT_CONFIG" user.name "$AGENT_GIT_NAME"
 git config -f "$WT_CONFIG" user.email "$BOT_EMAIL"
+
+# (1b) Verify the worktree config is actually being read. Without
+#      extensions.worktreeConfig (git 2.43+), git ignores the worktree config
+#      file and the bot identity still leaks into the shared main config.
+#      This check makes the failure loud instead of silent.
+WT_USER_NAME=$(git -C "$WT_PATH" config user.name 2>/dev/null || true)
+REPO_USER_NAME=$(git -C "$REPO_DIR" config user.name 2>/dev/null || true)
+if [ "$WT_USER_NAME" != "$AGENT_GIT_NAME" ]; then
+	echo "agent-git-setup.sh: ERROR: worktree did not pick up bot identity" >&2
+	echo "agent-git-setup.sh: worktree user.name=$WT_USER_NAME (expected $AGENT_GIT_NAME)" >&2
+	exit 1
+fi
+if [ "$REPO_USER_NAME" = "$AGENT_GIT_NAME" ]; then
+	echo "agent-git-setup.sh: ERROR: bot identity leaked into the main tree" >&2
+	echo "agent-git-setup.sh: main tree user.name=$REPO_USER_NAME (bot identity)" >&2
+	exit 1
+fi
+echo "agent-git-setup.sh: isolation verified — main tree untouched"
 
 # (2) Push actor is NOT configured here. Git worktrees share remotes, so we
 #     do not rewrite origin (that would change the human's main tree). The bot

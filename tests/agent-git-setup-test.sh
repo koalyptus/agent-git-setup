@@ -60,10 +60,9 @@ export AGENT_GIT_NAME="myagent[bot]"
 export GIT_USER_ID=268339505
 if "$SCRIPT" "$REPO" agent testbranch >/dev/null 2>&1; then
 	WT="$REPO/.worktrees/agent"
-	WT_CFG="$REPO/.git/worktrees/agent/config"
 	if [ -e "$WT/.git" ]; then ok "worktree created"; else bad "worktree not created"; fi
-	assert_eq "$(git config -f "$WT_CFG" user.name)" "myagent[bot]" "worktree user.name = bot"
-	assert_eq "$(git config -f "$WT_CFG" user.email)" "268339505+myagent[bot]@users.noreply.github.com" "worktree user.email = bot noreply"
+	assert_eq "$(git -C "$WT" config user.name)" "myagent[bot]" "worktree user.name = bot"
+	assert_eq "$(git -C "$WT" config user.email)" "268339505+myagent[bot]@users.noreply.github.com" "worktree user.email = bot noreply"
 	# The worktree shares the main remote; origin is NOT rewritten.
 	assert_eq "$(git -C "$WT" remote get-url origin)" "https://github.com/example/repo.git" "worktree origin unchanged"
 else
@@ -79,8 +78,8 @@ assert_eq "$(git -C "$REPO" remote get-url origin)" "https://github.com/example/
 echo "idempotent re-run"
 if "$SCRIPT" "$REPO" agent testbranch >/dev/null 2>&1; then
 	ok "second run exits 0"
-	WT_CFG="$REPO/.git/worktrees/agent/config"
-	assert_eq "$(git config -f "$WT_CFG" user.name)" "myagent[bot]" "identity still bot after re-run"
+
+	assert_eq "$(git -C "$WT" config user.name)" "myagent[bot]" "identity still bot after re-run"
 else
 	bad "second run exited non-zero"
 fi
@@ -92,8 +91,8 @@ export GH_TOKEN=dummy_token
 export AGENT_GIT_NAME="myagent[bot]"
 export GIT_USER_ID=268339505
 if "$SCRIPT" "$REPO2" agent testbranch >/dev/null 2>&1; then
-	WT_CFG="$REPO2/.git/worktrees/agent/config"
-	assert_eq "$(git config -f "$WT_CFG" user.name)" "myagent[bot]" "identity set even without origin"
+	WT2="$REPO2/.worktrees/agent"
+	assert_eq "$(git -C "$WT2" config user.name)" "myagent[bot]" "identity set even without origin"
 else
 	bad "script failed on no-origin repo"
 fi

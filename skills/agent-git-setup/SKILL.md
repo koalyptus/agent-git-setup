@@ -61,12 +61,21 @@ without needing any other tooling. Everything lives in this repo
    ```
    Infer the repo as the current working directory if it is a git repo (`git rev-parse --show-toplevel` succeeds). If the current directory is not a git repo, or the repo is ambiguous (e.g. multiple checkouts), ask the user which repo to set up. Do not guess a path.
 
-   The `agent-git-setup.sh` script creates `.worktrees/<worktree-name>/`, writes
-   the bot `user.name`/`user.email` to the worktree's own config file (main
-   tree untouched), and optionally enables SSH signing. It does NOT rewrite
-   `origin`.
+   The script enables the git `worktreeConfig` extension (`extensions.worktreeConfig=true` in the main repo config) — required on git 2.43+ for the per-worktree config file at `.git/worktrees/<name>/config` to be read. Without it the bot identity leaks into the shared main config (the failure seen on the laptop); the script exits with an error if it cannot enable the extension. It then writes `user.name`/`user.email` (and optionally SSH signing) to the worktree's own config only and prints an isolation check (`worktree user.name` = bot, `main tree user.name` = human) that fails loudly if the worktree config is not being read.
+
+   The bot actor for `gh`/API (PRs, issues, comments) comes from `GH_TOKEN` in the agent's environment — **not** from rewriting `origin`. Plain `git push` uses the human's credential. The worktree's `origin` stays the same as the main tree's remote.
 5. **Work inside the worktree** the script printed. Commits there are
    `<name>[bot]`; `gh`/API calls use the bot; your main tree is untouched.
+   **Agent must not** rewrite `origin` or set `remote.origin.url` in the
+   worktree (or anywhere else) — that would leak the bot push credential into
+   the main tree. The bot actor for `gh`/API (PRs, issues, comments) comes from
+   `GH_TOKEN` in the agent's environment, **not** from a rewritten origin; plain
+   `git push` uses the human's credential. The agent must not touch the main
+   tree's `user.name`/`user.email` or global git config. The script enforces
+   commit-author isolation (user.name/user.email + optional SSH signing) in the
+   worktree's own config only, and prints an isolation check (`worktree
+   user.name` = bot, `main tree user.name` = human) that fails loudly if the
+   worktree config is not being read.
 
 The token is short-lived (~1h); re-run step 2 for a fresh one in long sessions.
 
@@ -90,7 +99,7 @@ The token is short-lived (~1h); re-run step 2 for a fresh one in long sessions.
 - **Backend-neutral.** Works under any agent/harness.
 
 ## Prerequisites
-- A git repository the agent should work in.
+- A git repository the agent should work in (requires **git >= 2.43** for per-worktree isolation via `extensions.worktreeConfig`; the script fails fast on older git).
 - The bot identity:
   - `AGENT_GIT_NAME` — e.g. `myagent[bot]`.
   - `GIT_USER_NAME` — the GitHub handle whose numeric id becomes the noreply
@@ -147,8 +156,7 @@ agent-git-setup.sh .   # current repo (agent infers the path) — via /tmp clone
   bot commit author; only the (optional) push remote is absent. Plain
   `git push` uses the human account owner's push credential — the push actor is
   the human, by design.
-- **Signing needs the key + agent.** `AGENT_GIT_SIGNINGKEY` only produces a Verified
-  badge if the key is uploaded: Git-only → user **SSH and GPG keys → Signing Key**; GitHub App → App **Public keys / Commit signing**. Additionally, the private key must be loaded in `ssh-agent` (`eval "$(ssh-agent -s)" && ssh-add /path/to/${AGENT_GIT_NAME//[^a-zA-Z0-9]/-}-signing`) for `git commit` to actually sign. Without it, commits show as the bot but unverified.
+- **Worktree isolation check.** The script enables `extensions.worktreeConfig` (git 2.43+) so the per-worktree config is actually read; without it the bot identity would leak. After writing it prints an isolation check (`worktree user.name` = bot, `main tree` = human) that fails loudly if not isolated. `GH_TOKEN` in env drives `gh`/API as the bot — **not** rewriting `origin`.
 - **Token expiry.** `GH_TOKEN` is typically short-lived (~1h). If a token
   expires while a sub-agent is still working, commits using that token will
   fail. The agent should detect the failure, re-run `mint-token.sh` (or its
