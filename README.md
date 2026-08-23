@@ -115,10 +115,7 @@ ssh-keygen -t ed25519 -f ~/.ssh/[AGENT_GIT_NAME with no [] characters]-signing -
 cat ~/.ssh/[AGENT_GIT_NAME with no [] characters]-signing.pub
 ```
 
-- Upload the **public** `.pub` to GitHub \
-your App → **Settings → Developer settings → GitHub Apps → your app → Public keys / Commit signing**
-
-- paste the **Signing Key** in Key field and enable commit signing if the App shows that toggle.
+- GitHub Apps don't expose a **Public keys / Commit signing** upload for the bot (`320010330+agent-oracle-1[bot]@...` → `Unverified`). For Verified today, upload the same `.pub` to **Settings → SSH and GPG keys → Signing Key** as user `koalyptus` — then commits appear as `agent-oracle-1[bot] <8214629+koalyptus@users.noreply.github.com>` and show `Verified` (name is bot, avatar is yours). Bot-avatar `Verified` (`320010330+agent-oracle-1[bot]@...`) awaits a future GitHub UI.
 
 - Later you will assign in the prompt the same public key to `AGENT_GIT_SIGNINGKEY="key::ssh-ed25519 AAAA... ${AGENT_GIT_NAME}"`note the `key::` prefix + full pubkey line from the same `.pub`.
 
