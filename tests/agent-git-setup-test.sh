@@ -138,7 +138,9 @@ assert_eq "$rc" "2" "exits 2 on non-git dir"
 # 7. Email uses GIT_USER_NAME so signing verifies (Verified, not Unverified)
 echo "noreply email construction"
 REPO7="$(make_repo with-origin)"
-export GH_TOKEN=dummy_token AGENT_GIT_NAME="agent-laptop[bot]" GIT_USER_ID=8214629 GIT_USER_NAME=koalyptus
+unset GH_TOKEN AGENT_GIT_BOT_ID
+
+export AGENT_GIT_NAME="agent-laptop[bot]" GIT_USER_ID=8214629 GIT_USER_NAME=koalyptus
 if "$SCRIPT" "$REPO7" agent testbranch >/dev/null 2>&1; then
 	WT7="$SANDBOX/worktrees/$(basename "$REPO7")/agent"
 	assert_eq "$(git -C "$WT7" config user.name)" "agent-laptop[bot]" "email test: user.name still the bot"
@@ -182,6 +184,8 @@ unset AGENT_GIT_SIGNINGKEY
 # 10. Relative REPO_DIR '.' still creates worktree outside (not ~/.agent-git-setup/./agent)
 echo "relative REPO_DIR '.'"
 REPO10="$(make_repo with-origin)"
+unset AGENT_GIT_BOT_ID
+
 export GH_TOKEN=dummy_token AGENT_GIT_NAME="myagent[bot]" GIT_USER_ID=268339505 GIT_USER_NAME=my-git-user-name
 if (cd "$REPO10" && "$SCRIPT" . agent testbranch >/dev/null 2>&1); then
 	WT10="$SANDBOX/worktrees/$(basename "$REPO10")/agent"
@@ -195,6 +199,8 @@ fi
 # 11. Actual git commit in worktree is authored as bot (local commits appear with agent identity)
 echo "commit author isolation"
 REPO11="$(make_repo with-origin)"
+unset AGENT_GIT_BOT_ID
+
 export GH_TOKEN=dummy_token AGENT_GIT_NAME="myagent[bot]" GIT_USER_ID=268339505 GIT_USER_NAME=my-git-user-name
 if "$SCRIPT" "$REPO11" agent testbranch >/dev/null 2>&1; then
 	WT11="$SANDBOX/worktrees/$(basename "$REPO11")/agent"
@@ -207,6 +213,51 @@ if "$SCRIPT" "$REPO11" agent testbranch >/dev/null 2>&1; then
 	assert_eq "$MAIN_AUTHOR" "human human@example.com" "main tree commit still human"
 else
 	bad "commit isolation test: setup failed"
+fi
+
+unset AGENT_GIT_SIGNINGKEY
+
+# 12. App path (GH_TOKEN + bot id): bot noreply, not human — Verified as bot
+echo "app path bot noreply"
+REPO12="$(make_repo with-origin)"
+export GH_TOKEN=dummy_token AGENT_GIT_NAME="agent-oracle-1[bot]" GIT_USER_ID=8214629 GIT_USER_NAME=koalyptus AGENT_GIT_BOT_ID=320010330
+if "$SCRIPT" "$REPO12" agent testbranch >/dev/null 2>&1; then
+	WT12="$SANDBOX/worktrees/$(basename "$REPO12")/agent"
+	assert_eq "$(git -C "$WT12" config user.email)" "320010330+agent-oracle-1[bot]@users.noreply.github.com" "app path: bot email (not koalyptus) when AGENT_GIT_BOT_ID set"
+	assert_eq "$(git -C "$WT12" config user.name)" "agent-oracle-1[bot]" "app path: user.name stays bot"
+else
+	bad "app path test: script failed unexpectedly"
+fi
+unset AGENT_GIT_BOT_ID
+
+# 13. App path commit author is bot (not human)
+echo "app path commit author"
+REPO13="$(make_repo with-origin)"
+export GH_TOKEN=dummy_token AGENT_GIT_NAME="agent-oracle-1[bot]" GIT_USER_ID=8214629 GIT_USER_NAME=koalyptus AGENT_GIT_BOT_ID=320010330
+if "$SCRIPT" "$REPO13" agent testbranch >/dev/null 2>&1; then
+	WT13="$SANDBOX/worktrees/$(basename "$REPO13")/agent"
+	echo "hello" >"$WT13/hello.txt"
+	git -C "$WT13" add hello.txt
+	git -C "$WT13" commit -q -m "test app bot commit"
+	AUTHOR13="$(git -C "$WT13" log -1 --format='%an %ae')"
+	assert_eq "$AUTHOR13" "agent-oracle-1[bot] 320010330+agent-oracle-1[bot]@users.noreply.github.com" "app path commit author is bot noreply"
+	MAIN13="$(git -C "$REPO13" log -1 --format='%an %ae')"
+	assert_eq "$MAIN13" "human human@example.com" "main tree still human"
+else
+	bad "app path commit author test: setup failed"
+fi
+unset AGENT_GIT_BOT_ID
+
+# 14. Git-only path (no GH_TOKEN): human noreply even for [bot] name — Verified on human account
+echo "git-only human noreply"
+REPO14="$(make_repo with-origin)"
+unset GH_TOKEN AGENT_GIT_BOT_ID
+export AGENT_GIT_NAME="agent-oracle-1[bot]" GIT_USER_ID=8214629 GIT_USER_NAME=koalyptus
+if "$SCRIPT" "$REPO14" agent testbranch >/dev/null 2>&1; then
+	WT14="$SANDBOX/worktrees/$(basename "$REPO14")/agent"
+	assert_eq "$(git -C "$WT14" config user.email)" "8214629+koalyptus@users.noreply.github.com" "git-only: human email even for [bot] name"
+else
+	bad "git-only test: script failed unexpectedly"
 fi
 
 echo

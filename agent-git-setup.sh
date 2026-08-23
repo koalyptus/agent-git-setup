@@ -36,6 +36,8 @@
 #   AGENT_GIT_BRANCH      Branch created in the worktree (default: agent-work).
 #   AGENT_GIT_WORKTREE_ROOT Worktree root for standalone mode (default: ~/.agent-git-setup).
 #                           Treehouse, when present, overrides this.
+#   AGENT_GIT_BOT_ID        (hidden, hermetic tests only) Bot user id for App path; when set,
+#                           used directly for BOT_EMAIL (no network). Never in human prompt.
 #
 
 set -euo pipefail
@@ -91,10 +93,25 @@ else
 	exit 2
 fi
 
-# GitHub noreply email: use the verified login when we have it so the SSH
-# signing key (uploaded on that user) matches and GitHub shows Verified.
-# When only GIT_USER_ID is set (hermetic tests) fall back to AGENT_GIT_NAME.
-if [ -n "${GIT_USER_NAME:-}" ]; then
+# GitHub noreply email: must be id+login of the account that owns the signing key.
+# Git-only (no GH_TOKEN): human's verified noreply (GIT_USER_NAME=koalyptus) -> Verified on your account.
+# GitHub App (GH_TOKEN set): bot's own noreply (AGENT_GIT_NAME e.g. agent-oracle-1[bot]) -> Verified as bot,
+#   fetched via public GET /users/<bot> using bot login; falls back to human if bot lookup fails.
+# AGENT_GIT_BOT_ID is a hidden hermetic override (tests): when set, used directly as bot id (no network).
+if [ -n "${AGENT_GIT_BOT_ID:-}" ]; then
+	BOT_EMAIL="${AGENT_GIT_BOT_ID}+${AGENT_GIT_NAME}@users.noreply.github.com"
+elif [ -n "${GH_TOKEN:-}" ] && [ -n "${AGENT_GIT_NAME:-}" ]; then
+	# Try bot noreply when App is in use (GH_TOKEN present)
+	_APP_BOT_ENC="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "${AGENT_GIT_NAME}" 2>/dev/null || true)"
+	_APP_BOT_ID="$(curl -sf -H "Accept: application/vnd.github.v3+json" "https://api.github.com/users/${_APP_BOT_ENC}" 2>/dev/null | python3 -c 'import sys,json; print(json.load(sys.stdin).get("id",""))' 2>/dev/null || true)"
+	if [ -n "${_APP_BOT_ID:-}" ] && [ "${_APP_BOT_ID}" != "None" ] && [ "${_APP_BOT_ID}" != "" ]; then
+		BOT_EMAIL="${_APP_BOT_ID}+${AGENT_GIT_NAME}@users.noreply.github.com"
+	elif [ -n "${GIT_USER_NAME:-}" ]; then
+		BOT_EMAIL="${GIT_USER_ID}+${GIT_USER_NAME}@users.noreply.github.com"
+	else
+		BOT_EMAIL="${GIT_USER_ID}+${AGENT_GIT_NAME}@users.noreply.github.com"
+	fi
+elif [ -n "${GIT_USER_NAME:-}" ]; then
 	BOT_EMAIL="${GIT_USER_ID}+${GIT_USER_NAME}@users.noreply.github.com"
 else
 	BOT_EMAIL="${GIT_USER_ID}+${AGENT_GIT_NAME}@users.noreply.github.com"

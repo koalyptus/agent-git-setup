@@ -101,18 +101,18 @@ The token is short-lived (~1h); re-run step 2 for a fresh one in long sessions.
 ## Prerequisites
 - A git repository the agent should work in (requires **git >= 2.43** for per-worktree isolation via `extensions.worktreeConfig`; the script fails fast on older git).
 - The bot identity:
-  - `AGENT_GIT_NAME` — e.g. `myagent[bot]`.
+  - `AGENT_GIT_NAME` — e.g. `myagent[bot]`. For GitHub App, matches `<App name>[bot]` so the commit author equals the bot that owns the token.
   - `GIT_USER_NAME` — the GitHub handle whose numeric id becomes the noreply
-    prefix (e.g. `my-git-user-name`). The skill resolves it to
-    the numeric id via the public GitHub API (`GET /users/<handle>` — no
+    prefix (e.g. `my-git-user-name`). For **Git-only** this is the human handle (e.g. `koalyptus`); for **GitHub App** the script resolves the bot itself (`AGENT_GIT_NAME`) to its bot id (e.g. `320010330` for `agent-oracle-1[bot]`), so the email is `320010330+agent-oracle-1[bot]@...` and commits appear as the bot (not `koalyptus`). The skill/script resolves it to
+    the numeric id via the GitHub API (`GET /users/<handle>` — no
     token needed; when `GH_TOKEN` is set it is used as Bearer for higher
-    rate limits / private).
+    rate limits / private); for App the bot lookup is `GET /users/<agent>[bot]` (public, `%5B%5D`-encoded).
   - (Optional) `GH_TOKEN` — only if you also want `gh`/API as the bot
     (PRs, issues, comments). Not needed for the local commit author.
 - `python3` with the `cryptography` package if you use `mint-token.sh`
   (GitHub App path). Not needed for Git-only commit author.
 - (Optional) `AGENT_GIT_SIGNINGKEY` — an SSH public key (`key::<pubkey>`) for a
-  verified `[bot]` commit badge. Git-only: **Signing Key** on the user account (**SSH and GPG keys**); GitHub App: **Public keys / Commit signing** on the App. Skip for a minimal setup.
+  verified `[bot]` commit badge. **Where to upload matters:** Git-only: **Signing Key** on the user account (**SSH and GPG keys**); GitHub App: **Public keys / Commit signing** on the App. Without the correct upload the badge shows `Unverified / unknown_key` even though the commit author is correctly `AGENT_GIT_NAME` — e.g. Git-only `8214629+koalyptus@...` vs App `320010330+agent-oracle-1[bot]@...`. Skip for a minimal setup.
 - A GitHub App (App ID + PEM) — only if you use the GitHub App path
   (see README §2). Not needed for Git-only.
 
@@ -147,10 +147,8 @@ agent-git-setup.sh .   # current repo (agent infers the path) — via /tmp clone
   `my-git-user-name`). Either the skill (step 2 above) or
   `agent-git-setup.sh` resolves it to the numeric id via
   the public API (`GET https://api.github.com/users/$GIT_USER_NAME` — no auth; Bearer added only when `GH_TOKEN` is set)
-  and builds the noreply email. For the Git-only path the handle is the GitHub
-  account owner; for the GitHub App path it is the bot handle itself (the id is
-  the bot user's id). `GIT_USER_ID` can still be set directly for hermetic
-  tests or offline use, but it is never asked for in the prompt.
+  and builds the noreply email. For **Git-only**, `GIT_USER_NAME` is the human handle (`koalyptus` → `8214629+koalyptus@...` → Verified on your account). For **GitHub App** (`GH_TOKEN` set), `agent-git-setup.sh` instead resolves the bot itself (`GET /users/$AGENT_GIT_NAME` → `320010330` for `agent-oracle-1[bot]`) so the email is `320010330+agent-oracle-1[bot]@...` and commits appear as the bot `agent-oracle-1[bot]` (Verified via App's **Public keys / Commit signing**, not the user's Signing Key). `GIT_USER_ID` / `AGENT_GIT_BOT_ID` can still be set directly for hermetic
+  tests or offline use, but they are never asked for in the prompt.
 - **Re-running is safe (idempotent).** An existing worktree is reconfigured, not recreated.
 - **No origin is fine.** If the repo has no `origin`, the script still sets the
   bot commit author; only the (optional) push remote is absent. Plain
