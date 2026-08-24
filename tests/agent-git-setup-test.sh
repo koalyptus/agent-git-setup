@@ -216,6 +216,31 @@ else
 fi
 unset AGENT_GIT_BOT_ID
 
+# 12. Real pre-commit guard hook is installed and runs on commit in the worktree,
+#     is scoped to the worktree (main repo unharmed, no git status noise).
+echo "pre-commit guard hook"
+REPO12="$(make_repo with-origin)"
+export GH_TOKEN=dummy_token AGENT_GIT_NAME="myagent[bot]" GIT_USER_ID=268339505 GIT_USER_NAME=my-git-user-name AGENT_GIT_BOT_ID=320010330
+if "$SCRIPT" "$REPO12" agent testbranch >/dev/null 2>&1; then
+	WT12="$SANDBOX/worktrees/$(basename "$REPO12")/agent"
+	HOOKDIR="$(dirname "$WT12")/.hooks"
+	# (a) hook installed + wired via worktree-scoped core.hooksPath
+	if [ -x "$HOOKDIR/pre-commit" ]; then ok "pre-commit hook file installed"; else bad "pre-commit hook file missing at $HOOKDIR/pre-commit"; fi
+	assert_eq "$(git -C "$WT12" config core.hooksPath)" "$HOOKDIR" "worktree core.hooksPath points at hook dir"
+	# (b) main repo is NOT touched
+	if [ -e "$REPO12/.git/hooks/pre-commit" ]; then bad "main repo got a pre-commit hook (leak)"; else ok "main repo unaffected"; fi
+	if [ -n "$(git -C "$REPO12" config core.hooksPath 2>/dev/null)" ]; then bad "main repo core.hooksPath set (leak)"; else ok "main repo core.hooksPath unset"; fi
+	# (c) hook runs on a real commit inside the worktree
+	echo "guarded" >"$WT12/guarded.txt"
+	git -C "$WT12" add guarded.txt
+	if git -C "$WT12" commit -q -m "guarded commit"; then ok "commit in worktree passes guard"; else bad "guard wrongly blocked a worktree commit"; fi
+	# (d) hook dir stays out of git status (lives outside the checkout)
+	if [ -z "$(git -C "$WT12" status --porcelain)" ]; then ok "hook dir not visible in git status"; else bad "hook dir leaked into git status: $(git -C "$WT12" status --porcelain)"; fi
+else
+	bad "guard hook test: setup failed"
+fi
+unset AGENT_GIT_BOT_ID
+
 echo
 
 echo "PASS=$PASS FAIL=$FAIL"

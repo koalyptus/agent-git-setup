@@ -212,7 +212,42 @@ if [ "$REPO_USER_NAME" = "$AGENT_GIT_NAME" ]; then
 fi
 echo "agent-git-setup.sh: isolation verified — main tree untouched"
 
-# (2) Push actor is NOT configured here. Git worktrees share remotes, so we
+# (3) Install a REAL pre-commit guard hook so "commit only in the worktree" is
+#     ENFORCED, not just advised. The hook is scoped to this worktree via a
+#     worktree-config `core.hooksPath` (so it never touches the main repo's
+#     hooks). The hook dir lives NEXT TO the worktree, outside the checked-out
+#     tree, so it never shows up in `git status`. We only do this for the
+#     standalone layout we own; a treehouse-managed worktree lives at a path we
+#     don't control, so we skip hook install there.
+if [ "$WT_PATH" = "$WT_ROOT/$REPO_SLUG/$WT_NAME" ]; then
+	HOOKDIR="$(dirname "$WT_PATH")/.hooks"
+	mkdir -p "$HOOKDIR"
+	# The hook bakes in the exact worktree path it was created for, so the
+	# guard is precise (no loose substring match that a coincidental path
+	# could defeat).
+	cat >"$HOOKDIR/pre-commit" <<HOOK
+#!/usr/bin/env bash
+# agent-git-setup pre-commit guard — installed by scripts/agent-git-setup.sh.
+# Aborts any commit that is NOT taking place inside the agent worktree.
+set -euo pipefail
+EXPECTED_WT='${WT_PATH}'
+TOPLEVEL="\$(git rev-parse --show-toplevel)"
+if [ "\$TOPLEVEL" != "\$EXPECTED_WT" ]; then
+	echo "ERROR: pre-commit guard — commit is not in the agent worktree." >&2
+	echo "  Current toplevel: \$TOPLEVEL" >&2
+	echo "  Expected: \$EXPECTED_WT" >&2
+	exit 1
+fi
+echo "OK: committing inside agent worktree at \$TOPLEVEL"
+HOOK
+	chmod +x "$HOOKDIR/pre-commit"
+	git config -f "$WT_CONFIG" core.hooksPath "$HOOKDIR"
+	echo "agent-git-setup.sh: installed pre-commit guard hook at $HOOKDIR/pre-commit"
+else
+	echo "agent-git-setup.sh: treehouse-managed worktree — skipping hook install (path outside standalone root)"
+fi
+
+# (4) Push actor is NOT configured here. Git worktrees share remotes, so we
 #     do not rewrite origin (that would change the human's main tree). The bot
 #     gh/API actor (PRs, issues, comments) is provided by GH_TOKEN in the
 #     agent's environment, which drives gh/API calls as the bot. Plain

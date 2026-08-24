@@ -83,6 +83,40 @@ without needing any other tooling. Everything lives in this repo
 
 The token is short-lived (~1h); re-run step 2 for a fresh one in long sessions.
 
+## Pre-commit guard (ENFORCED)
+
+`scripts/agent-git-setup.sh` installs a real `pre-commit` hook when it creates
+the worktree, so "commit only in the worktree" is **enforced**, not just advised.
+The hook is scoped to the worktree via a worktree-local `core.hooksPath`
+(`~/.agent-git-setup/<repo>/.hooks/`), so it never touches the human's main
+repo and never shows up in `git status`. It aborts any commit whose toplevel
+does not exactly equal the worktree path.
+
+If you are wiring up a worktree by hand (or under a treehouse-managed path,
+where the script skips hook install), run this guard before any commit:
+
+```bash
+#!/usr/bin/env bash
+# Pre-commit guard — abort if the commit is NOT in the agent worktree.
+set -euo pipefail
+EXPECTED_WT="$HOME/.agent-git-setup/<repo>/agent"   # the worktree the script created
+TOPLEVEL="$(git rev-parse --show-toplevel)"
+if [ "$TOPLEVEL" != "$EXPECTED_WT" ]; then
+    echo "ERROR: You are NOT in the worktree. Aborting commit." >&2
+    echo "  Current:  $TOPLEVEL" >&2
+    echo "  Expected: $EXPECTED_WT" >&2
+    exit 1
+fi
+echo "OK: in worktree at $TOPLEVEL"
+```
+
+The check compares the **exact** worktree path (not a loose `.agent-git-setup`
+substring), so a main repo whose path coincidentally contained that string
+cannot sneak a commit through.
+
+**ALWAYS** run git commands with `git -C "$WT_PATH"` to avoid accidentally
+committing on main. Never `cd` to the main repo for git operations.
+
 ## Key concepts
 - **Commit author = bot name + bot noreply email, push actor = human, gh/API = bot.** The worktree's own config file gets `user.name` (bot name) + `user.email` (bot noreply). `GH_TOKEN` in the environment drives `gh`/API (PRs, issues, comments) as the bot. Plain `git push` uses the human account owner's credential — the push actor is the human, by design. (The `scripts/agent-git-setup.sh` script never rewrites `origin`, because worktrees share remotes and rewriting would touch the main tree.)
 - **Worktree isolation.** All bot config is scoped to the worktree's own config file. The human's main tree stays theirs. No collision, no `git config` discipline required.
