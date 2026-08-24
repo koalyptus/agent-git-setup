@@ -1,6 +1,6 @@
 # agent-git-setup
 
-Give an AI agent a bot identity in local git worktrees and/or on GitHub to easily distinguish agentic authors on Git and GitHub. 
+Give an AI agent a bot identity in local git worktrees and/or on GitHub to easily distinguish agentic authors on Git and GitHub.
 
 ## Requirements
 
@@ -31,6 +31,7 @@ hermes skills install https://raw.githubusercontent.com/koalyptus/agent-git-setu
 # or clone and point at the local copy:
 # hermes skills install ./skills/agent-git-setup --category agent --name agent-git-setup
 ```
+
 **Other harnesses (Claude Code, OpenCode, Codex, etc.):**\
 Consult that harness's docs for the
 exact install / "load skill from repo" command. Alternatively, copy
@@ -47,25 +48,6 @@ You will fill the `[...]` placeholders in step 3 with these values.
 **`AGENT_GIT_NAME`**: the bot commit author, e.g. `myagent[bot]` (any name works).
 
 **`GIT_USER_NAME`**: your GitHub handle, e.g. `my-git-user-name`.
-
-*Optional*
-
-`AGENT_GIT_SIGNINGKEY` — only if you want the green **Verified** badge on bot commits. Without it, commits still show as `myagent[bot]`.
-
-To get the `Verified` badge
-
-- Run command below by replacing `[AGENT_GIT_NAME]` your agent name stripped off the `[` and `]` special characters, e.g. `agent-laptop[bot]` → `agent-laptop-bot-signing`, to avoid file system annoyances:
-```bash
-ssh-keygen -t ed25519 -f ~/.ssh/[AGENT_GIT_NAME with no [] characters]-signing -C "[AGENT_GIT_NAME]" -N ""
-```
-- This creates `~/.ssh/[AGENT_GIT_NAME with no [] characters]-signing` (private key) and a `.pub` (public key)
-
-- Copy **only** the `.pub` file contents, **Signing Key**, using a command for example
-```bash
-cat ~/.ssh/[AGENT_GIT_NAME with no [] characters]-signing.pub
-```
-- Then in GitHub access **Settings → SSH and GPG keys → New SSH key → Key type: Signing Key**, create a new SSH key and paste the Signing Key copied above in the `Key` textbox, make sure you use `Signing Key` key type
-- Later you will assign in the prompt the same public key to `AGENT_GIT_SIGNINGKEY="key::ssh-ed25519 AAAA... ${AGENT_GIT_NAME}"`note the `key::` prefix + full pubkey line from the same `.pub`.
 
 #### GitHub App
 
@@ -91,7 +73,6 @@ Do the one-time App setup first, then give the agent the values below.
    - After creating, note the **App ID** shown on the app page.
 2. **Generate the private key** — on the app page click **Generate a private key (PEM)**, download the `.pem`, keep it secret and store it **outside any git repo** (e.g. `~/.ssh/myagent.pem`).
 3. **Install the app** — on the app page click **Install** and select the repositories the agent should touch. This grants permission; it does not change the bot name.
-4. **(Optional) Verified commits** — see below; you can skip this and add it later.
 
 **Information you then give the agent (fill the `[...]` in §3):**
 
@@ -99,30 +80,6 @@ Do the one-time App setup first, then give the agent the values below.
 - `GIT_USER_NAME` — your GitHub handle, e.g. `my-git-user-name`.
 - `GITHUB_APP_ID` — the App ID from step 1.
 - `GITHUB_APP_PEM` — path to the `.pem` from step 2 (e.g. `~/.ssh/myagent.pem`).
-- `AGENT_GIT_SIGNINGKEY` *(optional)* — only if you want the green **Verified** badge; see below.
-
-*Optional*
-
-To get the green **Verified** badge:
-- Run command below by replacing `[AGENT_GIT_NAME]` your agent name stripped off the `[` and `]` special characters, e.g. `agent-laptop[bot]` → `agent-laptop-bot-signing`, to avoid file system annoyances:
-```bash
-ssh-keygen -t ed25519 -f ~/.ssh/[AGENT_GIT_NAME with no [] characters]-signing -C "[AGENT_GIT_NAME]" -N ""
-```
-- This creates `~/.ssh/[AGENT_GIT_NAME with no [] characters]-signing` (private key) and a `.pub` (public key)
-
-- Copy **only** the `.pub` file contents, **Signing Key**, using a command for example
-```bash
-cat ~/.ssh/[AGENT_GIT_NAME with no [] characters]-signing.pub
-```
-
-- Upload the **public** `.pub` to GitHub \
-your App → **Settings → Developer settings → GitHub Apps → your app → Public keys / Commit signing**
-
-- paste the **Signing Key** in Key field and enable commit signing if the App shows that toggle.
-
-- Later you will assign in the prompt the same public key to `AGENT_GIT_SIGNINGKEY="key::ssh-ed25519 AAAA... ${AGENT_GIT_NAME}"`note the `key::` prefix + full pubkey line from the same `.pub`.
-
-You can set up Verified later — omit `AGENT_GIT_SIGNINGKEY` for now and add it when you want the badge.
 
 ### 3. Paste this prompt to the agent
 
@@ -130,25 +87,22 @@ Pick **one** of these — whichever matches your setup. Replace every `[...]` th
 
 #### Git-only
 
-Use the prompt below with replaced values prepared in step 2, omit `AGENT_GIT_SIGNINGKEY` if you don't want Verified commits.
+Use the prompt below with replaced values prepared in step 2.
 
 ```text
 Use the agent-git-setup skill. Set up a bot git identity for current repo.
 
 AGENT_GIT_NAME=[myagent[bot]]
 GIT_USER_NAME=[my-git-user-name]
-AGENT_GIT_SIGNINGKEY=[key::ssh-ed25519 AAAA... myagent[bot]]
 
 After setting the env vars above, run `agent-git-setup.sh` in the current repo.
 
 Then do your git work inside the printed worktree. Do not touch the main tree.
 ```
 
-Omit the `AGENT_GIT_SIGNINGKEY=` line entirely if you don't want the green Verified badge. Git-only Verified goes to the *user* account: **Settings → SSH and GPG keys → New SSH key → Key type: Signing Key** (not an App).
-
 #### GitHub App
 
-Use the prompt below with replaced values prepared in step 2, omit `AGENT_GIT_SIGNINGKEY` if you don't want Verified commits.
+Use the prompt below with replaced values prepared in step 2.
 
 ```text
 Use the agent-git-setup skill. Set up a bot git identity for current repo.
@@ -157,7 +111,6 @@ AGENT_GIT_NAME=[myagent[bot]]
 GIT_USER_NAME=[my-git-user-name]
 GITHUB_APP_ID=[4646191]
 GITHUB_APP_PEM=[/path/to/myagent.pem]
-AGENT_GIT_SIGNINGKEY=[key::ssh-ed25519 AAAA... myagent[bot]]
 
 After setting the env vars above (mint the token first if using the GitHub App), run `agent-git-setup.sh` in the current repo.
 
@@ -168,11 +121,11 @@ Then do your git work inside the printed worktree. Do not touch the main tree.
 
 1. The agent authenticates itself if needed. If it has to use GitHub (open PRs, comment on issues), it creates its own short-lived token — you don't provide one. If it only makes local commits, no token is needed at all.
 
-2. The agent resolves your GitHub handle (GIT_USER_NAME) to the numeric ID GitHub requires.
+2. The agent resolves the bot's numeric id via the public GitHub API (`GET /users/<bot>`).
 
 3. The agent creates an isolated worktree (standalone: `~/.agent-git-setup/<repo>/agent`; with [treehouse](https://github.com/kunchenguid/treehouse): the treehouse pool) and sets the bot identity only there. Requires git ≥ 2.43. It prints isolation verified — main tree untouched on success; if it prints ERROR, update git and re-run.
 
-4. The agent does all its work inside that worktree. Commits appear as {agent-name}[bot], GitHub actions appear as {agent-name}[bot] (when a token was needed), and git push still uses your account. Your main checkout is never changed.
+4. The agent does all its work inside that worktree. Commits appear as {agent-name}[bot] in the commit list (no badge by default). GitHub actions appear as {agent-name}[bot] (when a token was needed), and git push still uses your account. Your main checkout is never changed.
 
 Full details, diagrams, and reference tables are below (GitHub App setup is already in §2 above).
 
@@ -205,8 +158,7 @@ Full details, diagrams, and reference tables are below (GitHub App setup is alre
 │  env: AGENT_GIT_*   │  (set by agent/skill)
 │  ─────────────────  │
 │  AGENT_GIT_NAME     │  e.g. myagent[bot]
-│  GIT_USER_NAME  │  handle (agent resolves to id)
-│  AGENT_GIT_SIGNINGKEY│ (optional, for verified)
+│  GIT_USER_NAME      │  handle (agent resolves to id)
 └─────────┬───────────┘
           │
           ▼
@@ -215,8 +167,8 @@ Full details, diagrams, and reference tables are below (GitHub App setup is alre
 │  ─────────────────  │
 │  git worktree add   │  → ~/.agent-git-setup/<repo>/agent (or treehouse pool)
 │  write worktree     │     .git/worktrees/agent/config
-│    user.name        │     user.name = <name>[bot] (history reads as bot)
-│    user.email       │     user.email = <id>+<GIT_USER_NAME>@... (verifies)
+│    user.name        │     user.name = <name>[bot]
+│    user.email       │     user.email = <bot_id>+<name>[bot]@... (bot noreply)
 └─────────┬───────────┘
           │
           ▼
@@ -224,7 +176,7 @@ Full details, diagrams, and reference tables are below (GitHub App setup is alre
 │   Agent works in    │
 │   the worktree      │
 │  ─────────────────  │
-│  commits → <name>[bot]     │
+│  commits → <name>[bot] (no badge)
 │  gh/API   → <name>[bot] (GH_TOKEN)
 │  git push → your credential│
 └─────────────────────┘
@@ -263,7 +215,7 @@ It handles two distinct things:
   contains no secrets. It expects `GH_TOKEN` to already be present in the
   environment (minted by whatever backend/agent you use) and only *consumes* it.
 - **Not coupled to any worktree tool.** If [treehouse](https://github.com/kunchenguid/treehouse) is installed it is used to
-  obtain the worktree; otherwise a plain `git worktree add` is used. Same result.
+  obtain the worktree; otherwise a plain `git worktree add" is used. Same result.
 - **Not touching your main tree.** All configuration is scoped to the worktree.
   Your main repository and global git config are never modified.
 
@@ -273,8 +225,8 @@ It handles two distinct things:
 **push credential**. This is a deliberate, safe choice:
 
 - The script enables the git `worktreeConfig` extension (`extensions.worktreeConfig=true` in the main repo config). On git 2.43+ this is **required** for the per-worktree config file at `.git/worktrees/<name>/config` to be read at all; without it the bot identity still leaks into the shared main config (the failure seen on the laptop). The script exits with an error if it cannot enable the extension, and after writing it prints an isolation check (`worktree user.name` = bot, `main tree user.name` = human) that fails loudly if the worktree config is not being read.
-- Rewriting `origin` to inject a token would change your main tree too — exactly what we avoid. The script does **not** set `remote.origin.url` in the worktree config; it only sets `user.name`/`user.email` (and optionally SSH signing). The bot actor for `gh`/API (PRs, issues, comments) is provided by `GH_TOKEN` in the agent's environment — **not** by rewriting `origin`. Plain `git push` uses the repo's normal credential (the push actor is you, unless your push mechanism also uses `GH_TOKEN`). The agent must not rewrite `origin` either (see the skill).
-- **Result:** commits authored in the worktree show as `<name>[bot]`. Plain `git push` uses the repo's normal credential. `gh`/API calls (PRs, issues, comments) made with `GH_TOKEN` in the agent's environment are the bot.
+- Rewriting `origin` to inject a token would change your main tree too — exactly what we avoid. The script does **not** set `remote.origin.url` in the worktree config; it only sets `user.name`/`user.email`. The bot actor for `gh`/API (PRs, issues, comments) is provided by `GH_TOKEN` in the agent's environment — **not** by rewriting `origin`. Plain `git push` uses the repo's normal credential (the push actor is you, unless your push mechanism also uses `GH_TOKEN`). The agent must not rewrite `origin` either (see the skill).
+- **Result:** commits authored in the worktree show as `<name>[bot]` in the commit list. Plain `git push` uses the repo's normal credential. `gh`/API calls (PRs, issues, comments) made with `GH_TOKEN` in the agent's environment are the bot.
 
 If you later want the *push* to be the bot too, do it outside this script (e.g.
 a separate remote or credential helper scoped to the worktree) — but the
@@ -320,22 +272,12 @@ agent-git-setup.sh <repo-dir> [worktree-name] [branch]
 | Variable             | Meaning                                                              |
 |----------------------|----------------------------------------------------------------------|
 | `AGENT_GIT_NAME`     | Commit author name, e.g. `myagent[bot]`.                            |
-| `GIT_USER_NAME` | GitHub handle (e.g. `my-git-user-name`) — resolved via the public GitHub API (`GET /users/<handle>` — no `GH_TOKEN` needed). |
+| `GIT_USER_NAME`      | GitHub handle (e.g. `my-git-user-name`) — resolved via the public GitHub API (`GET /users/<handle>` — no `GH_TOKEN` needed). |
 | `GH_TOKEN`           | *(Optional)* A push-capable GitHub token (e.g. a GitHub App install token) — only for `gh`/API as the bot. Not needed for the local commit author.       |
 | `GIT_USER_ID`        | *(hidden fallback)* Numeric id, alternative to `GIT_USER_NAME`. Only for hermetic tests / offline use; never in the prompt. |
 
 The commit author (`user.name` / `user.email`) is set from the required
 variables above — it is **not** optional.
-
-### Optional: verified commit signing
-
-| Variable              | Meaning                                                              |
-|----------------------|----------------------------------------------------------------------|
-| `AGENT_GIT_SIGNINGKEY` | SSH public key as `key::<pubkey>` for the green **Verified** badge. Without it commits are `myagent[bot]` but unverified. See §2 for how to generate/upload it. |
-
-Without this, commits still show as `<name>[bot]` but **unverified**. With it,
-they get the green Verified checkmark. Requires the GitHub App to have commit
-signing enabled and its SSH key uploaded.
 
 ### Defaults (override via environment or arguments)
 
@@ -350,14 +292,12 @@ signing enabled and its SSH key uploaded.
 export GH_TOKEN="$(mint-my-token)"            # backend-specific; not this script's job
 export AGENT_GIT_NAME="myagent[bot]"
 export GIT_USER_NAME="my-git-user-name"           # handle; script/skill resolves to numeric id
-export AGENT_GIT_SIGNINGKEY="key::ssh-ed25519 AAAA... bot@github"  # optional
 
 agent-git-setup.sh ~/dev/my-repo
 # -> worktree at ~/.agent-git-setup/my-repo/agent (or treehouse pool)
-#    commits there: myagent[bot] <id+my-git-user-name@users.noreply.github.com>
-#                  (user.name = myagent[bot] so history still reads as the bot;
-#                   email uses GIT_USER_NAME so the SSH signing key on that
-#                   account verifies → green Verified)
+#    commits there: myagent[bot] <bot_id+myagent[bot]@users.noreply.github.com>
+#                  (user.name = myagent[bot] so agent shows in commit list;
+#                   email is bot noreply so agent name appears in list)
 #    your ~/dev/my-repo main tree: untouched
 ```
 
@@ -380,4 +320,3 @@ of the above.
 ## License
 
 MIT.
-

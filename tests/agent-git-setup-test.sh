@@ -31,7 +31,7 @@ bad() {
 
 # assert_eq <actual> <expected> <label>
 assert_eq() {
-	if [ "$1" = "$2" ]; then ok "$3"; else bad "$3 (got [$1], want [$2])"; fi
+	if [ "$1" = "$2" ]; then ok "$1"; else bad "$3 (got [$1], want [$2])"; fi
 }
 
 # make_repo [with-origin]: throwaway repo with a human identity + optional origin.
@@ -60,12 +60,12 @@ export GH_TOKEN=dummy_token
 export AGENT_GIT_NAME="myagent[bot]"
 export GIT_USER_ID=268339505
 export GIT_USER_NAME=my-git-user-name
+export AGENT_GIT_BOT_ID=320010330
 if "$SCRIPT" "$REPO" agent testbranch >/dev/null 2>&1; then
 	WT="$SANDBOX/worktrees/$(basename "$REPO")/agent"
 	if [ -e "$WT/.git" ]; then ok "worktree created"; else bad "worktree not created"; fi
 	assert_eq "$(git -C "$WT" config user.name)" "myagent[bot]" "worktree user.name = bot"
-	assert_eq "$(git -C "$WT" config user.email)" "268339505+my-git-user-name@users.noreply.github.com" "worktree user.email = noreply using GIT_USER_NAME so signing verifies"
-	# The worktree shares the main remote; origin is NOT rewritten.
+	assert_eq "$(git -C "$WT" config user.email)" "320010330+myagent[bot]@users.noreply.github.com" "worktree user.email = bot noreply"
 	assert_eq "$(git -C "$WT" remote get-url origin)" "https://github.com/example/repo.git" "worktree origin unchanged"
 else
 	bad "script exited non-zero on happy path"
@@ -135,56 +135,57 @@ export GH_TOKEN=dummy_token AGENT_GIT_NAME="myagent[bot]" GIT_USER_ID=268339505
 rc=$?
 assert_eq "$rc" "2" "exits 2 on non-git dir"
 
-# 7. Email uses GIT_USER_NAME so signing verifies (Verified, not Unverified)
+# 7. Email uses bot noreply so agent name shows in commit list
 echo "noreply email construction"
 REPO7="$(make_repo with-origin)"
-unset GH_TOKEN AGENT_GIT_BOT_ID
+unset GH_TOKEN
 
-export AGENT_GIT_NAME="agent-laptop[bot]" GIT_USER_ID=8214629 GIT_USER_NAME=koalyptus
+export AGENT_GIT_NAME="agent-laptop[bot]" GIT_USER_ID=268339505 GIT_USER_NAME=my-git-user-name AGENT_GIT_BOT_ID=320004057
 if "$SCRIPT" "$REPO7" agent testbranch >/dev/null 2>&1; then
 	WT7="$SANDBOX/worktrees/$(basename "$REPO7")/agent"
 	assert_eq "$(git -C "$WT7" config user.name)" "agent-laptop[bot]" "email test: user.name still the bot"
-	assert_eq "$(git -C "$WT7" config user.email)" "8214629+koalyptus@users.noreply.github.com" "email uses GIT_USER_NAME (koalyptus) so signing verifies"
+	assert_eq "$(git -C "$WT7" config user.email)" "320004057+agent-laptop[bot]@users.noreply.github.com" "email uses bot noreply (id+botname@...)"
 else
 	bad "email construction test: script failed unexpectedly"
 fi
+unset AGENT_GIT_BOT_ID
 
 # 8. Fallback when only GIT_USER_ID is set (hermetic, no GIT_USER_NAME)
 echo "noreply fallback without GIT_USER_NAME"
 REPO8="$(make_repo with-origin)"
 unset GIT_USER_NAME
-export GH_TOKEN=dummy_token AGENT_GIT_NAME="myagent[bot]" GIT_USER_ID=268339505
+export GH_TOKEN=dummy_token AGENT_GIT_NAME="myagent[bot]" GIT_USER_ID=268339505 AGENT_GIT_BOT_ID=320010330
 if "$SCRIPT" "$REPO8" agent testbranch >/dev/null 2>&1; then
 	WT8="$SANDBOX/worktrees/$(basename "$REPO8")/agent"
-	assert_eq "$(git -C "$WT8" config user.email)" "268339505+myagent[bot]@users.noreply.github.com" "fallback: email uses AGENT_GIT_NAME when GIT_USER_NAME unset"
+	assert_eq "$(git -C "$WT8" config user.email)" "320010330+myagent[bot]@users.noreply.github.com" "fallback: email uses bot noreply when GIT_USER_NAME unset"
 else
 	bad "fallback test: script failed unexpectedly"
 fi
+unset AGENT_GIT_BOT_ID
 
-# 9. Signing enables commit.gpgsign scoped to worktree, not main
-echo "signing isolation"
+# 9. No signing by default (industry standard)
+echo "no signing by default"
 REPO9="$(make_repo with-origin)"
 export GH_TOKEN=dummy_token AGENT_GIT_NAME="myagent[bot]" GIT_USER_ID=268339505 GIT_USER_NAME=my-git-user-name
-export AGENT_GIT_SIGNINGKEY="key::ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest myagent[bot]"
 if "$SCRIPT" "$REPO9" agent testbranch >/dev/null 2>&1; then
 	WT9="$SANDBOX/worktrees/$(basename "$REPO9")/agent"
-	assert_eq "$(git -C "$WT9" config commit.gpgsign)" "true" "worktree commit.gpgsign true when signing key set"
-	assert_eq "$(git -C "$WT9" config gpg.format)" "ssh" "worktree gpg.format ssh"
-	assert_eq "$(git -C "$WT9" config user.signingkey)" "key::ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest myagent[bot]" "worktree signingkey set"
-	if git -C "$REPO9" config commit.gpgsign >/dev/null 2>&1; then
-		bad "main tree must not have commit.gpgsign"
+	if git -C "$WT9" config commit.gpgsign >/dev/null 2>&1; then
+		bad "commit.gpgsign should not be set by default"
 	else
-		ok "main tree commit.gpgsign untouched"
+		ok "no commit.gpgsign by default"
+	fi
+	if git -C "$WT9" config user.signingkey >/dev/null 2>&1; then
+		bad "user.signingkey should not be set by default"
+	else
+		ok "no user.signingkey by default"
 	fi
 else
 	bad "signing test: script failed unexpectedly"
 fi
-unset AGENT_GIT_SIGNINGKEY
 
 # 10. Relative REPO_DIR '.' still creates worktree outside (not ~/.agent-git-setup/./agent)
 echo "relative REPO_DIR '.'"
 REPO10="$(make_repo with-origin)"
-unset AGENT_GIT_BOT_ID
 
 export GH_TOKEN=dummy_token AGENT_GIT_NAME="myagent[bot]" GIT_USER_ID=268339505 GIT_USER_NAME=my-git-user-name
 if (cd "$REPO10" && "$SCRIPT" . agent testbranch >/dev/null 2>&1); then
@@ -199,82 +200,21 @@ fi
 # 11. Actual git commit in worktree is authored as bot (local commits appear with agent identity)
 echo "commit author isolation"
 REPO11="$(make_repo with-origin)"
-unset AGENT_GIT_BOT_ID
 
-export GH_TOKEN=dummy_token AGENT_GIT_NAME="myagent[bot]" GIT_USER_ID=268339505 GIT_USER_NAME=my-git-user-name
+export GH_TOKEN=dummy_token AGENT_GIT_NAME="myagent[bot]" GIT_USER_ID=268339505 GIT_USER_NAME=my-git-user-name AGENT_GIT_BOT_ID=320010330
 if "$SCRIPT" "$REPO11" agent testbranch >/dev/null 2>&1; then
 	WT11="$SANDBOX/worktrees/$(basename "$REPO11")/agent"
 	echo "hello" >"$WT11/hello.txt"
 	git -C "$WT11" add hello.txt
 	git -C "$WT11" commit -q -m "test commit as bot"
 	AUTHOR="$(git -C "$WT11" log -1 --format='%an %ae')"
-	assert_eq "$AUTHOR" "myagent[bot] 268339505+my-git-user-name@users.noreply.github.com" "worktree commit author is bot"
+	assert_eq "$AUTHOR" "myagent[bot] 320010330+myagent[bot]@users.noreply.github.com" "worktree commit author is bot noreply"
 	MAIN_AUTHOR="$(git -C "$REPO11" log -1 --format='%an %ae')"
 	assert_eq "$MAIN_AUTHOR" "human human@example.com" "main tree commit still human"
 else
 	bad "commit isolation test: setup failed"
 fi
-
-unset AGENT_GIT_SIGNINGKEY
-
-# 12. App path (GH_TOKEN + bot id): bot noreply, not human — Verified as bot
-echo "app path bot noreply"
-REPO12="$(make_repo with-origin)"
-export GH_TOKEN=dummy_token AGENT_GIT_NAME="agent-oracle-1[bot]" GIT_USER_ID=8214629 GIT_USER_NAME=koalyptus AGENT_GIT_BOT_ID=320010330
-if "$SCRIPT" "$REPO12" agent testbranch >/dev/null 2>&1; then
-	WT12="$SANDBOX/worktrees/$(basename "$REPO12")/agent"
-	assert_eq "$(git -C "$WT12" config user.email)" "320010330+agent-oracle-1[bot]@users.noreply.github.com" "app path: bot email (not koalyptus) when AGENT_GIT_BOT_ID set"
-	assert_eq "$(git -C "$WT12" config user.name)" "agent-oracle-1[bot]" "app path: user.name stays bot"
-else
-	bad "app path test: script failed unexpectedly"
-fi
 unset AGENT_GIT_BOT_ID
-
-# 13. App path commit author is bot (not human)
-echo "app path commit author"
-REPO13="$(make_repo with-origin)"
-export GH_TOKEN=dummy_token AGENT_GIT_NAME="agent-oracle-1[bot]" GIT_USER_ID=8214629 GIT_USER_NAME=koalyptus AGENT_GIT_BOT_ID=320010330
-if "$SCRIPT" "$REPO13" agent testbranch >/dev/null 2>&1; then
-	WT13="$SANDBOX/worktrees/$(basename "$REPO13")/agent"
-	echo "hello" >"$WT13/hello.txt"
-	git -C "$WT13" add hello.txt
-	git -C "$WT13" commit -q -m "test app bot commit"
-	AUTHOR13="$(git -C "$WT13" log -1 --format='%an %ae')"
-	assert_eq "$AUTHOR13" "agent-oracle-1[bot] 320010330+agent-oracle-1[bot]@users.noreply.github.com" "app path commit author is bot noreply"
-	MAIN13="$(git -C "$REPO13" log -1 --format='%an %ae')"
-	assert_eq "$MAIN13" "human human@example.com" "main tree still human"
-else
-	bad "app path commit author test: setup failed"
-fi
-unset AGENT_GIT_BOT_ID
-
-# 14. Git-only path (no GH_TOKEN): human noreply even for [bot] name — Verified on human account
-echo "git-only human noreply"
-REPO14="$(make_repo with-origin)"
-unset GH_TOKEN AGENT_GIT_BOT_ID
-export AGENT_GIT_NAME="agent-oracle-1[bot]" GIT_USER_ID=8214629 GIT_USER_NAME=koalyptus
-if "$SCRIPT" "$REPO14" agent testbranch >/dev/null 2>&1; then
-	WT14="$SANDBOX/worktrees/$(basename "$REPO14")/agent"
-	assert_eq "$(git -C "$WT14" config user.email)" "8214629+koalyptus@users.noreply.github.com" "git-only: human email even for [bot] name"
-else
-	bad "git-only test: script failed unexpectedly"
-fi
-
-# 15. App path WITHOUT AGENT_GOT_ID override: script resolves bot ID via API (gated on real token)
-echo "app path bot noreply via API (gated)"
-if [ -n "${GH_TOKEN:-}" ]; then
-	REPO15="$(make_repo with-origin)"
-	unset AGENT_GIT_BOT_ID
-	export AGENT_GIT_NAME="agent-oracle-1[bot]" GIT_USER_ID=8214629 GIT_USER_NAME=koalyptus
-	if "$SCRIPT" "$REPO15" agent testbranch >/dev/null 2>&1; then
-		WT15="$SANDBOX/worktrees/$(basename "$REPO15")/agent"
-		assert_eq "$(git -C "$WT15" config user.email)" "320010330+agent-oracle-1[bot]@users.noreply.github.com" "app path: bot email resolved via API (no AGENT_GIT_BOT_ID)"
-	else
-		bad "app path API resolution test: script failed"
-	fi
-else
-	echo "  skipped (no GH_TOKEN set)"
-fi
 
 echo
 

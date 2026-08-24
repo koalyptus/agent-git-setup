@@ -5,11 +5,19 @@
 # Give an AI agent its own git identity inside an isolated worktree.
 #
 # This script is completely backend/agent-neutral. It does NOT mint tokens and
-# contains no secrets. It expects GH_TOKEN (already minted by whatever
-# backend/agent is running) and the desired bot identity in the environment,
+# contains no secrets. It expects the desired bot identity in the environment,
 # then sets up a git worktree where commits are authored as that bot identity
 # — while your main checkout stays exactly as you. The bot identity is the
 # commit author only; plain `git push` uses your normal credential.
+#
+# DESIGN (matches industry standard: Codex, Claude Code, Cursor, Copilot):
+#   Local commits use the BOT noreply email so the agent name appears in the
+#   GitHub commit list. No SSH signing by default — the "verified" badge is
+#   not worth the key management complexity for ephemeral agent environments.
+#
+#   Git-only flow: bot noreply, no signing → agent name shows, no badge.
+#   GitHub App flow: bot noreply for local commits + `gh` with `GH_TOKEN` for
+#   API commits (GitHub signs server-side → agent name + Verified badge).
 #
 # If the "treehouse" tool is installed it is used to obtain the worktree;
 # otherwise a plain "git worktree add" is used. Either way the worktree is
@@ -27,17 +35,16 @@
 #                     the script fetches the id via the public API.
 #
 # Optional environment variables:
-#   GH_TOKEN              A push-capable GitHub token (e.g. an App install token).
-#                         Only needed for gh/API as the bot (PRs, issues).
-#                         Required for deterministic bot noreply resolution.
-#   AGENT_GIT_SIGNINGKEY  An SSH public key (key::<pubkey>) for a verified
-#                         [bot] commit badge.
+#   GH_TOKEN              A GitHub token (e.g. an App install token) for
+#                         `gh`/API operations as the bot (PRs, issues,
+#                         comments, and API commits for Verified badge).
+#   AGENT_GIT_SIGNINGKEY  DEPRECATED — SSH signing does not verify for bot
+#                         noreply emails. Kept for backward compatibility
+#                         but has no effect on bot identity commits.
 #   AGENT_GIT_WORKTREE    Worktree name (default: agent).
 #   AGENT_GIT_BRANCH      Branch created in the worktree (default: agent-work).
 #   AGENT_GIT_WORKTREE_ROOT Worktree root for standalone mode (default: ~/.agent-git-setup).
 #                           Treehouse, when present, overrides this.
-#   AGENT_GIT_BOT_ID        (hidden, hermetic tests only) Bot user id for App path; when set,
-#                           used directly for BOT_EMAIL (no network). Never in human prompt.
 #
 
 set -euo pipefail
@@ -93,28 +100,22 @@ else
 	exit 2
 fi
 
-# GitHub noreply email: must be id+login of the account that owns the signing key.
-# Git-only (no GH_TOKEN): human's verified noreply (GIT_USER_NAME=koalyptus) -> Verified on your account.
-# GitHub App (GH_TOKEN set): bot's own noreply (AGENT_GIT_NAME e.g. agent-oracle-1[bot]) -> Verified as bot,
-#   fetched via public GET /users/<bot> using bot login; falls back to human if bot lookup fails.
-# AGENT_GIT_BOT_ID is a hidden hermetic override (tests): when set, used directly as bot id (no network).
+# Commit email: use bot noreply so the agent name appears in the GitHub commit list.
+# The bot id is resolved via the public API (GET /users/<bot> works without auth).
+# This matches the industry standard (Codex, Claude Code, Cursor, Copilot).
+# AGENT_GIT_BOT_ID is a hidden override for hermetic tests (no network).
 if [ -n "${AGENT_GIT_BOT_ID:-}" ]; then
-	BOT_EMAIL="${AGENT_GIT_BOT_ID}+${AGENT_GIT_NAME}@users.noreply.github.com"
-elif [ -n "${GH_TOKEN:-}" ] && [ -n "${AGENT_GIT_NAME:-}" ]; then
-	# Try bot noreply when App is in use (GH_TOKEN present)
-	_APP_BOT_ENC="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "${AGENT_GIT_NAME}" 2>/dev/null || true)"
-	_APP_BOT_ID="$(curl -sf -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github.v3+json" "https://api.github.com/users/${_APP_BOT_ENC}" 2>/dev/null | python3 -c 'import sys,json; print(json.load(sys.stdin).get("id",""))' 2>/dev/null || true)"
-	if [ -n "${_APP_BOT_ID:-}" ] && [ "${_APP_BOT_ID}" != "None" ] && [ "${_APP_BOT_ID}" != "" ]; then
-		BOT_EMAIL="${_APP_BOT_ID}+${AGENT_GIT_NAME}@users.noreply.github.com"
-	elif [ -n "${GIT_USER_NAME:-}" ]; then
-		BOT_EMAIL="${GIT_USER_ID}+${GIT_USER_NAME}@users.noreply.github.com"
-	else
-		BOT_EMAIL="${GIT_USER_ID}+${AGENT_GIT_NAME}@users.noreply.github.com"
-	fi
-elif [ -n "${GIT_USER_NAME:-}" ]; then
-	BOT_EMAIL="${GIT_USER_ID}+${GIT_USER_NAME}@users.noreply.github.com"
+	COMMIT_EMAIL="${AGENT_GIT_BOT_ID}+${AGENT_GIT_NAME}@users.noreply.github.com"
 else
-	BOT_EMAIL="${GIT_USER_ID}+${AGENT_GIT_NAME}@users.noreply.github.com"
+	_APP_BOT_ENC="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "${AGENT_GIT_NAME}" 2>/dev/null || true)"
+	_APP_BOT_ID="$(curl -sf "https://api.github.com/users/${_APP_BOT_ENC}" 2>/dev/null | python3 -c 'import sys,json; print(json.load(sys.stdin).get("id",""))' 2>/dev/null || true)"
+	if [ -n "${_APP_BOT_ID:-}" ] && [ "${_APP_BOT_ID}" != "None" ] && [ "${_APP_BOT_ID}" != "" ]; then
+		COMMIT_EMAIL="${_APP_BOT_ID}+${AGENT_GIT_NAME}@users.noreply.github.com"
+	elif [ -n "${GIT_USER_NAME:-}" ]; then
+		COMMIT_EMAIL="${GIT_USER_ID}+${GIT_USER_NAME}@users.noreply.github.com"
+	else
+		COMMIT_EMAIL="${GIT_USER_ID}+${AGENT_GIT_NAME}@users.noreply.github.com"
+	fi
 fi
 
 # ---------------------------------------------------------------------------
@@ -189,8 +190,9 @@ fi
 mkdir -p "$(dirname "$WT_CONFIG")"
 
 # (1) Commit author — scoped to the worktree only (main tree untouched).
+#     Agent name appears as author; email is bot noreply so agent shows in commit list.
 git config -f "$WT_CONFIG" user.name "$AGENT_GIT_NAME"
-git config -f "$WT_CONFIG" user.email "$BOT_EMAIL"
+git config -f "$WT_CONFIG" user.email "$COMMIT_EMAIL"
 
 # (1b) Verify the worktree config is actually being read. Without
 #      extensions.worktreeConfig (git 2.43+), git ignores the worktree config
@@ -217,22 +219,6 @@ echo "agent-git-setup.sh: isolation verified — main tree untouched"
 #     `git push` uses the repo's normal credential — the push actor is you.
 #     credential — by design, so the main tree is never touched.
 
-# (3) Optional: verified [bot] commit signing via the App SSH key.
-# The key is the public key literal (key::<pubkey>). For SSH signing to actually
-# work, the corresponding PRIVATE key must be loaded in ssh-agent:
-#   eval "$(ssh-agent -s)" && ssh-add /path/to/${AGENT_GIT_NAME//[^a-zA-Z0-9]/-}-signing
-# Add that to your shell rc so it's always available when the agent commits.
-if [ -n "${AGENT_GIT_SIGNINGKEY:-}" ]; then
-	git config -f "$WT_CONFIG" gpg.format ssh
-	git config -f "$WT_CONFIG" user.signingkey "$AGENT_GIT_SIGNINGKEY"
-	git config -f "$WT_CONFIG" commit.gpgsign true
-	echo "agent-git-setup.sh: commit signing enabled (verified [bot] badge)"
-fi
-
-# ---------------------------------------------------------------------------
-# Done
-# ---------------------------------------------------------------------------
-
 echo "agent-git-setup.sh: done. Agent should work in: $WT_PATH"
-echo "  commits there are attributed to $AGENT_GIT_NAME <$BOT_EMAIL>"
+echo "  commits there are attributed to $AGENT_GIT_NAME <$COMMIT_EMAIL>"
 echo "  your main tree at $REPO_DIR is untouched."
