@@ -8,7 +8,7 @@
 #
 set -uo pipefail
 
-SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../agent-git-setup.sh"
+SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../scripts/agent-git-setup.sh"
 
 # Sandbox: real HOME / global git config never touched.
 SANDBOX="$(mktemp -d)"
