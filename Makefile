@@ -1,5 +1,5 @@
-SCRIPT := agent-git-setup.sh
-MINT := mint-token.sh
+SCRIPT := scripts/agent-git-setup.sh
+MINT := scripts/mint-token.sh
 TEST_DIR := tests
 TEST := $(TEST_DIR)/agent-git-setup-test.sh
 MINT_TEST := $(TEST_DIR)/mint-token-test.sh
