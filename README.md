@@ -95,7 +95,7 @@ Use the agent-git-setup skill. Set up a bot git identity for current repo.
 AGENT_GIT_NAME=[myagent[bot]]
 GIT_USER_NAME=[my-git-user-name]
 
-After setting the env vars above, run `agent-git-setup.sh` in the current repo.
+After setting the env vars above, run `scripts/agent-git-setup.sh` in the current repo.
 
 Then do your git work inside the printed worktree. Do not touch the main tree.
 ```
@@ -112,7 +112,7 @@ GIT_USER_NAME=[my-git-user-name]
 GITHUB_APP_ID=[4646191]
 GITHUB_APP_PEM=[/path/to/myagent.pem]
 
-After setting the env vars above (mint the token first if using the GitHub App), run `agent-git-setup.sh` in the current repo.
+After setting the env vars above (mint the token first if using the GitHub App), run `scripts/agent-git-setup.sh` in the current repo.
 
 Then do your git work inside the printed worktree. Do not touch the main tree.
 ```
@@ -145,8 +145,8 @@ Full details, diagrams, and reference tables are below (GitHub App setup is alre
 ┌─────────────────────┐
 │  Token source       │  (only if you need gh/API as the bot)
 │  ─────────────────  │
-│  Option A:          │  mint-token.sh + GitHub App
-│    mint-token.sh    │    (create app, download PEM,
+│  Option A:          │  scripts/mint-token.sh + GitHub App
+│    scripts/mint-token.sh    │    (create app, download PEM,
 │    --app-id --pem   │     install, get bot user ID)
 │    --shell          │
 │  Option B:          │  Other backend (harness, PAT, etc.)
@@ -163,7 +163,7 @@ Full details, diagrams, and reference tables are below (GitHub App setup is alre
           │
           ▼
 ┌─────────────────────┐
-│ agent-git-setup.sh  │
+│ scripts/agent-git-setup.sh  │
 │  ─────────────────  │
 │  git worktree add   │  → ~/.agent-git-setup/<repo>/agent (or treehouse pool)
 │  write worktree     │     .git/worktrees/agent/config
@@ -185,7 +185,7 @@ Full details, diagrams, and reference tables are below (GitHub App setup is alre
 ## What it does
 
 An AI coding agent should be able to **commit as a distinct bot identity**,
-without that identity leaking into your own working tree. `agent-git-setup.sh`
+without that identity leaking into your own working tree. `scripts/agent-git-setup.sh`
 creates an isolated **git worktree** and configures it so that commits authored
 there are attributed to a bot, while your main checkout stays exactly as you.
 
@@ -221,7 +221,7 @@ It handles two distinct things:
 
 ## Commit-author isolation (by design)
 
-`agent-git-setup.sh` isolates the **commit author** in the worktree, not the
+`scripts/agent-git-setup.sh` isolates the **commit author** in the worktree, not the
 **push credential**. This is a deliberate, safe choice:
 
 - The script enables the git `worktreeConfig` extension (`extensions.worktreeConfig=true` in the main repo config). On git 2.43+ this is **required** for the per-worktree config file at `.git/worktrees/<name>/config` to be read at all; without it the bot identity still leaks into the shared main config (the failure seen on the laptop). The script exits with an error if it cannot enable the extension, and after writing it prints an isolation check (`worktree user.name` = bot, `main tree user.name` = human) that fails loudly if the worktree config is not being read.
@@ -264,7 +264,7 @@ merge.
 ## Usage
 
 ```bash
-agent-git-setup.sh <repo-dir> [worktree-name] [branch]
+scripts/agent-git-setup.sh <repo-dir> [worktree-name] [branch]
 ```
 
 ### Required environment
@@ -293,7 +293,7 @@ export GH_TOKEN="$(mint-my-token)"            # backend-specific; not this scrip
 export AGENT_GIT_NAME="myagent[bot]"
 export GIT_USER_NAME="my-git-user-name"           # handle; script/skill resolves to numeric id
 
-agent-git-setup.sh ~/dev/my-repo
+scripts/agent-git-setup.sh ~/dev/my-repo
 # -> worktree at ~/.agent-git-setup/my-repo/agent (or treehouse pool)
 #    commits there: myagent[bot] <bot_id+myagent[bot]@users.noreply.github.com>
 #                  (user.name = myagent[bot] so agent shows in commit list;
@@ -311,7 +311,7 @@ yours — no `git config` discipline required, no collision.
 
 ## Backend notes (how the token gets there)
 
-`agent-git-setup.sh` only consumes `GH_TOKEN`. How it arrives is the backend's
+`scripts/agent-git-setup.sh` only consumes `GH_TOKEN`. How it arrives is the backend's
 job — any mechanism that places a push-capable token in the agent's environment
 works (for example, a GitHub App install token minted at agent launch, or a
 fine-grained token provisioned by the harness). The script is agnostic to all

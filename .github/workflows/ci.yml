@@ -20,6 +20,6 @@ jobs:
           sudo apt-get update && sudo apt-get install -y shellcheck
           curl -sS https://webi.sh/shfmt | sh
       - name: Run shellcheck
-        run: shellcheck agent-git-setup.sh scripts/mint-token.sh tests/agent-git-setup-test.sh scripts/mint-token-test.sh
+        run: shellcheck scripts/agent-git-setup.sh scripts/mint-token.sh tests/agent-git-setup-test.sh scripts/mint-token-test.sh
       - name: Run shfmt
-        run: shfmt -d agent-git-setup.sh scripts/mint-token.sh tests/agent-git-setup-test.sh scripts/mint-token-test.sh
+        run: shfmt -d scripts/agent-git-setup.sh scripts/mint-token.sh tests/agent-git-setup-test.sh scripts/mint-token-test.sh
