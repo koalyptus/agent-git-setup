@@ -8,7 +8,7 @@
 #
 set -uo pipefail
 
-SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../mint-token.sh"
+SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../scripts/mint-token.sh"
 
 PASS=0
 FAIL=0
