@@ -29,7 +29,7 @@
 # Optional environment variables:
 #   GH_TOKEN              A push-capable GitHub token (e.g. an App install token).
 #                         Only needed for gh/API as the bot (PRs, issues).
-#                         Not needed for the local commit author.
+#                         Required for deterministic bot noreply resolution.
 #   AGENT_GIT_SIGNINGKEY  An SSH public key (key::<pubkey>) for a verified
 #                         [bot] commit badge.
 #   AGENT_GIT_WORKTREE    Worktree name (default: agent).
@@ -103,7 +103,7 @@ if [ -n "${AGENT_GIT_BOT_ID:-}" ]; then
 elif [ -n "${GH_TOKEN:-}" ] && [ -n "${AGENT_GIT_NAME:-}" ]; then
 	# Try bot noreply when App is in use (GH_TOKEN present)
 	_APP_BOT_ENC="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "${AGENT_GIT_NAME}" 2>/dev/null || true)"
-	_APP_BOT_ID="$(curl -sf -H "Accept: application/vnd.github.v3+json" "https://api.github.com/users/${_APP_BOT_ENC}" 2>/dev/null | python3 -c 'import sys,json; print(json.load(sys.stdin).get("id",""))' 2>/dev/null || true)"
+	_APP_BOT_ID="$(curl -sf -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github.v3+json" "https://api.github.com/users/${_APP_BOT_ENC}" 2>/dev/null | python3 -c 'import sys,json; print(json.load(sys.stdin).get("id",""))' 2>/dev/null || true)"
 	if [ -n "${_APP_BOT_ID:-}" ] && [ "${_APP_BOT_ID}" != "None" ] && [ "${_APP_BOT_ID}" != "" ]; then
 		BOT_EMAIL="${_APP_BOT_ID}+${AGENT_GIT_NAME}@users.noreply.github.com"
 	elif [ -n "${GIT_USER_NAME:-}" ]; then
