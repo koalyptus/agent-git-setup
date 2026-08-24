@@ -80,22 +80,22 @@ fi
 # Mint the installation token (network). Prints the token on stdout.
 mint_token() {
 	python3 - "$APP_ID" "$PEM" "$INSTALL_ID" <<'PY'
-import sys, json, urllib.request
-from cryptography.hazmat.primitives import serialization
+import sys, json, urllib.request, time, base64
+from cryptography.hazmat.primitives import serialization, hashes
+from cryptography.hazmat.primitives.asymmetric import padding
 
 def b64u(b):
     import base64
     return base64.urlsafe_b64encode(b).rstrip(b"=")
 
 app_id, pem_path, install_id = sys.argv[1], sys.argv[2], sys.argv[3]
-now = int(__import__("time").time())
+now = int(time.time())
 header = {"alg": "RS256", "typ": "JWT"}
 payload = {"iat": now - 60, "exp": now + 540, "iss": int(app_id)}
 seg = b64u(json.dumps(header).encode()) + b"." + b64u(json.dumps(payload).encode())
 with open(pem_path, "rb") as f:
     key = serialization.load_pem_private_key(f.read(), password=None)
-sig = key.sign(seg, __import__("cryptography.hazmat.primitives.asymmetric.padding", fromlist=["PKCS1v15"]).PKCS1v15(),
-             __import__("cryptography.hazmat.primitives.hashes", fromlist=["SHA256"]).SHA256())
+sig = key.sign(seg, padding.PKCS1v15(), hashes.SHA256())
 bearer = (seg + b"." + b64u(sig)).decode()
 
 def api(path, method="GET", data=None):
@@ -104,7 +104,7 @@ def api(path, method="GET", data=None):
         data=data, method=method,
         headers={"Authorization": "Bearer " + bearer,
                  "Accept": "application/vnd.github+json"})
-    with urllib.request.urlopen(req) as r:
+    with urllib.request.urlopen(req, timeout=30) as r:
         return json.load(r)
 
 installs = api("/app/installations")
