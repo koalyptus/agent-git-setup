@@ -83,6 +83,27 @@ without needing any other tooling. Everything lives in this repo
 
 The token is short-lived (~1h); re-run step 2 for a fresh one in long sessions.
 
+## Pre-commit guard (MANDATORY)
+
+Before ANY git commit, verify you are in the worktree — NOT the main repo.
+This is the #1 failure mode and it is preventable.
+
+```bash
+# Check: is this the worktree?
+WT_PATH="$(git rev-parse --show-toplevel)"
+if echo "$WT_PATH" | grep -q "\.agent-git-setup"; then
+    echo "OK: in worktree at $WT_PATH"
+else
+    echo "ERROR: You are NOT in the worktree. Aborting commit."
+    echo "  Current: $WT_PATH"
+    echo "  Expected: ~/.agent-git-setup/<repo>/agent"
+    exit 1
+fi
+```
+
+**ALWAYS** run git commands with `git -C "$WT_PATH"` to avoid accidentally
+committing on main. Never `cd` to the main repo for git operations.
+
 ## Key concepts
 - **Commit author = bot name + bot noreply email, push actor = human, gh/API = bot.** The worktree's own config file gets `user.name` (bot name) + `user.email` (bot noreply). `GH_TOKEN` in the environment drives `gh`/API (PRs, issues, comments) as the bot. Plain `git push` uses the human account owner's credential — the push actor is the human, by design. (The `scripts/agent-git-setup.sh` script never rewrites `origin`, because worktrees share remotes and rewriting would touch the main tree.)
 - **Worktree isolation.** All bot config is scoped to the worktree's own config file. The human's main tree stays theirs. No collision, no `git config` discipline required.
