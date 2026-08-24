@@ -260,6 +260,22 @@ else
 	bad "git-only test: script failed unexpectedly"
 fi
 
+# 15. App path WITHOUT AGENT_GOT_ID override: script resolves bot ID via API (gated on real token)
+echo "app path bot noreply via API (gated)"
+if [ -n "${GH_TOKEN:-}" ]; then
+	REPO15="$(make_repo with-origin)"
+	unset AGENT_GIT_BOT_ID
+	export AGENT_GIT_NAME="agent-oracle-1[bot]" GIT_USER_ID=8214629 GIT_USER_NAME=koalyptus
+	if "$SCRIPT" "$REPO15" agent testbranch >/dev/null 2>&1; then
+		WT15="$SANDBOX/worktrees/$(basename "$REPO15")/agent"
+		assert_eq "$(git -C "$WT15" config user.email)" "320010330+agent-oracle-1[bot]@users.noreply.github.com" "app path: bot email resolved via API (no AGENT_GIT_BOT_ID)"
+	else
+		bad "app path API resolution test: script failed"
+	fi
+else
+	echo "  skipped (no GH_TOKEN set)"
+fi
+
 echo
 
 echo "PASS=$PASS FAIL=$FAIL"
