@@ -20,6 +20,11 @@ Give an AI agent its own bot identity so its git commits are attributed to
 - Triggers: "commit as a bot", "agent should commit as <bot>", "separate bot
   identity for the agent", "give the agent its own git identity".
 
+**Invocation note (not deterministic):** This skill only runs when the harness
+loads it or the user's prompt invokes it — nothing here forces the agent to
+remember it across sessions. If you want setup applied per session, the
+harness should load the skill (or the prompt should include the setup step).
+
 Do NOT use this for a human's normal interactive git login — that is a personal
 PAT/SSH concern. This is for automation/bot attribution.
 
