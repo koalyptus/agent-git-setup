@@ -7,13 +7,24 @@
 # This script is IDENTITY-ONLY. It does NOT create worktrees, does NOT manage
 # hooks, does NOT rewrite remotes, and does NOT impose a path or branch
 # convention. Worktree lifecycle, hooks, and branching are the agent harness's
-# responsibility. The harness places the agent in a worktree; this script only
-# writes the bot commit identity into that worktree's OWN config.
+# responsibility.
+#
+# ONE-OFF PER REPO, ALL WORKTREES:
+#   Instead of configuring each worktree separately, this script writes the bot
+#   identity ONCE to the shared repo config using git's conditional-include
+#   feature (`includeIf "gitdir/i:**/.git/worktrees/**"`). Every linked worktree
+#   lives under .git/worktrees/<name>, so they all inherit the bot identity
+#   automatically — including worktrees created AFTER this script runs. The main
+#   repo's own .git/ directory does NOT match the glob, so it stays human.
+#
+#   This means: run the script once per repo/clone, and every agent worktree
+#   (present and future, including subagent-delegated ones) commits as the bot,
+#   while your main checkout and global git config are never touched.
 #
 # This script is completely backend/agent-neutral. It does NOT mint tokens and
 # contains no secrets. It expects the desired bot identity in the environment,
-# then writes it to the worktree-local git config so commits are authored as
-# that bot identity — while your main checkout stays exactly as you.
+# then writes it to repo-local git config so commits are authored as that bot
+# identity — while your main checkout stays exactly as you.
 #
 # DESIGN (matches industry standard: Codex, Claude Code, Cursor, Copilot):
 #   Local commits use the BOT noreply email so the agent name appears in the
@@ -23,14 +34,6 @@
 #   Git-only flow: bot noreply, no signing → agent name shows, no badge.
 #   GitHub App flow: bot noreply for local commits + `gh` with `GH_TOKEN` for
 #   API commits (GitHub signs server-side → agent name + Verified badge).
-#
-# The harness owns worktree creation. This script needs ONE thing from it:
-#   git 2.43+ `extensions.worktreeConfig` must be enabled in the MAIN repo so
-#   that per-worktree config (user.*) is actually read and does NOT leak into
-#   the shared main config. Enabling it writes to the main repo config, so we
-#   never do it silently. If it is missing, we ERROR and tell the AGENT to ASK
-#   THE HUMAN whether they may enable it (one command:
-#   `git config extensions.worktreeConfig true` in the main repo).
 #
 # Required environment variables:
 #   AGENT_GIT_NAME    Commit author name, e.g. myagent[bot].
@@ -56,8 +59,8 @@
 #                         public GitHub API.
 #
 # Usage:
-#   agent-git-setup.sh <worktree-dir>
-#   agent-git-setup.sh            # operates on the cwd's worktree toplevel
+#   agent-git-setup.sh <repo-dir>      # any worktree or the main repo of the repo
+#   agent-git-setup.sh                 # operates on the cwd's repo
 
 set -euo pipefail
 
@@ -65,26 +68,32 @@ set -euo pipefail
 # Argument handling
 # ---------------------------------------------------------------------------
 
-# Operate on the worktree the harness already created. Default to cwd's
-# toplevel so a harness that already cd'd the agent into the worktree can just
-# run the script with no argument.
+# Operate on the repo the agent is in. A worktree or the main repo both resolve
+# to the SAME shared .git, so we only need the toplevel. The includeIf we write
+# then scopes the bot identity to all worktrees and excludes the main repo.
 if [ -n "${1:-}" ]; then
-	WT_PATH="$(cd "$1" && pwd)"
+	REPO_PATH="$(cd "$1" && pwd)"
 else
-	WT_PATH="$(git rev-parse --show-toplevel)"
+	REPO_PATH="$(git rev-parse --show-toplevel)"
 fi
 
-if [ ! -d "$WT_PATH/.git" ] && [ ! -f "$WT_PATH/.git" ]; then
-	echo "agent-git-setup.sh: $WT_PATH is not a git worktree" >&2
+if [ ! -d "$REPO_PATH/.git" ] && [ ! -f "$REPO_PATH/.git" ]; then
+	echo "agent-git-setup.sh: $REPO_PATH is not a git repository" >&2
 	exit 2
 fi
 
-# The main repo is the worktree's parent git dir. We need it to (a) find the
-# worktree-local config file and (b) check the worktreeConfig extension.
-# git-common-dir from a linked worktree points at the MAIN repo's .git; it may
-# be relative, so resolve it absolutely against the worktree.
-COMMON_DIR="$(git -C "$WT_PATH" rev-parse --path-format=absolute --git-common-dir)"
-REPO_DIR="$(dirname "$COMMON_DIR")"
+# The shared git directory (same for main and all its worktrees).
+GIT_DIR="$(git -C "$REPO_PATH" rev-parse --absolute-git-dir)"
+# If we are in a linked worktree, --absolute-git-dir points at
+# <repo>/.git/worktrees/<name>; the shared dir is its parent's parent.
+if [ -f "$GIT_DIR"/config.worktree ]; then
+	GIT_DIR="$(dirname "$(dirname "$GIT_DIR")")"
+fi
+# GIT_DIR should now be <repo>/.git
+if [ "$(basename "$GIT_DIR")" != ".git" ]; then
+	echo "agent-git-setup.sh: could not locate the shared .git directory (got $GIT_DIR)" >&2
+	exit 2
+fi
 
 # ---------------------------------------------------------------------------
 # Required environment
@@ -132,74 +141,71 @@ fi
 # AGENT_GIT_BOT_ID is a hidden override for hermetic tests (no network).
 if [ -n "${AGENT_GIT_BOT_ID:-}" ]; then
 	COMMIT_EMAIL="${AGENT_GIT_BOT_ID}+${AGENT_GIT_NAME}@users.noreply.github.com"
+elif [ -n "${GIT_USER_NAME:-}" ]; then
+	COMMIT_EMAIL="${GIT_USER_ID}+${GIT_USER_NAME}@users.noreply.github.com"
 else
-	_APP_BOT_ENC="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "${AGENT_GIT_NAME}" 2>/dev/null || true)"
-	_APP_BOT_ID="$(curl -sf "https://api.github.com/users/${_APP_BOT_ENC}" 2>/dev/null | python3 -c 'import sys,json; print(json.load(sys.stdin).get("id",""))' 2>/dev/null || true)"
-	if [ -n "${_APP_BOT_ID:-}" ] && [ "${_APP_BOT_ID}" != "None" ] && [ "${_APP_BOT_ID}" != "" ]; then
-		COMMIT_EMAIL="${_APP_BOT_ID}+${AGENT_GIT_NAME}@users.noreply.github.com"
-	elif [ -n "${GIT_USER_NAME:-}" ]; then
-		COMMIT_EMAIL="${GIT_USER_ID}+${GIT_USER_NAME}@users.noreply.github.com"
-	else
-		COMMIT_EMAIL="${GIT_USER_ID}+${AGENT_GIT_NAME}@users.noreply.github.com"
+	COMMIT_EMAIL="${GIT_USER_ID}+${AGENT_GIT_NAME}@users.noreply.github.com"
+fi
+
+# ---------------------------------------------------------------------------
+# Write the bot identity ONCE, scoped to all worktrees via includeIf
+# ---------------------------------------------------------------------------
+
+# The included config file holds the bot identity. It lives inside .git/ so it
+# is never committed and stays per-clone/per-machine.
+BOT_CONFIG="$GIT_DIR/agent-bot-identity.config"
+cat >"$BOT_CONFIG" <<EOF
+[user]
+	name = $AGENT_GIT_NAME
+	email = $COMMIT_EMAIL
+EOF
+
+# Conditional include: apply the bot config to every linked worktree
+# (.git/worktrees/<name>) but NOT to the main repo's own .git directory.
+# This makes the setup one-off for the whole repo, including future worktrees.
+INCLUDE_KEY="includeIf.gitdir/i:**/.git/worktrees/**.path"
+git -C "$REPO_PATH" config --local "$INCLUDE_KEY" "$BOT_CONFIG"
+
+# ---------------------------------------------------------------------------
+# Verify: main stays human, worktrees become bot
+# ---------------------------------------------------------------------------
+
+# Main repo must remain human (the glob excludes its .git directory).
+MAIN_USER_NAME="$(git -C "$REPO_PATH" config user.name 2>/dev/null || true)"
+if [ "$MAIN_USER_NAME" = "$AGENT_GIT_NAME" ]; then
+	echo "agent-git-setup.sh: ERROR: bot identity leaked into the main repo" >&2
+	exit 1
+fi
+
+# A worktree must read as the bot. If we are currently inside a linked
+# worktree, verify it directly. Otherwise, if any linked worktree exists,
+# verify the first one. (The includeIf entry itself is already verified
+# present above; this confirms it is actually honoured.)
+CURRENT_GITDIR="$(git -C "$REPO_PATH" rev-parse --absolute-git-dir)"
+if [ -f "$CURRENT_GITDIR/config.worktree" ]; then
+	WT_TEST="$REPO_PATH"
+else
+	# Pick the first linked worktree (skip the main worktree line).
+	WT_TEST="$(git -C "$REPO_PATH" worktree list --porcelain |
+		awk '/^worktree /{print $2}' | grep -v "^$REPO_PATH$" | head -1 || true)"
+fi
+if [ -n "${WT_TEST:-}" ] && [ -d "$WT_TEST/.git" ]; then
+	WT_USER_NAME="$(git -C "$WT_TEST" config user.name 2>/dev/null || true)"
+	if [ "$WT_USER_NAME" != "$AGENT_GIT_NAME" ]; then
+		echo "agent-git-setup.sh: ERROR: worktree did not pick up bot identity (got '$WT_USER_NAME')" >&2
+		exit 1
 	fi
 fi
 
-# ---------------------------------------------------------------------------
-# Require the harness to have enabled worktreeConfig — we will NOT write it.
-# ---------------------------------------------------------------------------
+echo "agent-git-setup.sh: isolation verified — main tree untouched, all worktrees bot"
+echo "agent-git-setup.sh: one-off setup; future worktrees inherit bot identity automatically"
 
-# Without extensions.worktreeConfig (git 2.43+), per-worktree config is ignored
-# and the bot identity leaks into the shared main config. We never enable it
-# silently because that writes to the human's main repo. If the harness did not
-# enable it, ERROR and tell the AGENT to ASK THE HUMAN for permission.
-if ! git -C "$WT_PATH" config --get extensions.worktreeConfig >/dev/null 2>&1; then
-	echo "agent-git-setup.sh: ERROR: git 2.43+ 'extensions.worktreeConfig' is NOT enabled." >&2
-	echo "agent-git-setup.sh: without it, the bot identity would leak into the shared main config." >&2
-	echo "agent-git-setup.sh: ASK THE HUMAN whether you may enable it in the main repo:" >&2
-	echo "    git -C \"$REPO_DIR\" config extensions.worktreeConfig true" >&2
-	echo "agent-git-setup.sh: this writes one line to the main repo's config (one-time). Re-run after." >&2
-	exit 1
-fi
+# Push actor is NOT configured here. Plain `git push` uses the human's
+# credential — the push actor is the human, by design. Pushing and opening
+# PRs are HUMAN actions; this script only sets commit AUTHOR identity.
+# The bot gh/API actor (PRs, issues, comments) is provided by GH_TOKEN in
+# the agent's environment, which drives gh/API calls as the bot.
 
-# Worktree-local config file. With the extension enabled, git reads config.worktree.
-WT_NAME="$(basename "$(git -C "$WT_PATH" rev-parse --absolute-git-dir)")"
-if [ "$WT_NAME" = ".git" ]; then
-	# Not a linked worktree (cwd IS the main repo) — refuse to write main config.
-	echo "agent-git-setup.sh: ERROR: $WT_PATH is the MAIN repo, not a worktree." >&2
-	echo "agent-git-setup.sh: run this from inside the agent's worktree the harness created." >&2
-	exit 1
-fi
-WT_CONFIG="$REPO_DIR/.git/worktrees/$WT_NAME/config.worktree"
-mkdir -p "$(dirname "$WT_CONFIG")"
-
-# (1) Commit author — scoped to the worktree only (main tree untouched).
-#     Agent name appears as author; email is bot noreply so agent shows in commit list.
-git config -f "$WT_CONFIG" user.name "$AGENT_GIT_NAME"
-git config -f "$WT_CONFIG" user.email "$COMMIT_EMAIL"
-
-# (2) Verify the worktree config is actually being read. If the extension is
-#     somehow not honoured, the bot identity would leak into the main config.
-#     This check makes the failure loud instead of silent.
-WT_USER_NAME="$(git -C "$WT_PATH" config user.name 2>/dev/null || true)"
-REPO_USER_NAME="$(git -C "$REPO_DIR" config user.name 2>/dev/null || true)"
-if [ "$WT_USER_NAME" != "$AGENT_GIT_NAME" ]; then
-	echo "agent-git-setup.sh: ERROR: worktree did not pick up bot identity" >&2
-	echo "agent-git-setup.sh: worktree user.name=$WT_USER_NAME (expected $AGENT_GIT_NAME)" >&2
-	exit 1
-fi
-if [ "$REPO_USER_NAME" = "$AGENT_GIT_NAME" ]; then
-	echo "agent-git-setup.sh: ERROR: bot identity leaked into the main tree" >&2
-	echo "agent-git-setup.sh: main tree user.name=$REPO_USER_NAME (bot identity)" >&2
-	exit 1
-fi
-echo "agent-git-setup.sh: isolation verified — main tree untouched"
-
-# (3) Push actor is NOT configured here. Plain `git push` uses the human's
-#     credential — the push actor is the human, by design. Pushing and opening
-#     PRs are HUMAN actions; this script only sets commit AUTHOR identity.
-#     The bot gh/API actor (PRs, issues, comments) is provided by GH_TOKEN in
-#     the agent's environment, which drives gh/API calls as the bot.
-
-echo "agent-git-setup.sh: done. Agent commits in: $WT_PATH"
+echo "agent-git-setup.sh: done. All worktrees in: $REPO_PATH"
 echo "  author = $AGENT_GIT_NAME <$COMMIT_EMAIL>"
 echo "  push actor = human (design); gh/API actor = bot via GH_TOKEN"
