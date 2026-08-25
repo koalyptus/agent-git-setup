@@ -1,6 +1,6 @@
 # agent-git-setup
 
-Give an AI agent a bot identity in local git worktrees and/or on GitHub to easily distinguish agentic authors on Git and GitHub.
+Give an AI agent a bot identity so its git commits and GitHub actions are clearly attributed to the agent, distinct from the human's account. The agent works in a worktree its harness already created; this repo only scopes the bot commit identity to that worktree.
 
 ## Requirements
 
@@ -8,7 +8,7 @@ Give an AI agent a bot identity in local git worktrees and/or on GitHub to easil
 - **Unix-like shell** (`bash`) and `git`. The script and tests target Linux and
   macOS. **Windows is not supported as-is** — `bash` + `git` under WSL or Git
   Bash will work, but native `cmd`/`PowerShell` will not (the script uses POSIX
-  shell features and git worktree paths).
+  shell features).
 - `Make install` installs `shellcheck`/`shfmt`, `Python 3` and `cryptography` if needed.
 
 ## Install
