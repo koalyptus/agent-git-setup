@@ -84,6 +84,11 @@ harnesses can fetch the support files).
    user.name` = human) that fails loudly if the worktree config is not being
    read. It does NOT create the worktree and does NOT create a branch.
 
+   **Do NOT create a worktree just to run this script.** If you are in the main
+   repo (the script errors "MAIN repo, not a worktree"), either switch to the
+   worktree your harness already made, or ask the human where they want the
+   agent to work. Creating a worktree on your own initiative is the wrong move.
+
    **worktreeConfig extension:** identity isolation requires git 2.43+
    `extensions.worktreeConfig` to be enabled in the MAIN repo. The harness that
    created the worktree is expected to have enabled it. If it is missing, the

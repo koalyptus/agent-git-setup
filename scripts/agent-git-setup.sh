@@ -166,7 +166,11 @@ WT_NAME="$(basename "$(git -C "$WT_PATH" rev-parse --absolute-git-dir)")"
 if [ "$WT_NAME" = ".git" ]; then
 	# Not a linked worktree (cwd IS the main repo) — refuse to write main config.
 	echo "agent-git-setup.sh: ERROR: $WT_PATH is the MAIN repo, not a worktree." >&2
-	echo "agent-git-setup.sh: run this from inside the agent's worktree the harness created." >&2
+	echo "agent-git-setup.sh: this script only writes commit-author identity into an" >&2
+	echo "agent-git-setup.sh: EXISTING worktree — it does NOT create one." >&2
+	echo "agent-git-setup.sh: Do NOT create a worktree just to run this. Either:" >&2
+	echo "agent-git-setup.sh:   - run from the worktree your harness already made, or" >&2
+	echo "agent-git-setup.sh:   - ask the human where they want the agent to work." >&2
 	exit 1
 fi
 WT_CONFIG="$REPO_DIR/.git/worktrees/$WT_NAME/config.worktree"
