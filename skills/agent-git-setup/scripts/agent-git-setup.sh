@@ -86,7 +86,10 @@ fi
 GIT_DIR="$(git -C "$REPO_PATH" rev-parse --absolute-git-dir)"
 # If we are in a linked worktree, --absolute-git-dir points at
 # <repo>/.git/worktrees/<name>; the shared dir is its parent's parent.
-if [ -f "$GIT_DIR"/config.worktree ]; then
+# Detect by path shape (a linked worktree's gitdir lives under .../.git/worktrees/<name>),
+# NOT by the presence of config.worktree — that file only exists when
+# extensions.worktreeConfig is enabled, which this design intentionally does not require.
+if [ "$(basename "$(dirname "$GIT_DIR")")" = "worktrees" ]; then
 	GIT_DIR="$(dirname "$(dirname "$GIT_DIR")")"
 fi
 # GIT_DIR should now be <repo>/.git
@@ -218,7 +221,10 @@ fi
 # ---------------------------------------------------------------------------
 
 # Main repo must remain human (the glob excludes its .git directory).
-MAIN_USER_NAME="$(git -C "$REPO_PATH" config user.name 2>/dev/null || true)"
+# Read the shared .git directly via --git-dir so this check is correct even when
+# REPO_PATH is a worktree (querying the worktree path would return the bot identity
+# that includeIf applies to worktrees, giving a false "leaked" failure).
+MAIN_USER_NAME="$(git --git-dir="$GIT_DIR" config user.name 2>/dev/null || true)"
 if [ "$MAIN_USER_NAME" = "$AGENT_GIT_NAME" ]; then
 	echo "agent-git-setup.sh: ERROR: bot identity leaked into the main repo" >&2
 	exit 1
@@ -229,7 +235,9 @@ fi
 # verify the first one. (The includeIf entry itself is already verified
 # present above; this confirms it is actually honoured.)
 CURRENT_GITDIR="$(git -C "$REPO_PATH" rev-parse --absolute-git-dir)"
-if [ -f "$CURRENT_GITDIR/config.worktree" ]; then
+# Detect "currently inside a linked worktree" by path shape, not config.worktree
+# (see GIT_DIR resolution above for why).
+if [ "$(basename "$(dirname "$CURRENT_GITDIR")")" = "worktrees" ]; then
 	WT_TEST="$REPO_PATH"
 else
 	# Pick the first linked worktree (skip the main worktree line).

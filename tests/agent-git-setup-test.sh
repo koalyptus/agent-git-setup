@@ -171,5 +171,14 @@ REPO13="$(make_repo with-origin)"
 cp "$SCRIPT" "$REPO13/agent-git-setup.sh"
 if bash "$REPO13/agent-git-setup.sh" "$REPO13" >/dev/null 2>&1; then bad "should refuse self-nesting"; else ok "refuses self-nesting"; fi
 
+echo "14. Works when given a LINKED WORKTREE path (not just the main repo)"
+REPO14="$(make_repo with-origin)"
+make_worktree "$REPO14"
+WT14="$WT_DIR"
+export AGENT_GIT_ALLOW_TMP=1 AGENT_GIT_NAME="myagent[bot]" GIT_USER_NAME="my-git-user-name" GIT_USER_ID=320010330
+if "$SCRIPT" "$WT14" >/dev/null 2>&1; then ok "script exits 0 from worktree path"; else bad "script should exit 0 from worktree path"; fi
+assert_eq "$(git -C "$WT14" config user.name)" "myagent[bot]" "worktree-path input: worktree reads bot"
+assert_eq "$(git -C "$REPO14" config user.name)" "human" "worktree-path input: main stays human"
+
 echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]
