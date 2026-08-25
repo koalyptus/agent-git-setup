@@ -152,13 +152,13 @@ fi
 # ---------------------------------------------------------------------------
 
 # The included config file holds the bot identity. It lives inside .git/ so it
-# is never committed and stays per-clone/per-machine.
+# is never committed and stays per-clone/per-machine. Written with `git config -f`
+# (quoted args) so AGENT_GIT_NAME / COMMIT_EMAIL are stored verbatim — no shell
+# expansion, command substitution, or config-section breakout is possible even if
+# those values contain $(...), backticks, or newlines.
 BOT_CONFIG="$GIT_DIR/agent-bot-identity.config"
-cat >"$BOT_CONFIG" <<EOF
-[user]
-	name = $AGENT_GIT_NAME
-	email = $COMMIT_EMAIL
-EOF
+git config -f "$BOT_CONFIG" user.name "$AGENT_GIT_NAME"
+git config -f "$BOT_CONFIG" user.email "$COMMIT_EMAIL"
 
 # Conditional include: apply the bot config to every linked worktree
 # (.git/worktrees/<name>) but NOT to the main repo's own .git directory.
@@ -187,7 +187,7 @@ if [ -f "$CURRENT_GITDIR/config.worktree" ]; then
 else
 	# Pick the first linked worktree (skip the main worktree line).
 	WT_TEST="$(git -C "$REPO_PATH" worktree list --porcelain |
-		awk '/^worktree /{print $2}' | grep -v "^$REPO_PATH$" | head -1 || true)"
+		awk '/^worktree /{print $2}' | grep -vF "$REPO_PATH" | head -1 || true)"
 fi
 if [ -n "${WT_TEST:-}" ] && [ -d "$WT_TEST/.git" ]; then
 	WT_USER_NAME="$(git -C "$WT_TEST" config user.name 2>/dev/null || true)"
