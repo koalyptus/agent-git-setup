@@ -9,7 +9,7 @@ jobs:
   sync-check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Verify skill bundle matches source-of-truth scripts
         run: make sync-check
 
@@ -17,7 +17,7 @@ jobs:
     needs: sync-check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Run hermetic tests
         run: bash tests/agent-git-setup-test.sh
       - name: Run mint-token tests
@@ -27,7 +27,7 @@ jobs:
     needs: sync-check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install shellcheck + shfmt
         run: |
           sudo apt-get update && sudo apt-get install -y shellcheck

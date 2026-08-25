@@ -259,13 +259,14 @@ commands:
 | `make sync-check`         | Verify the skill bundle matches `scripts/`. Fails if they have drifted.              |
 | `make ci`                 | Run `sync-check` + `test` + `lint` — exactly what CI runs. Use this before push.    |
 
-### Skill bundle (for `hermes skills install`)
+### Skill bundle (why scripts are copied into the skill directory)
 
-`hermes skills install github/koalyptus/agent-git-setup/skills/agent-git-setup`
-needs the two scripts to ship **inside** the skill directory so the install
-fetcher can resolve them as bundle support files. The repo root
-(`scripts/agent-git-setup.sh`, `scripts/mint-token.sh`) is the source of
-truth; `skills/agent-git-setup/scripts/*.sh` is a bundled copy.
+Skill-install harnesses resolve any `scripts/...` references inside SKILL.md as
+required bundle support files and try to fetch them from inside the skill
+directory. So the two scripts must ship **inside** the skill directory, not
+just at the repo root. The repo root (`scripts/agent-git-setup.sh`,
+`scripts/mint-token.sh`) is the source of truth;
+`skills/agent-git-setup/scripts/*.sh` is a bundled copy the harness fetches.
 
 `make ci` runs `sync-check` first and refuses to test/lint a drifted bundle.
 When you edit a root script, run `make sync-skill-scripts` and commit the
