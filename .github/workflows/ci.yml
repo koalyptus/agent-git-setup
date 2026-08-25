@@ -1,6 +1,10 @@
 name: CI
 on: [push, pull_request]
 
+# Least-privilege: these jobs only read the repo and run local checks.
+permissions:
+  contents: read
+
 jobs:
   sync-check:
     runs-on: ubuntu-latest
