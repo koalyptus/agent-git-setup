@@ -121,55 +121,53 @@ Full details, diagrams, and reference tables are below (GitHub App setup is alre
 ## Flow diagram (happy path)
 
 ```
-┌─────────────────────┐
-│      Human          │
-│  gives agent prompt │
-│  ─────────────────  │
-│ "Use agent-git-     │
-│  setup skill on     │
-│  <repo-path>"       │
-└─────────┬───────────┘
-          │
-          ▼
-┌─────────────────────┐
-│  Token source       │  (only if you need gh/API as the bot)
-│  ─────────────────  │
-│  Option A:          │  scripts/mint-token.sh + GitHub App
-│    scripts/mint-token.sh    │    (create app, download PEM,
-│    --app-id --pem   │     install, get bot user ID)
-│    --shell          │
-│  Option B:          │  Other backend (harness, PAT, etc.)
-│    your token minter│
-└─────────┬───────────┘
-          │ exports GH_TOKEN
-          ▼
-┌─────────────────────┐
-│  env: AGENT_GIT_*   │  (set by agent/skill)
-│  ─────────────────  │
-│  AGENT_GIT_NAME     │  e.g. myagent[bot]
-│  GIT_USER_NAME      │  handle (agent resolves to id)
-└─────────┬───────────┘
-          │
-          ▼
-┌─────────────────────┐
-│ scripts/agent-git-setup.sh  │
-│  ─────────────────  │
-│  writes worktree's  │  .git/worktrees/<name>/config.worktree
-│    own config       │     user.name = <name>[bot]
-│    user.name        │     user.email = <bot_id>+<name>[bot]@... (bot noreply)
-│    user.email       │  (harness already created the worktree + enabled
-│                    │   extensions.worktreeConfig in the main repo)
-└─────────┬───────────┘
-          │
-          ▼
-┌─────────────────────┐
-│   Agent works in    │
-│   the worktree      │
-│  ─────────────────  │
-│  commits → <name>[bot] (no badge)
-│  gh/API   → <name>[bot] (GH_TOKEN)
-│  git push → your credential│
-└─────────────────────┘
+┌──────────────────────────────────────┐
+│              Human                    │
+│   gives agent prompt                  │
+│   ────────────────────────────────   │
+│   "Use agent-git-setup skill on      │
+│    <repo-path>"                      │
+└──────────────┬───────────────────────┘
+               │
+               ▼
+┌──────────────────────────────────────┐
+│           Token source                │  (only if you need gh/API as the bot)
+│   ────────────────────────────────   │
+│   Option A:                           │  scripts/mint-token.sh + GitHub App
+│     scripts/mint-token.sh             │    (create app, download PEM,
+│     --app-id --pem                    │     install, get bot user ID)
+│     --shell                           │
+│   Option B:                           │  Other backend (harness, PAT, etc.)
+│     your token minter                 │
+└──────────────┬───────────────────────┘
+               │ exports GH_TOKEN
+               ▼
+┌──────────────────────────────────────┐
+│        env: AGENT_GIT_*               │  (set by agent/skill)
+│   ────────────────────────────────   │
+│   AGENT_GIT_NAME                      │  e.g. myagent[bot]
+│   GIT_USER_NAME                       │  handle (agent resolves to id)
+└──────────────┬───────────────────────┘
+               │
+               ▼
+┌──────────────────────────────────────┐
+│   scripts/agent-git-setup.sh          │
+│   ────────────────────────────────   │
+│   writes worktree's OWN config        │  .git/worktrees/<name>/config.worktree
+│     user.name = <name>[bot]           │     user.email = <bot_id>+<name>[bot]@...
+│     user.email = (bot noreply)        │  (harness already created the worktree
+│                                        │   + enabled extensions.worktreeConfig
+│                                        │   in the main repo)
+└──────────────┬───────────────────────┘
+               │
+               ▼
+┌──────────────────────────────────────┐
+│        Agent works in the worktree     │
+│   ────────────────────────────────   │
+│   commits → <name>[bot] (no badge)    │
+│   gh/API   → <name>[bot] (GH_TOKEN)  │
+│   git push → your credential          │
+└──────────────────────────────────────┘
 ```
 
 ## What it does
