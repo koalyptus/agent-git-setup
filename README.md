@@ -250,12 +250,27 @@ pull request, so a regression shows up as a red check before merge.
 A `Makefile` wraps the local checks so you don't have to remember the exact
 commands:
 
-| Command        | What it does                                                                          |
-|----------------|---------------------------------------------------------------------------------------|
-| `make test`    | Run the hermetic test suite (`agent-git-setup-test.sh`).                              |
-| `make lint`    | Run `shellcheck` + `shfmt -d` on both scripts (needs those tools).                    |
-| `make install` | Install `shellcheck` + `shfmt` + `python3`/`cryptography` if missing (idempotent).   |
-| `make ci`      | Run `test` + `lint` — exactly what CI runs. Use this before push.                     |
+| Command                   | What it does                                                                          |
+|---------------------------|---------------------------------------------------------------------------------------|
+| `make test`               | Run the hermetic test suite (`agent-git-setup-test.sh`).                              |
+| `make lint`               | Run `shellcheck` + `shfmt -d` on both scripts (needs those tools).                    |
+| `make install`            | Install `shellcheck` + `shfmt` + `python3`/`cryptography` if missing (idempotent).   |
+| `make sync-skill-scripts` | Copy `scripts/*.sh` into `skills/agent-git-setup/scripts/` (skill bundle). Run when you change a script at the repo root. |
+| `make sync-check`         | Verify the skill bundle matches `scripts/`. Fails if they have drifted.              |
+| `make ci`                 | Run `sync-check` + `test` + `lint` — exactly what CI runs. Use this before push.    |
+
+### Skill bundle (why scripts are copied into the skill directory)
+
+Skill-install harnesses resolve any `scripts/...` references inside SKILL.md as
+required bundle support files and try to fetch them from inside the skill
+directory. So the two scripts must ship **inside** the skill directory, not
+just at the repo root. The repo root (`scripts/agent-git-setup.sh`,
+`scripts/mint-token.sh`) is the source of truth;
+`skills/agent-git-setup/scripts/*.sh` is a bundled copy the harness fetches.
+
+`make ci` runs `sync-check` first and refuses to test/lint a drifted bundle.
+When you edit a root script, run `make sync-skill-scripts` and commit the
+bundle copy in the same commit as the source change.
 
 `make ci` is the pre-push gate: only push when it exits green. The CI workflow
 mirrors it, and `main` is branch-protected so `test` + `lint` must be green to

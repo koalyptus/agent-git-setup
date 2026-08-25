@@ -43,7 +43,14 @@ branches in main. Examples: `feat/phase-9k-validate-pure-core-agent`,
 
 This skill is meant to be used standalone: the agent installs the bot identity
 without needing any other tooling. Everything lives in this repo
-(`scripts/agent-git-setup.sh`, `scripts/mint-token.sh`, `skills/agent-git-setup/SKILL.md`).
+(`scripts/agent-git-setup.sh`, `scripts/mint-token.sh`, `skills/agent-git-setup/SKILL.md`,
+and the bundled copies in `skills/agent-git-setup/scripts/` so skill-install
+harnesses can fetch the support files).
+
+> **Skill bundle:** `skills/agent-git-setup/scripts/*.sh` is a bundled copy of
+> `scripts/*.sh` so a skill-install harness can fetch the support files. The
+> repo root is the source of truth. If you edit a root script, run
+> `make sync-skill-scripts` and commit the bundle copy in the same commit.
 
 1. **One-time, outside the agent:** create a GitHub App (see README "GitHub App
    setup"), download its PEM, install it on the target repos, and note the
@@ -114,7 +121,7 @@ The check compares the **exact** worktree path (not a loose `.agent-git-setup`
 substring), so a main repo whose path coincidentally contained that string
 cannot sneak a commit through.
 
-**ALWAYS** run git commands with `git -C "$WT_PATH"` to avoid accidentally
+**ALWAYS** run git commands with `git -C "$TOPLEVEL"` to avoid accidentally
 committing on main. Never `cd` to the main repo for git operations.
 
 ## Key concepts
