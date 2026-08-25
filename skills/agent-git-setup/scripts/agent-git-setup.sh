@@ -37,14 +37,13 @@
 #
 # Required environment variables:
 #   AGENT_GIT_NAME    Commit author name, e.g. myagent[bot].
-#   GIT_USER_NAME     GitHub handle whose numeric id becomes the noreply
-#                     prefix (e.g. my-git-user-name). The script resolves
-#                     it to an id via the GitHub API (public endpoint
-#                     https://api.github.com/users/<handle>); no token
-#                     needed for this step. See GIT_USER_ID below.
+#   GIT_USER_NAME     GitHub handle (e.g. my-git-user-name). LAST-RESORT fallback
+#                     only: if the bot id cannot be resolved, commits are attributed
+#                     to this human handle (id via GIT_USER_ID or the API). Prefer
+#                     AGENT_GIT_BOT_ID / AGENT_GIT_NAME so commits stay bot.
 #   GIT_USER_ID       Numeric GitHub user id (alternative to GIT_USER_NAME).
-#                     If set, used directly. If only GIT_USER_NAME is set,
-#                     the script fetches the id via the public API.
+#                     If set, used directly as the fallback noreply prefix.
+#                     Otherwise the script fetches the id via the public API.
 #
 # Optional environment variables:
 #   GH_TOKEN              A GitHub token (e.g. an App install token) for
@@ -56,7 +55,7 @@
 #   AGENT_GIT_BOT_ID      Hidden override: the numeric bot id for the noreply
 #                         email. Used for hermetic tests / offline use (no
 #                         network). If unset, the bot id is resolved via the
-#                         public GitHub API.
+#                         public GitHub API (uses GH_TOKEN as Bearer if set).
 #
 # Usage:
 #   agent-git-setup.sh <repo-dir>      # any worktree or the main repo of the repo
@@ -143,11 +142,10 @@ INCLUDE_KEY="includeIf.gitdir/i:**/.git/worktrees/**.path"
 
 : "${AGENT_GIT_NAME:?set AGENT_GIT_NAME, e.g. myagent[bot]}"
 
-# GIT_USER_NAME (optional, human-facing handle) is accepted for context only and
-# is NEVER used in the bot commit identity. The bot commit email is derived from
-# the BOT's own numeric id — never the human handle's id — so commits are always
-# attributed to the bot, never to the human. We validate its shape if provided
-# (GitHub handles are [A-Za-z0-9-] only) but do not resolve or interpolate it.
+# GIT_USER_NAME (optional, human-facing handle) is validated for shape and, ONLY
+# as a LAST-RESORT fallback when the bot id cannot be resolved, used to attribute
+# commits to the human. The primary bot identity always comes from the bot's own
+# numeric id; the human handle is never preferred over it.
 _VALIDATE_HANDLE() {
 	case "$1" in
 	*[!A-Za-z0-9-]*) return 1 ;;
@@ -159,23 +157,58 @@ if [ -n "${GIT_USER_NAME:-}" ] && ! _VALIDATE_HANDLE "$GIT_USER_NAME"; then
 	exit 2
 fi
 
-# Commit email: use bot noreply so the agent name appears in the GitHub commit list.
-# The bot id comes ONLY from the bot's own identity — AGENT_GIT_BOT_ID (hidden
-# override, hermetic/offline) or the API-resolved id of AGENT_GIT_NAME. The human
-# GIT_USER_NAME is NEVER used for the email, so commits can never be attributed to
-# the human. If neither bot-id source resolves, fail closed (no email written).
+# _RESOLVE_ID <handle>: print the numeric GitHub id for a handle, or empty.
+# Uses the public API; sends GH_TOKEN as Bearer when set (higher rate limit /
+# private visibility). Network or rate-limit failures yield empty -> caller falls back.
+# Written set -e-safe: a failed lookup must never abort the script (we fall back).
+_RESOLVE_ID() {
+	local _enc _id _auth=()
+	_enc="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "$1" 2>/dev/null || true)"
+	if [ -n "${GH_TOKEN:-}" ]; then
+		_auth=(-H "Authorization: Bearer ***")
+	fi
+	_id="$(curl -sf "${_auth[@]}" -H "Accept: application/vnd.github.v3+json" "https://api.github.com/users/${_enc}" 2>/dev/null |
+		python3 -c 'import sys,json; print(json.load(sys.stdin).get("id",""))' 2>/dev/null || true)"
+	if [ -n "${_id:-}" ] && [ "${_id}" != "None" ]; then
+		printf '%s' "$_id"
+	fi
+	return 0
+}
+
+# Commit email: prefer the BOT's own noreply identity so commits show as the agent.
+# Resolution order (bot-first, human-fallback-last; fail only if nothing resolves):
+#   1. AGENT_GIT_BOT_ID   -> <id>+<AGENT_GIT_NAME>@users.noreply.github.com   (offline-safe)
+#   2. AGENT_GIT_NAME     -> API-resolved bot id (uses GH_TOKEN as Bearer if set)
+#   3. GIT_USER_NAME      -> human-attributed fallback (a setup that succeeds as
+#                            human beats a failed setup). id = GIT_USER_ID, or the
+#                            API-resolved id of the handle.
+_COMMIT_EMAIL=""
 if [ -n "${AGENT_GIT_BOT_ID:-}" ]; then
-	COMMIT_EMAIL="${AGENT_GIT_BOT_ID}+${AGENT_GIT_NAME}@users.noreply.github.com"
+	_COMMIT_EMAIL="${AGENT_GIT_BOT_ID}+${AGENT_GIT_NAME}@users.noreply.github.com"
 else
-	_APP_BOT_ENC="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "${AGENT_GIT_NAME}" 2>/dev/null || true)"
-	_APP_BOT_ID="$(curl -sf "https://api.github.com/users/${_APP_BOT_ENC}" 2>/dev/null | python3 -c 'import sys,json; print(json.load(sys.stdin).get("id",""))' 2>/dev/null || true)"
-	if [ -n "${_APP_BOT_ID:-}" ] && [ "${_APP_BOT_ID}" != "None" ]; then
-		COMMIT_EMAIL="${_APP_BOT_ID}+${AGENT_GIT_NAME}@users.noreply.github.com"
-	else
-		echo "agent-git-setup.sh: could not resolve bot id for ${AGENT_GIT_NAME} (set AGENT_GIT_BOT_ID, or check network/AGENT_GIT_NAME). Refusing to write a human-attributed identity." >&2
-		exit 1
+	_BID="$(_RESOLVE_ID "$AGENT_GIT_NAME")"
+	if [ -n "${_BID:-}" ]; then
+		_COMMIT_EMAIL="${_BID}+${AGENT_GIT_NAME}@users.noreply.github.com"
 	fi
 fi
+
+# Last resort: human-attributed identity (only when the bot id could not be resolved).
+if [ -z "${_COMMIT_EMAIL:-}" ] && [ -n "${GIT_USER_NAME:-}" ]; then
+	if [ -n "${GIT_USER_ID:-}" ]; then
+		_COMMIT_EMAIL="${GIT_USER_ID}+${GIT_USER_NAME}@users.noreply.github.com"
+	else
+		_UID="$(_RESOLVE_ID "$GIT_USER_NAME")"
+		if [ -n "${_UID:-}" ]; then
+			_COMMIT_EMAIL="${_UID}+${GIT_USER_NAME}@users.noreply.github.com"
+		fi
+	fi
+fi
+
+if [ -z "${_COMMIT_EMAIL:-}" ]; then
+	echo "agent-git-setup.sh: could not resolve any commit identity. Provide AGENT_GIT_BOT_ID, a resolvable AGENT_GIT_NAME, or GIT_USER_NAME (+ GIT_USER_ID / network)." >&2
+	exit 1
+fi
+COMMIT_EMAIL="$_COMMIT_EMAIL"
 
 # ---------------------------------------------------------------------------
 # Write the bot identity ONCE, scoped to all worktrees via includeIf

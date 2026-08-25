@@ -278,10 +278,10 @@ scripts/agent-git-setup.sh <repo-dir> [worktree-name] [branch]
 
 | Variable             | Meaning                                                              |
 |----------------------|----------------------------------------------------------------------|
-| `AGENT_GIT_NAME`     | Commit author name, e.g. `myagent[bot]`.                            |
-| `GIT_USER_NAME`      | GitHub handle (e.g. `my-git-user-name`) — resolved via the public GitHub API (`GET /users/<handle>` — no `GH_TOKEN` needed). |
-| `GH_TOKEN`           | *(Optional)* A push-capable GitHub token (e.g. a GitHub App install token) — only for `gh`/API as the bot. Not needed for the local commit author.       |
-| `GIT_USER_ID`        | *(hidden fallback)* Numeric id, alternative to `GIT_USER_NAME`. Only for hermetic tests / offline use; never in the prompt. |
+| `AGENT_GIT_NAME`     | Commit author name, e.g. `myagent[bot]`. Preferred identity source.  |
+| `GIT_USER_NAME`      | GitHub handle (e.g. `my-git-user-name`). LAST-RESORT fallback only: used to attribute commits to you when the bot id cannot be resolved. Prefer `AGENT_GIT_BOT_ID` / a resolvable `AGENT_GIT_NAME` so commits stay bot. |
+| `GH_TOKEN`           | *(Optional)* A GitHub token (e.g. a GitHub App install token) — only for `gh`/API as the bot, and used as a Bearer on the bot-id API lookup for higher rate limits. Not required for the local commit author.       |
+| `GIT_USER_ID`        | *(hidden fallback)* Numeric id for the `GIT_USER_NAME` fallback. Only for hermetic tests / offline use; never in the prompt. |
 
 The commit author (`user.name` / `user.email`) is set from the required
 variables above — it is **not** optional.
