@@ -107,10 +107,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # (e.g. /tmp/agent-git-setup); otherwise we would write identity config into a
 # repo that contains the tool itself. Refuse loudly.
 case "$SCRIPT_DIR" in
-	"$REPO_PATH"|"$REPO_PATH"/*)
-		echo "agent-git-setup.sh: ERROR: this script lives inside the target repo ($SCRIPT_DIR)." >&2
-		echo "agent-git-setup.sh: clone agent-git-setup OUTSIDE the repo (e.g. /tmp) and run from there." >&2
-		exit 2 ;;
+"$REPO_PATH" | "$REPO_PATH"/*)
+	echo "agent-git-setup.sh: ERROR: this script lives inside the target repo ($SCRIPT_DIR)." >&2
+	echo "agent-git-setup.sh: clone agent-git-setup OUTSIDE the repo (e.g. /tmp) and run from there." >&2
+	exit 2
+	;;
 esac
 
 # Guard B — stable location: the bot config is written at $GIT_DIR/agent-bot-identity.config
@@ -119,12 +120,13 @@ esac
 # leaving a dangling includeIf in the repo. Refuse in production; the test harness opts
 # in with AGENT_GIT_ALLOW_TMP=1 (its repos are intentionally throwaway).
 case "$GIT_DIR" in
-	/tmp/*|"${TMPDIR:-/nonexistent}"/*|/dev/shm/*)
-		if [ -z "${AGENT_GIT_ALLOW_TMP:-}" ]; then
-			echo "agent-git-setup.sh: ERROR: target repo's .git is in an ephemeral location ($GIT_DIR)." >&2
-			echo "agent-git-setup.sh: configure a persistent repo, not an ephemeral one." >&2
-			exit 2
-		fi ;;
+/tmp/* | "${TMPDIR:-/nonexistent}"/* | /dev/shm/*)
+	if [ -z "${AGENT_GIT_ALLOW_TMP:-}" ]; then
+		echo "agent-git-setup.sh: ERROR: target repo's .git is in an ephemeral location ($GIT_DIR)." >&2
+		echo "agent-git-setup.sh: configure a persistent repo, not an ephemeral one." >&2
+		exit 2
+	fi
+	;;
 esac
 
 # Guard C — anti-bloat key: we always write this single, fixed includeIf key, so
