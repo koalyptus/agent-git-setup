@@ -21,22 +21,11 @@ git clone https://github.com/koalyptus/agent-git-setup
 
 ### 1. Install the skill in your harness
 
-Pick one of these — whichever harness your agent runs in. This is a one-time
-human step so the prompt in §3 ("Use the `agent-git-setup` skill…") resolves.
+Consult that harness's docs for the exact install / "load skill from repo" command. Alternatively, copy `skills/agent-git-setup/SKILL.md` into the harness's skills folder (the standard `<skills>/<skill-name>/SKILL.md` layout this repo uses), or point the harness at the raw URL below:
 
-**Hermes:**
-```bash
-hermes skills install https://raw.githubusercontent.com/koalyptus/agent-git-setup/main/skills/agent-git-setup/SKILL.md
-# or clone and point at the local copy:
-# hermes skills install ./skills/agent-git-setup --category agent --name agent-git-setup
 ```
-
-**Other harnesses (Claude Code, OpenCode, Codex, etc.):**\
-Consult that harness's docs for the
-exact install / "load skill from repo" command. Alternatively, copy
-`skills/agent-git-setup/SKILL.md` into the harness's skills folder
-(the standard `<skills>/<skill-name>/SKILL.md` layout this repo uses), or
-point the harness at the raw URL above.
+https://raw.githubusercontent.com/koalyptus/agent-git-setup/main/skills/agent-git-setup/SKILL.md
+```
 
 ### 2. Prepare relevant Git information
 
