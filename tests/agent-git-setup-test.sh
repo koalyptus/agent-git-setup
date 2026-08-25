@@ -2,9 +2,10 @@
 #
 # agent-git-setup-test.sh
 #
-# Hermetic tests for agent-git-setup.sh. Creates throwaway git repos under
-# mktemp, sands HOME/GIT_CONFIG_GLOBAL to a temp dir, uses a dummy token and a
-# fake origin URL (no network), and removes everything on exit.
+# Hermetic tests for agent-git-setup.sh. Creates throwaway git repos + worktrees
+# under mktemp (the HARNESS owns the worktree; this script only writes identity),
+# sands HOME/GIT_CONFIG_GLOBAL to a temp dir, uses a dummy token and a fake
+# origin URL (no network), and removes everything on exit.
 #
 set -uo pipefail
 
@@ -15,7 +16,6 @@ SANDBOX="$(mktemp -d)"
 export HOME="$SANDBOX"
 export GIT_CONFIG_GLOBAL="$SANDBOX/.gitconfig"
 export GIT_CONFIG_NOSYSTEM=1
-export AGENT_GIT_WORKTREE_ROOT="$SANDBOX/worktrees"
 
 PASS=0
 FAIL=0
@@ -50,20 +50,34 @@ make_repo() {
 	echo "$dir"
 }
 
+# make_worktree <repo>: the HARNESS creates the worktree (not the script) and
+# enables extensions.worktreeConfig in the MAIN repo — just like a real harness
+# would. Sets the global WT to the worktree path. (Must NOT be called in a
+# command substitution — $(...) runs in a subshell and loses the WT_SEQ counter.)
+WT_SEQ=0
+WT=""
+make_worktree() {
+	local repo="$1"
+	WT_SEQ=$((WT_SEQ + 1))
+	local name="wt-$WT_SEQ"
+	git -C "$repo" config extensions.worktreeConfig true
+	git -C "$repo" worktree add -q -b "agent-$name" "$SANDBOX/wt/$name"
+	WT="$SANDBOX/wt/$name"
+}
+
 cleanup() { rm -rf "$SANDBOX"; }
 trap cleanup EXIT
 
-# 1. Happy path: worktree created, bot identity set, origin unchanged
+# 1. Happy path: script writes bot identity into a harness-made worktree
 echo "happy path"
 REPO="$(make_repo with-origin)"
+make_worktree "$REPO"
 export GH_TOKEN=dummy_token
 export AGENT_GIT_NAME="myagent[bot]"
 export GIT_USER_ID=268339505
 export GIT_USER_NAME=my-git-user-name
 export AGENT_GIT_BOT_ID=320010330
-if "$SCRIPT" "$REPO" agent testbranch >/dev/null 2>&1; then
-	WT="$SANDBOX/worktrees/$(basename "$REPO")/agent"
-	if [ -e "$WT/.git" ]; then ok "worktree created"; else bad "worktree not created"; fi
+if "$SCRIPT" "$WT" >/dev/null 2>&1; then
 	assert_eq "$(git -C "$WT" config user.name)" "myagent[bot]" "worktree user.name = bot"
 	assert_eq "$(git -C "$WT" config user.email)" "320010330+myagent[bot]@users.noreply.github.com" "worktree user.email = bot noreply"
 	assert_eq "$(git -C "$WT" remote get-url origin)" "https://github.com/example/repo.git" "worktree origin unchanged"
@@ -78,33 +92,46 @@ assert_eq "$(git -C "$REPO" remote get-url origin)" "https://github.com/example/
 
 # 3. Idempotent re-run
 echo "idempotent re-run"
-if "$SCRIPT" "$REPO" agent testbranch >/dev/null 2>&1; then
+if "$SCRIPT" "$WT" >/dev/null 2>&1; then
 	ok "second run exits 0"
-
 	assert_eq "$(git -C "$WT" config user.name)" "myagent[bot]" "identity still bot after re-run"
 else
 	bad "second run exited non-zero"
 fi
 
-# 4. No-origin repo: warns, does not crash, identity still set
-echo "no-origin repo"
-REPO2="$(make_repo)"
-export GH_TOKEN=dummy_token
-export AGENT_GIT_NAME="myagent[bot]"
-export GIT_USER_ID=268339505
-if "$SCRIPT" "$REPO2" agent testbranch >/dev/null 2>&1; then
-	WT2="$SANDBOX/worktrees/$(basename "$REPO2")/agent"
-	assert_eq "$(git -C "$WT2" config user.name)" "myagent[bot]" "identity set even without origin"
+# 4. Refuses to run in the MAIN repo (not a worktree) — would leak identity
+echo "refuses main repo"
+REPO4="$(make_repo with-origin)"
+git -C "$REPO4" config extensions.worktreeConfig true
+export AGENT_GIT_NAME="myagent[bot]" GIT_USER_ID=268339505
+if "$SCRIPT" "$REPO4" >/dev/null 2>&1; then
+	bad "script must refuse to run in the main repo"
 else
-	bad "script failed on no-origin repo"
+	rc=$?
+	if [ "$rc" -ne 0 ]; then ok "exits non-zero in main repo (no leak)"; else bad "exit code wrong"; fi
 fi
 
-# 5. Missing required env: errors with message, non-zero exit
+# 5. Missing worktreeConfig extension: errors + tells agent to ASK HUMAN
+echo "missing worktreeConfig"
+REPO5="$(make_repo with-origin)"
+WT5="$(git -C "$REPO5" worktree add -q -b agent-wt5 "$SANDBOX/wt/wt5" && echo "$SANDBOX/wt/wt5")"
+git -C "$REPO5" config --unset extensions.worktreeConfig 2>/dev/null || true
+export AGENT_GIT_NAME="myagent[bot]" GIT_USER_ID=268339505
+OUT5="$("$SCRIPT" "$WT5" 2>&1)" || true
+if echo "$OUT5" | grep -qi "ASK THE HUMAN"; then
+	ok "prompts agent to ask human about worktreeConfig"
+else
+	bad "did not tell agent to ask human about worktreeConfig"
+fi
+
+# 6. Missing required env: errors with message, non-zero exit
 echo "missing env"
-REPO3="$(make_repo with-origin)"
+REPO6="$(make_repo with-origin)"
+make_worktree "$REPO6"
+WT6="$WT"
 unset AGENT_GIT_NAME
 export GIT_USER_ID=268339505 GH_TOKEN=dummy_token
-if "$SCRIPT" "$REPO3" agent testbranch 2>/dev/null; then
+if "$SCRIPT" "$WT6" 2>/dev/null; then
 	bad "script should fail without AGENT_GIT_NAME"
 else
 	rc=$?
@@ -112,7 +139,7 @@ else
 fi
 unset GIT_USER_ID GIT_USER_NAME
 export AGENT_GIT_NAME="myagent[bot]" GH_TOKEN=dummy_token
-if "$SCRIPT" "$REPO3" agent testbranch 2>/dev/null; then
+if "$SCRIPT" "$WT6" 2>/dev/null; then
 	bad "script should fail without GIT_USER_NAME/GIT_USER_ID"
 else
 	rc=$?
@@ -121,60 +148,62 @@ fi
 # GH_TOKEN is now optional for the commit-author path (public GET /users/<handle>)
 unset GH_TOKEN
 export AGENT_GIT_NAME="myagent[bot]" GIT_USER_ID=268339505
-if "$SCRIPT" "$REPO3" agent testbranch >/dev/null 2>&1; then
+if "$SCRIPT" "$WT6" >/dev/null 2>&1; then
 	ok "succeeds without GH_TOKEN when GIT_USER_ID set (GH_TOKEN optional)"
 else
 	bad "should succeed without GH_TOKEN when GIT_USER_ID is set"
 fi
 
-# 6. Not-a-git-dir argument: errors, exit 2
+# 7. Not-a-git-dir argument: errors, exit 2
 echo "not-a-git-dir"
 NOTREPO="$(mktemp -d)"
 export GH_TOKEN=dummy_token AGENT_GIT_NAME="myagent[bot]" GIT_USER_ID=268339505
-"$SCRIPT" "$NOTREPO" agent testbranch >/dev/null 2>&1
+"$SCRIPT" "$NOTREPO" >/dev/null 2>&1
 rc=$?
 assert_eq "$rc" "2" "exits 2 on non-git dir"
 
-# 7. Email uses bot noreply so agent name shows in commit list
+# 8. Email uses bot noreply so agent name shows in commit list
 echo "noreply email construction"
-REPO7="$(make_repo with-origin)"
+REPO8="$(make_repo with-origin)"
+make_worktree "$REPO8"
+WT8="$WT"
 unset GH_TOKEN
-
 export AGENT_GIT_NAME="agent-laptop[bot]" GIT_USER_ID=268339505 GIT_USER_NAME=my-git-user-name AGENT_GIT_BOT_ID=320004057
-if "$SCRIPT" "$REPO7" agent testbranch >/dev/null 2>&1; then
-	WT7="$SANDBOX/worktrees/$(basename "$REPO7")/agent"
-	assert_eq "$(git -C "$WT7" config user.name)" "agent-laptop[bot]" "email test: user.name still the bot"
-	assert_eq "$(git -C "$WT7" config user.email)" "320004057+agent-laptop[bot]@users.noreply.github.com" "email uses bot noreply (id+botname@...)"
+if "$SCRIPT" "$WT8" >/dev/null 2>&1; then
+	assert_eq "$(git -C "$WT8" config user.name)" "agent-laptop[bot]" "email test: user.name still the bot"
+	assert_eq "$(git -C "$WT8" config user.email)" "320004057+agent-laptop[bot]@users.noreply.github.com" "email uses bot noreply (id+botname@...)"
 else
 	bad "email construction test: script failed unexpectedly"
 fi
 unset AGENT_GIT_BOT_ID
 
-# 8. Fallback when only GIT_USER_ID is set (hermetic, no GIT_USER_NAME)
+# 9. Fallback when only GIT_USER_ID is set (hermetic, no GIT_USER_NAME)
 echo "noreply fallback without GIT_USER_NAME"
-REPO8="$(make_repo with-origin)"
+REPO9="$(make_repo with-origin)"
+make_worktree "$REPO9"
+WT9="$WT"
 unset GIT_USER_NAME
 export GH_TOKEN=dummy_token AGENT_GIT_NAME="myagent[bot]" GIT_USER_ID=268339505 AGENT_GIT_BOT_ID=320010330
-if "$SCRIPT" "$REPO8" agent testbranch >/dev/null 2>&1; then
-	WT8="$SANDBOX/worktrees/$(basename "$REPO8")/agent"
-	assert_eq "$(git -C "$WT8" config user.email)" "320010330+myagent[bot]@users.noreply.github.com" "fallback: email uses bot noreply when GIT_USER_NAME unset"
+if "$SCRIPT" "$WT9" >/dev/null 2>&1; then
+	assert_eq "$(git -C "$WT9" config user.email)" "320010330+myagent[bot]@users.noreply.github.com" "fallback: email uses bot noreply when GIT_USER_NAME unset"
 else
 	bad "fallback test: script failed unexpectedly"
 fi
 unset AGENT_GIT_BOT_ID
 
-# 9. No signing by default (industry standard)
+# 10. No signing by default (industry standard)
 echo "no signing by default"
-REPO9="$(make_repo with-origin)"
+REPO10="$(make_repo with-origin)"
+make_worktree "$REPO10"
+WT10="$WT"
 export GH_TOKEN=dummy_token AGENT_GIT_NAME="myagent[bot]" GIT_USER_ID=268339505 GIT_USER_NAME=my-git-user-name
-if "$SCRIPT" "$REPO9" agent testbranch >/dev/null 2>&1; then
-	WT9="$SANDBOX/worktrees/$(basename "$REPO9")/agent"
-	if git -C "$WT9" config commit.gpgsign >/dev/null 2>&1; then
+if "$SCRIPT" "$WT10" >/dev/null 2>&1; then
+	if git -C "$WT10" config commit.gpgsign >/dev/null 2>&1; then
 		bad "commit.gpgsign should not be set by default"
 	else
 		ok "no commit.gpgsign by default"
 	fi
-	if git -C "$WT9" config user.signingkey >/dev/null 2>&1; then
+	if git -C "$WT10" config user.signingkey >/dev/null 2>&1; then
 		bad "user.signingkey should not be set by default"
 	else
 		ok "no user.signingkey by default"
@@ -183,27 +212,13 @@ else
 	bad "signing test: script failed unexpectedly"
 fi
 
-# 10. Relative REPO_DIR '.' still creates worktree outside (not ~/.agent-git-setup/./agent)
-echo "relative REPO_DIR '.'"
-REPO10="$(make_repo with-origin)"
-
-export GH_TOKEN=dummy_token AGENT_GIT_NAME="myagent[bot]" GIT_USER_ID=268339505 GIT_USER_NAME=my-git-user-name
-if (cd "$REPO10" && "$SCRIPT" . agent testbranch >/dev/null 2>&1); then
-	WT10="$SANDBOX/worktrees/$(basename "$REPO10")/agent"
-	if [ -e "$WT10/.git" ]; then ok "relative '.' worktree created outside"; else bad "relative '.' worktree not at expected outside path"; fi
-	assert_eq "$(git -C "$WT10" config user.name)" "myagent[bot]" "relative '.' worktree user.name = bot"
-	if [ -e "$REPO10/.worktrees" ]; then bad "relative '.' must not create inside-repo .worktrees"; else ok "relative '.' did not pollute repo with .worktrees"; fi
-else
-	bad "relative '.' invocation failed"
-fi
-
 # 11. Actual git commit in worktree is authored as bot (local commits appear with agent identity)
 echo "commit author isolation"
 REPO11="$(make_repo with-origin)"
-
+make_worktree "$REPO11"
+WT11="$WT"
 export GH_TOKEN=dummy_token AGENT_GIT_NAME="myagent[bot]" GIT_USER_ID=268339505 GIT_USER_NAME=my-git-user-name AGENT_GIT_BOT_ID=320010330
-if "$SCRIPT" "$REPO11" agent testbranch >/dev/null 2>&1; then
-	WT11="$SANDBOX/worktrees/$(basename "$REPO11")/agent"
+if "$SCRIPT" "$WT11" >/dev/null 2>&1; then
 	echo "hello" >"$WT11/hello.txt"
 	git -C "$WT11" add hello.txt
 	git -C "$WT11" commit -q -m "test commit as bot"
@@ -216,28 +231,25 @@ else
 fi
 unset AGENT_GIT_BOT_ID
 
-# 12. Real pre-commit guard hook is installed and runs on commit in the worktree,
-#     is scoped to the worktree (main repo unharmed, no git status noise).
-echo "pre-commit guard hook"
+# 12. No hooks / no core.hooksPath written (harness owns hooks)
+echo "no hook interference"
 REPO12="$(make_repo with-origin)"
+make_worktree "$REPO12"
+WT12="$WT"
 export GH_TOKEN=dummy_token AGENT_GIT_NAME="myagent[bot]" GIT_USER_ID=268339505 GIT_USER_NAME=my-git-user-name AGENT_GIT_BOT_ID=320010330
-if "$SCRIPT" "$REPO12" agent testbranch >/dev/null 2>&1; then
-	WT12="$SANDBOX/worktrees/$(basename "$REPO12")/agent"
-	HOOKDIR="$(dirname "$WT12")/.hooks"
-	# (a) hook installed + wired via worktree-scoped core.hooksPath
-	if [ -x "$HOOKDIR/pre-commit" ]; then ok "pre-commit hook file installed"; else bad "pre-commit hook file missing at $HOOKDIR/pre-commit"; fi
-	assert_eq "$(git -C "$WT12" config core.hooksPath)" "$HOOKDIR" "worktree core.hooksPath points at hook dir"
-	# (b) main repo is NOT touched
-	if [ -e "$REPO12/.git/hooks/pre-commit" ]; then bad "main repo got a pre-commit hook (leak)"; else ok "main repo unaffected"; fi
-	if [ -n "$(git -C "$REPO12" config core.hooksPath 2>/dev/null)" ]; then bad "main repo core.hooksPath set (leak)"; else ok "main repo core.hooksPath unset"; fi
-	# (c) hook runs on a real commit inside the worktree
-	echo "guarded" >"$WT12/guarded.txt"
-	git -C "$WT12" add guarded.txt
-	if git -C "$WT12" commit -q -m "guarded commit"; then ok "commit in worktree passes guard"; else bad "guard wrongly blocked a worktree commit"; fi
-	# (d) hook dir stays out of git status (lives outside the checkout)
-	if [ -z "$(git -C "$WT12" status --porcelain)" ]; then ok "hook dir not visible in git status"; else bad "hook dir leaked into git status: $(git -C "$WT12" status --porcelain)"; fi
+if "$SCRIPT" "$WT12" >/dev/null 2>&1; then
+	if [ -n "$(git -C "$WT12" config core.hooksPath 2>/dev/null)" ]; then
+		bad "script must not set core.hooksPath (would override harness hooks)"
+	else
+		ok "no core.hooksPath written"
+	fi
+	if [ -e "$WT12/../.hooks/pre-commit" ]; then
+		bad "script must not install guard hooks"
+	else
+		ok "no guard hooks installed"
+	fi
 else
-	bad "guard hook test: setup failed"
+	bad "no-hook test: setup failed"
 fi
 unset AGENT_GIT_BOT_ID
 
