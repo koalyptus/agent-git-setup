@@ -13,6 +13,8 @@ SANDBOX="$(mktemp -d)"
 export HOME="$SANDBOX"
 export GIT_CONFIG_GLOBAL="$SANDBOX/.gitconfig"
 export GIT_CONFIG_NOSYSTEM=1
+# Repos are intentionally throwaway (under $SANDBOX=/tmp); opt the hardening guard in.
+export AGENT_GIT_ALLOW_TMP=1
 
 PASS=0
 FAIL=0
@@ -156,6 +158,18 @@ if [ -n "$(git -C "$REPO11" config core.hooksPath 2>/dev/null)" ]; then
 else
 	ok "no core.hooksPath written"
 fi
+
+echo "12. Ephemeral-location guard: refuses /tmp repo without opt-in"
+REPO12="$(make_repo with-origin)"
+unset AGENT_GIT_ALLOW_TMP
+export AGENT_GIT_NAME="myagent[bot]" GIT_USER_NAME="my-git-user-name" GIT_USER_ID=320010330
+if "$SCRIPT" "$REPO12" >/dev/null 2>&1; then bad "should refuse ephemeral repo without AGENT_GIT_ALLOW_TMP"; else ok "refuses ephemeral repo"; fi
+export AGENT_GIT_ALLOW_TMP=1
+
+echo "13. Self-nesting guard: refuses when script lives inside target repo"
+REPO13="$(make_repo with-origin)"
+cp "$SCRIPT" "$REPO13/agent-git-setup.sh"
+if bash "$REPO13/agent-git-setup.sh" "$REPO13" >/dev/null 2>&1; then bad "should refuse self-nesting"; else ok "refuses self-nesting"; fi
 
 echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

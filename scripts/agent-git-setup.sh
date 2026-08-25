@@ -96,6 +96,43 @@ if [ "$(basename "$GIT_DIR")" != ".git" ]; then
 fi
 
 # ---------------------------------------------------------------------------
+# Hardening guards (deterministic, fail-closed)
+# ---------------------------------------------------------------------------
+
+# Resolve the directory this script lives in (symlink-resolved absolute path).
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Guard A — self-nesting: this tool must never be run from inside the repo it is
+# meant to configure. agent-git-setup must be cloned OUTSIDE the target repo
+# (e.g. /tmp/agent-git-setup); otherwise we would write identity config into a
+# repo that contains the tool itself. Refuse loudly.
+case "$SCRIPT_DIR" in
+	"$REPO_PATH"|"$REPO_PATH"/*)
+		echo "agent-git-setup.sh: ERROR: this script lives inside the target repo ($SCRIPT_DIR)." >&2
+		echo "agent-git-setup.sh: clone agent-git-setup OUTSIDE the repo (e.g. /tmp) and run from there." >&2
+		exit 2 ;;
+esac
+
+# Guard B — stable location: the bot config is written at $GIT_DIR/agent-bot-identity.config
+# and the includeIf points at that absolute path. If the repo's .git lives under an
+# ephemeral tree (/tmp, $TMPDIR, /dev/shm), that path is deleted when the session ends,
+# leaving a dangling includeIf in the repo. Refuse in production; the test harness opts
+# in with AGENT_GIT_ALLOW_TMP=1 (its repos are intentionally throwaway).
+case "$GIT_DIR" in
+	/tmp/*|"${TMPDIR:-/nonexistent}"/*|/dev/shm/*)
+		if [ -z "${AGENT_GIT_ALLOW_TMP:-}" ]; then
+			echo "agent-git-setup.sh: ERROR: target repo's .git is in an ephemeral location ($GIT_DIR)." >&2
+			echo "agent-git-setup.sh: configure a persistent repo, not an ephemeral one." >&2
+			exit 2
+		fi ;;
+esac
+
+# Guard C — anti-bloat key: we always write this single, fixed includeIf key, so
+# re-runs overwrite in place and can never accumulate duplicates. Defined here so
+# the post-write assertion (below) and the write share one source of truth.
+INCLUDE_KEY="includeIf.gitdir/i:**/.git/worktrees/**.path"
+
+# ---------------------------------------------------------------------------
 # Required environment
 # ---------------------------------------------------------------------------
 
@@ -163,8 +200,16 @@ git config -f "$BOT_CONFIG" user.email "$COMMIT_EMAIL"
 # Conditional include: apply the bot config to every linked worktree
 # (.git/worktrees/<name>) but NOT to the main repo's own .git directory.
 # This makes the setup one-off for the whole repo, including future worktrees.
-INCLUDE_KEY="includeIf.gitdir/i:**/.git/worktrees/**.path"
 git -C "$REPO_PATH" config --local "$INCLUDE_KEY" "$BOT_CONFIG"
+
+# Guard C (assert) — anti-bloat: exactly one includeIf entry must now exist.
+# Deterministic guarantee that re-runs cannot accumulate duplicates.
+_cfg_count="$(git -C "$REPO_PATH" config --local --get-all "$INCLUDE_KEY" 2>/dev/null | wc -l)"
+_cfg_count="${_cfg_count//[[:space:]]/}"
+if [ "${_cfg_count:-0}" -ne 1 ]; then
+	echo "agent-git-setup.sh: ERROR: expected exactly one includeIf entry, found ${_cfg_count:-0} (config bloat)." >&2
+	exit 1
+fi
 
 # ---------------------------------------------------------------------------
 # Verify: main stays human, worktrees become bot
