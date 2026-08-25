@@ -1,15 +1,14 @@
 # agent-git-setup
 
-Give an AI agent a bot identity in local git worktrees and/or on GitHub to easily distinguish agentic authors on Git and GitHub.
+Give an AI agent a bot identity so its git commits and GitHub actions are clearly attributed to the agent, distinct from the human's account. The agent works in a worktree its harness already created; this repo only scopes the bot commit identity to that worktree.
 
 ## Requirements
 
-> **Requires git >= 2.43**: it uses `extensions.worktreeConfig` for per-worktree isolation.
-
+- **Requires git >= 2.43** on the agent's machine: it needs `extensions.worktreeConfig` for per-worktree isolation. The harness that creates the worktree is expected to have enabled this extension in the main repo (one-time, `git config extensions.worktreeConfig true`). If it is missing, the script errors and tells the agent to **ask the human** whether they may enable it — it never enables it silently.
 - **Unix-like shell** (`bash`) and `git`. The script and tests target Linux and
   macOS. **Windows is not supported as-is** — `bash` + `git` under WSL or Git
   Bash will work, but native `cmd`/`PowerShell` will not (the script uses POSIX
-  shell features and git worktree paths).
+  shell features).
 - `Make install` installs `shellcheck`/`shfmt`, `Python 3` and `cryptography` if needed.
 
 ## Install
@@ -22,22 +21,11 @@ git clone https://github.com/koalyptus/agent-git-setup
 
 ### 1. Install the skill in your harness
 
-Pick one of these — whichever harness your agent runs in. This is a one-time
-human step so the prompt in §3 ("Use the `agent-git-setup` skill…") resolves.
+Consult that harness's docs for the exact install / "load skill from repo" command. Alternatively, copy `skills/agent-git-setup/SKILL.md` into the harness's skills folder (the standard `<skills>/<skill-name>/SKILL.md` layout this repo uses), or point the harness at the raw URL below:
 
-**Hermes:**
-```bash
-hermes skills install https://raw.githubusercontent.com/koalyptus/agent-git-setup/main/skills/agent-git-setup/SKILL.md
-# or clone and point at the local copy:
-# hermes skills install ./skills/agent-git-setup --category agent --name agent-git-setup
 ```
-
-**Other harnesses (Claude Code, OpenCode, Codex, etc.):**\
-Consult that harness's docs for the
-exact install / "load skill from repo" command. Alternatively, copy
-`skills/agent-git-setup/SKILL.md` into the harness's skills folder
-(the standard `<skills>/<skill-name>/SKILL.md` layout this repo uses), or
-point the harness at the raw URL above.
+https://raw.githubusercontent.com/koalyptus/agent-git-setup/main/skills/agent-git-setup/SKILL.md
+```
 
 ### 2. Prepare relevant Git information
 
@@ -95,9 +83,10 @@ Use the agent-git-setup skill. Set up a bot git identity for current repo.
 AGENT_GIT_NAME=[myagent[bot]]
 GIT_USER_NAME=[my-git-user-name]
 
-After setting the env vars above, run `scripts/agent-git-setup.sh` in the current repo.
+After setting the env vars above, run `scripts/agent-git-setup.sh <worktree-dir>` where
+`<worktree-dir>` is the worktree your harness already created for the agent.
 
-Then do your git work inside the printed worktree. Do not touch the main tree.
+Then do your git work inside that worktree. Do not touch the main tree.
 ```
 
 #### GitHub App
@@ -112,9 +101,9 @@ GIT_USER_NAME=[my-git-user-name]
 GITHUB_APP_ID=[4646191]
 GITHUB_APP_PEM=[/path/to/myagent.pem]
 
-After setting the env vars above (mint the token first if using the GitHub App), run `scripts/agent-git-setup.sh` in the current repo.
+After setting the env vars above (mint the token first if using the GitHub App), run `scripts/agent-git-setup.sh <worktree-dir>` where `<worktree-dir>` is the worktree your harness already created for the agent.
 
-Then do your git work inside the printed worktree. Do not touch the main tree.
+Then do your git work inside that worktree. Do not touch the main tree.
 ```
 
 ## 4. What happens
@@ -123,7 +112,7 @@ Then do your git work inside the printed worktree. Do not touch the main tree.
 
 2. The agent resolves the bot's numeric id via the public GitHub API (`GET /users/<bot>`).
 
-3. The agent creates an isolated worktree (standalone: `~/.agent-git-setup/<repo>/agent`; with [treehouse](https://github.com/kunchenguid/treehouse): the treehouse pool) and sets the bot identity only there. Requires git ≥ 2.43. It prints isolation verified — main tree untouched on success; if it prints ERROR, update git and re-run.
+3. The agent runs `scripts/agent-git-setup.sh <worktree-dir>` inside the worktree its harness already created. The script writes the bot identity into that worktree's OWN config file (scoped to the worktree, never the main repo) and prints `isolation verified — main tree untouched` on success; if it prints `ERROR`, the worktreeConfig extension is missing — ask the human to enable it and re-run.
 
 4. The agent does all its work inside that worktree. Commits appear as {agent-name}[bot] in the commit list (no badge by default). GitHub actions appear as {agent-name}[bot] (when a token was needed), and git push still uses your account. Your main checkout is never changed.
 
@@ -132,62 +121,62 @@ Full details, diagrams, and reference tables are below (GitHub App setup is alre
 ## Flow diagram (happy path)
 
 ```
-┌─────────────────────┐
-│      Human          │
-│  gives agent prompt │
-│  ─────────────────  │
-│ "Use agent-git-     │
-│  setup skill on     │
-│  <repo-path>"       │
-└─────────┬───────────┘
-          │
-          ▼
-┌─────────────────────┐
-│  Token source       │  (only if you need gh/API as the bot)
-│  ─────────────────  │
-│  Option A:          │  scripts/mint-token.sh + GitHub App
-│    scripts/mint-token.sh    │    (create app, download PEM,
-│    --app-id --pem   │     install, get bot user ID)
-│    --shell          │
-│  Option B:          │  Other backend (harness, PAT, etc.)
-│    your token minter│
-└─────────┬───────────┘
-          │ exports GH_TOKEN
-          ▼
-┌─────────────────────┐
-│  env: AGENT_GIT_*   │  (set by agent/skill)
-│  ─────────────────  │
-│  AGENT_GIT_NAME     │  e.g. myagent[bot]
-│  GIT_USER_NAME      │  handle (agent resolves to id)
-└─────────┬───────────┘
-          │
-          ▼
-┌─────────────────────┐
-│ scripts/agent-git-setup.sh  │
-│  ─────────────────  │
-│  git worktree add   │  → ~/.agent-git-setup/<repo>/agent (or treehouse pool)
-│  write worktree     │     .git/worktrees/agent/config
-│    user.name        │     user.name = <name>[bot]
-│    user.email       │     user.email = <bot_id>+<name>[bot]@... (bot noreply)
-└─────────┬───────────┘
-          │
-          ▼
-┌─────────────────────┐
-│   Agent works in    │
-│   the worktree      │
-│  ─────────────────  │
-│  commits → <name>[bot] (no badge)
-│  gh/API   → <name>[bot] (GH_TOKEN)
-│  git push → your credential│
-└─────────────────────┘
+┌──────────────────────────────────────┐
+│              Human                    │
+│   gives agent prompt                  │
+│   ────────────────────────────────   │
+│   "Use agent-git-setup skill on      │
+│    <repo-path>"                      │
+└──────────────┬───────────────────────┘
+               │
+               ▼
+┌──────────────────────────────────────┐
+│           Token source                │  (only if you need gh/API as the bot)
+│   ────────────────────────────────   │
+│   Option A:                           │  scripts/mint-token.sh + GitHub App
+│     scripts/mint-token.sh             │    (create app, download PEM,
+│     --app-id --pem                    │     install, get bot user ID)
+│     --shell                           │
+│   Option B:                           │  Other backend (harness, PAT, etc.)
+│     your token minter                 │
+└──────────────┬───────────────────────┘
+               │ exports GH_TOKEN
+               ▼
+┌──────────────────────────────────────┐
+│        env: AGENT_GIT_*               │  (set by agent/skill)
+│   ────────────────────────────────   │
+│   AGENT_GIT_NAME                      │  e.g. myagent[bot]
+│   GIT_USER_NAME                       │  handle (agent resolves to id)
+└──────────────┬───────────────────────┘
+               │
+               ▼
+┌──────────────────────────────────────┐
+│   scripts/agent-git-setup.sh          │
+│   ────────────────────────────────   │
+│   writes worktree's OWN config        │  .git/worktrees/<name>/config.worktree
+│     user.name = <name>[bot]           │     user.email = <bot_id>+<name>[bot]@...
+│     user.email = (bot noreply)        │  (harness already created the worktree
+│                                        │   + enabled extensions.worktreeConfig
+│                                        │   in the main repo)
+└──────────────┬───────────────────────┘
+               │
+               ▼
+┌──────────────────────────────────────┐
+│        Agent works in the worktree     │
+│   ────────────────────────────────   │
+│   commits → <name>[bot] (no badge)    │
+│   gh/API   → <name>[bot] (GH_TOKEN)  │
+│   git push → your credential          │
+└──────────────────────────────────────┘
 ```
 
 ## What it does
 
 An AI coding agent should be able to **commit as a distinct bot identity**,
 without that identity leaking into your own working tree. `scripts/agent-git-setup.sh`
-creates an isolated **git worktree** and configures it so that commits authored
-there are attributed to a bot, while your main checkout stays exactly as you.
+writes the bot identity into the **worktree's own config** (the harness creates
+the worktree; the script only scopes identity to it), so commits authored there
+are attributed to a bot, while your main checkout stays exactly as you.
 
 The bot identity is the **commit author** (the `user.name`/`user.email` stamped
 on each commit). It does **not** change who pushes: a plain `git push` from the
@@ -197,7 +186,7 @@ comments via `gh`/API) are the bot. See "Commit-author isolation" below.
 
 It handles two distinct things:
 
-1. **Local worktree commit identity (required).** Inside the worktree only,
+1. **Worktree commit identity (required).** Inside the worktree only,
    `user.name` and `user.email` are set to the bot identity. Commits authored
    there read as the bot. This is pure local git config — no token required.
 2. **GitHub actor (PRs / API).** Operations driven by `GH_TOKEN` in the
@@ -214,17 +203,20 @@ It handles two distinct things:
 - **Not token-agnostic by accident — by design.** It does **not** mint tokens and
   contains no secrets. It expects `GH_TOKEN` to already be present in the
   environment (minted by whatever backend/agent you use) and only *consumes* it.
-- **Not coupled to any worktree tool.** If [treehouse](https://github.com/kunchenguid/treehouse) is installed it is used to
-  obtain the worktree; otherwise a plain `git worktree add" is used. Same result.
+- **Not a worktree manager.** The harness owns worktree creation, branching,
+  hooks, and `core.hooksPath`. This script only writes identity into the
+  worktree the harness already made — it never creates a worktree, installs
+  hooks, or imposes a path/branch convention.
 - **Not touching your main tree.** All configuration is scoped to the worktree.
-  Your main repository and global git config are never modified.
+  Your main repository and global git config are never modified (the script
+  only reads `extensions.worktreeConfig`; it does not enable it).
 
 ## Commit-author isolation (by design)
 
 `scripts/agent-git-setup.sh` isolates the **commit author** in the worktree, not the
 **push credential**. This is a deliberate, safe choice:
 
-- The script enables the git `worktreeConfig` extension (`extensions.worktreeConfig=true` in the main repo config). On git 2.43+ this is **required** for the per-worktree config file at `.git/worktrees/<name>/config` to be read at all; without it the bot identity still leaks into the shared main config (the failure seen on the laptop). The script exits with an error if it cannot enable the extension, and after writing it prints an isolation check (`worktree user.name` = bot, `main tree user.name` = human) that fails loudly if the worktree config is not being read.
+- The script relies on the git `worktreeConfig` extension (`extensions.worktreeConfig=true` in the main repo config). On git 2.43+ this is **required** for the per-worktree config file at `.git/worktrees/<name>/config.worktree` to be read at all; without it the bot identity would leak into the shared main config. The harness that created the worktree is expected to have enabled it. The script reads it and **errors loudly** (telling the agent to *ask the human* to enable it) if it is missing — it never enables the extension itself, because that writes to your main repo. After writing the identity it prints an isolation check (`worktree user.name` = bot, `main tree user.name` = human) that fails loudly if the worktree config is not being read.
 - Rewriting `origin` to inject a token would change your main tree too — exactly what we avoid. The script does **not** set `remote.origin.url` in the worktree config; it only sets `user.name`/`user.email`. The bot actor for `gh`/API (PRs, issues, comments) is provided by `GH_TOKEN` in the agent's environment — **not** by rewriting `origin`. Plain `git push` uses the repo's normal credential (the push actor is you, unless your push mechanism also uses `GH_TOKEN`). The agent must not rewrite `origin` either (see the skill).
 - **Result:** commits authored in the worktree show as `<name>[bot]` in the commit list. Plain `git push` uses the repo's normal credential. `gh`/API calls (PRs, issues, comments) made with `GH_TOKEN` in the agent's environment are the bot.
 
@@ -294,13 +286,6 @@ scripts/agent-git-setup.sh <repo-dir> [worktree-name] [branch]
 The commit author (`user.name` / `user.email`) is set from the required
 variables above — it is **not** optional.
 
-### Defaults (override via environment or arguments)
-
-| Variable              | Default     | Meaning                                  |
-|----------------------|-------------|------------------------------------------|
-| `AGENT_GIT_WORKTREE` | `agent`     | Worktree directory name.                |
-| `AGENT_GIT_BRANCH`   | `agent-work`| Branch created in the worktree.          |
-
 ### Example
 
 ```bash
@@ -308,15 +293,13 @@ export GH_TOKEN="$(mint-my-token)"            # backend-specific; not this scrip
 export AGENT_GIT_NAME="myagent[bot]"
 export GIT_USER_NAME="my-git-user-name"           # handle; script/skill resolves to numeric id
 
-scripts/agent-git-setup.sh ~/dev/my-repo
-# -> worktree at ~/.agent-git-setup/my-repo/agent (or treehouse pool)
-#    commits there: myagent[bot] <bot_id+myagent[bot]@users.noreply.github.com>
-#                  (user.name = myagent[bot] so agent shows in commit list;
-#                   email is bot noreply so agent name appears in list)
+scripts/agent-git-setup.sh ~/dev/my-repo/.worktrees/agent   # the worktree the harness created
+# -> worktree user.name/user.email set to myagent[bot] <bot_id+myagent[bot]@users.noreply.github.com>
+#    commits there: myagent[bot] (agent name shows in commit list)
 #    your ~/dev/my-repo main tree: untouched
 ```
 
-Re-running is **idempotent**: an existing worktree is reconfigured, not recreated.
+Re-running is **idempotent**: the worktree identity is reconfigured, not recreated.
 
 ## Why a worktree
 
