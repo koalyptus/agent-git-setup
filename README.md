@@ -112,7 +112,7 @@ This is a ONE-OFF per repo: every worktree (existing and future) now commits as 
 
 1. The agent authenticates itself if needed. If it has to use GitHub (open PRs, comment on issues), it creates its own short-lived token — you don't provide one. If it only makes local commits, no token is needed at all.
 
-2. The agent resolves the GitHub handle from `GIT_USER_NAME` to its numeric id via the public GitHub API (`GET /users/<handle>` — no `GH_TOKEN` needed).
+2. The agent resolves its **bot** identity first: `AGENT_GIT_BOT_ID` if set, otherwise the numeric id of `AGENT_GIT_NAME` via the public GitHub API (`GET /users/<handle>`; sends `GH_TOKEN` as Bearer when present, for higher rate limits). Only if the bot id cannot be resolved does it fall back to `GIT_USER_NAME` (your handle) so setup still succeeds.
 
 3. The agent runs `scripts/agent-git-setup.sh <repo-dir>` once per repo. The script writes the bot identity into `.git/agent-bot-identity.config` (shared, inside the repo's `.git/`) and adds a conditional include that scopes it to all worktrees — the main repo's own `.git` is excluded by the glob, so it stays human. On success it prints `isolation verified — main tree untouched, all worktrees bot`.
 
