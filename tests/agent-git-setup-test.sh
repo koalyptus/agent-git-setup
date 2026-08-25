@@ -154,6 +154,20 @@ else
 	bad "should succeed without GH_TOKEN when GIT_USER_ID is set"
 fi
 
+# 6b. Invalid GIT_USER_NAME (not a GitHub handle) is rejected before any network call
+echo "invalid handle rejected"
+REPO6B="$(make_repo with-origin)"
+make_worktree "$REPO6B"
+export AGENT_GIT_NAME="myagent[bot]" GIT_USER_NAME="bad handle/with spaces"
+unset GIT_USER_ID
+OUT6B="$("$SCRIPT" "$WT" 2>&1)" || true
+if echo "$OUT6B" | grep -qi "must be a GitHub handle"; then
+	ok "rejects invalid GIT_USER_NAME before network call"
+else
+	bad "did not reject invalid GIT_USER_NAME"
+fi
+unset GIT_USER_NAME
+
 # 7. Not-a-git-dir argument: errors, exit 2
 echo "not-a-git-dir"
 NOTREPO="$(mktemp -d)"

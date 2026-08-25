@@ -96,11 +96,23 @@ REPO_DIR="$(dirname "$COMMON_DIR")"
 # fallback for hermetic tests / offline use. If only the handle is set, resolve
 # it via the public GitHub API (GET /users/<handle> is unauthenticated);
 # when GH_TOKEN is set, use it as Bearer for higher rate limits / private.
+# Validate the handle shape before interpolating into the URL (GitHub handles
+# are [A-Za-z0-9-] only — reject anything else to avoid malformed requests).
+_VALIDATE_HANDLE() {
+	case "$1" in
+	*[!A-Za-z0-9-]*) return 1 ;;
+	*) return 0 ;;
+	esac
+}
 if [ -n "${GIT_USER_ID:-}" ]; then
 	_GIT_UID="$GIT_USER_ID"
 elif [ -n "${GIT_USER_NAME:-}" ]; then
+	if ! _VALIDATE_HANDLE "$GIT_USER_NAME"; then
+		echo "agent-git-setup.sh: GIT_USER_NAME must be a GitHub handle ([A-Za-z0-9-] only), got: $GIT_USER_NAME" >&2
+		exit 2
+	fi
 	if [ -n "${GH_TOKEN:-}" ]; then
-		_GIT_UID="$(curl -sf -H "Authorization: Bearer ***" -H "Accept: application/vnd.github.v3+json" "https://api.github.com/users/$GIT_USER_NAME" 2>/dev/null | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])' 2>/dev/null || true)"
+		_GIT_UID="$(curl -sf -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github.v3+json" "https://api.github.com/users/$GIT_USER_NAME" 2>/dev/null | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])' 2>/dev/null || true)"
 	else
 		_GIT_UID="$(curl -sf -H "Accept: application/vnd.github.v3+json" "https://api.github.com/users/$GIT_USER_NAME" 2>/dev/null | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])' 2>/dev/null || true)"
 	fi
