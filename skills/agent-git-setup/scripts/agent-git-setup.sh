@@ -143,50 +143,38 @@ INCLUDE_KEY="includeIf.gitdir/i:**/.git/worktrees/**.path"
 
 : "${AGENT_GIT_NAME:?set AGENT_GIT_NAME, e.g. myagent[bot]}"
 
-# GIT_USER_NAME (handle) is the human-facing input. GIT_USER_ID is a hidden
-# fallback for hermetic tests / offline use. If only the handle is set, resolve
-# it via the public GitHub API (GET /users/<handle> is unauthenticated);
-# when GH_TOKEN is set, use it as Bearer for higher rate limits / private.
-# Validate the handle shape before interpolating into the URL (GitHub handles
-# are [A-Za-z0-9-] only — reject anything else to avoid malformed requests).
+# GIT_USER_NAME (optional, human-facing handle) is accepted for context only and
+# is NEVER used in the bot commit identity. The bot commit email is derived from
+# the BOT's own numeric id — never the human handle's id — so commits are always
+# attributed to the bot, never to the human. We validate its shape if provided
+# (GitHub handles are [A-Za-z0-9-] only) but do not resolve or interpolate it.
 _VALIDATE_HANDLE() {
 	case "$1" in
 	*[!A-Za-z0-9-]*) return 1 ;;
 	*) return 0 ;;
 	esac
 }
-if [ -n "${GIT_USER_ID:-}" ]; then
-	_GIT_UID="$GIT_USER_ID"
-elif [ -n "${GIT_USER_NAME:-}" ]; then
-	if ! _VALIDATE_HANDLE "$GIT_USER_NAME"; then
-		echo "agent-git-setup.sh: GIT_USER_NAME must be a GitHub handle ([A-Za-z0-9-] only), got: $GIT_USER_NAME" >&2
-		exit 2
-	fi
-	if [ -n "${GH_TOKEN:-}" ]; then
-		_GIT_UID="$(curl -sf -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github.v3+json" "https://api.github.com/users/$GIT_USER_NAME" 2>/dev/null | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])' 2>/dev/null || true)"
-	else
-		_GIT_UID="$(curl -sf -H "Accept: application/vnd.github.v3+json" "https://api.github.com/users/$GIT_USER_NAME" 2>/dev/null | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])' 2>/dev/null || true)"
-	fi
-	if [ -z "${_GIT_UID:-}" ] || [ "$_GIT_UID" = "None" ]; then
-		echo "agent-git-setup.sh: failed to resolve GIT_USER_NAME=$GIT_USER_NAME to an id (check handle; GH_TOKEN optional but helps for rate limits/private)" >&2
-		exit 1
-	fi
-	GIT_USER_ID="$_GIT_UID"
-else
-	echo "agent-git-setup.sh: set GIT_USER_NAME (GitHub handle, e.g. my-git-user-name) or GIT_USER_ID" >&2
+if [ -n "${GIT_USER_NAME:-}" ] && ! _VALIDATE_HANDLE "$GIT_USER_NAME"; then
+	echo "agent-git-setup.sh: GIT_USER_NAME must be a GitHub handle ([A-Za-z0-9-] only), got: $GIT_USER_NAME" >&2
 	exit 2
 fi
 
 # Commit email: use bot noreply so the agent name appears in the GitHub commit list.
-# The bot id is resolved via the public API (GET /users/<bot> works without auth).
-# This matches the industry standard (Codex, Claude Code, Cursor, Copilot).
-# AGENT_GIT_BOT_ID is a hidden override for hermetic tests (no network).
+# The bot id comes ONLY from the bot's own identity — AGENT_GIT_BOT_ID (hidden
+# override, hermetic/offline) or the API-resolved id of AGENT_GIT_NAME. The human
+# GIT_USER_NAME is NEVER used for the email, so commits can never be attributed to
+# the human. If neither bot-id source resolves, fail closed (no email written).
 if [ -n "${AGENT_GIT_BOT_ID:-}" ]; then
 	COMMIT_EMAIL="${AGENT_GIT_BOT_ID}+${AGENT_GIT_NAME}@users.noreply.github.com"
-elif [ -n "${GIT_USER_NAME:-}" ]; then
-	COMMIT_EMAIL="${GIT_USER_ID}+${GIT_USER_NAME}@users.noreply.github.com"
 else
-	COMMIT_EMAIL="${GIT_USER_ID}+${AGENT_GIT_NAME}@users.noreply.github.com"
+	_APP_BOT_ENC="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "${AGENT_GIT_NAME}" 2>/dev/null || true)"
+	_APP_BOT_ID="$(curl -sf "https://api.github.com/users/${_APP_BOT_ENC}" 2>/dev/null | python3 -c 'import sys,json; print(json.load(sys.stdin).get("id",""))' 2>/dev/null || true)"
+	if [ -n "${_APP_BOT_ID:-}" ] && [ "${_APP_BOT_ID}" != "None" ]; then
+		COMMIT_EMAIL="${_APP_BOT_ID}+${AGENT_GIT_NAME}@users.noreply.github.com"
+	else
+		echo "agent-git-setup.sh: could not resolve bot id for ${AGENT_GIT_NAME} (set AGENT_GIT_BOT_ID, or check network/AGENT_GIT_NAME). Refusing to write a human-attributed identity." >&2
+		exit 1
+	fi
 fi
 
 # ---------------------------------------------------------------------------
