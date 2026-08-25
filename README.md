@@ -4,7 +4,10 @@ Give an AI agent a bot identity so its git commits and GitHub actions are clearl
 
 ## Requirements
 
-- **Requires git >= 2.43** on the agent's machine: it needs `extensions.worktreeConfig` for per-worktree isolation. The harness that creates the worktree is expected to have enabled this extension in the main repo (one-time, `git config extensions.worktreeConfig true`). If it is missing, the script errors and tells the agent to **ask the human** whether they may enable it — it never enables it silently.
+- **Requires git >= 2.43** on the agent's machine. The script uses git's
+  `includeIf` conditional-include to scope the bot identity to all worktrees of
+  the repo (including ones created later) while keeping the main repo human — no
+  `worktreeConfig` extension or harness setup required.
 - **Unix-like shell** (`bash`) and `git`. The script and tests target Linux and
   macOS. **Windows is not supported as-is** — `bash` + `git` under WSL or Git
   Bash will work, but native `cmd`/`PowerShell` will not (the script uses POSIX
@@ -101,9 +104,9 @@ GIT_USER_NAME=[my-git-user-name]
 GITHUB_APP_ID=[4646191]
 GITHUB_APP_PEM=[/path/to/myagent.pem]
 
-After setting the env vars above (mint the token first if using the GitHub App), run `scripts/agent-git-setup.sh <worktree-dir>` where `<worktree-dir>` is the worktree your harness already created for the agent.
+After setting the env vars above (mint the token first if using the GitHub App), run `scripts/agent-git-setup.sh <repo-dir>` once per repo — `<repo-dir>` is any worktree or the main repo.
 
-Then do your git work inside that worktree. Do not touch the main tree.
+This is a ONE-OFF per repo: every worktree (existing and future) now commits as the bot, while the main repo stays human. No re-run needed for new worktrees.
 ```
 
 ## 4. What happens
@@ -153,11 +156,11 @@ Full details, diagrams, and reference tables are below (GitHub App setup is alre
 ┌──────────────────────────────────────┐
 │   scripts/agent-git-setup.sh          │
 │   ────────────────────────────────   │
-│   writes worktree's OWN config        │  .git/worktrees/<name>/config.worktree
-│     user.name = <name>[bot]           │     user.email = <bot_id>+<name>[bot]@...
-│     user.email = (bot noreply)        │  (harness already created the worktree
-│                                        │   + enabled extensions.worktreeConfig
-│                                        │   in the main repo)
+│   writes ONE bot-identity config      │  .git/agent-bot-identity.config
+│     in .git/, included for ALL        │  + includeIf "gitdir/i:**/.git/
+│     worktrees via includeIf           │    worktrees/**" in .git/config
+│     user.name = <name>[bot]           │     (main repo .git is excluded
+│     user.email = (bot noreply)        │      by the glob → stays human)
 └──────────────┬───────────────────────┘
                │
                ▼
@@ -204,21 +207,19 @@ It handles two distinct things:
   contains no secrets. It expects `GH_TOKEN` to already be present in the
   environment (minted by whatever backend/agent you use) and only *consumes* it.
 - **Not a worktree manager.** The harness owns worktree creation, branching,
-  hooks, and `core.hooksPath`. This script only writes identity into the
-  worktree the harness already made — it never creates a worktree, installs
-  hooks, or imposes a path/branch convention.
-- **Not touching your main tree.** All configuration is scoped to the worktree.
-  Your main repository and global git config are never modified (the script
-  only reads `extensions.worktreeConfig`; it does not enable it).
+  hooks, and `core.hooksPath`. This script only writes bot identity into the
+  shared repo config (scoped to all worktrees via `includeIf`) — it never creates
+  a worktree, installs hooks, or imposes a path/branch convention.
+- **Not touching your main tree.** The bot identity is written to `.git/agent-bot-identity.config` and conditionally included for worktrees only. Your main repo's `.git` directory is excluded by the glob, so it stays human; global git config is never modified.
 
 ## Commit-author isolation (by design)
 
-`scripts/agent-git-setup.sh` isolates the **commit author** in the worktree, not the
+`scripts/agent-git-setup.sh` isolates the **commit author** in all worktrees, not the
 **push credential**. This is a deliberate, safe choice:
 
-- The script relies on the git `worktreeConfig` extension (`extensions.worktreeConfig=true` in the main repo config). On git 2.43+ this is **required** for the per-worktree config file at `.git/worktrees/<name>/config.worktree` to be read at all; without it the bot identity would leak into the shared main config. The harness that created the worktree is expected to have enabled it. The script reads it and **errors loudly** (telling the agent to *ask the human* to enable it) if it is missing — it never enables the extension itself, because that writes to your main repo. After writing the identity it prints an isolation check (`worktree user.name` = bot, `main tree user.name` = human) that fails loudly if the worktree config is not being read.
-- Rewriting `origin` to inject a token would change your main tree too — exactly what we avoid. The script does **not** set `remote.origin.url` in the worktree config; it only sets `user.name`/`user.email`. The bot actor for `gh`/API (PRs, issues, comments) is provided by `GH_TOKEN` in the agent's environment — **not** by rewriting `origin`. Plain `git push` uses the repo's normal credential (the push actor is you, unless your push mechanism also uses `GH_TOKEN`). The agent must not rewrite `origin` either (see the skill).
-- **Result:** commits authored in the worktree show as `<name>[bot]` in the commit list. Plain `git push` uses the repo's normal credential. `gh`/API calls (PRs, issues, comments) made with `GH_TOKEN` in the agent's environment are the bot.
+- The script writes `user.name`/`user.email` to `.git/agent-bot-identity.config` and adds a conditional include (`includeIf "gitdir/i:**/.git/worktrees/**"`) to the shared `.git/config`. On git 2.43+ this scopes the bot identity to every linked worktree — including ones created after the script runs — while the main repo's own `.git` directory is excluded by the glob, so it stays human. No `worktreeConfig` extension and no harness setup required. After writing, the script prints `isolation verified — main tree untouched, all worktrees bot`.
+- Rewriting `origin` to inject a token would change your main tree too — exactly what we avoid. The script does **not** set `remote.origin.url` in the repo config; it only sets `user.name`/`user.email` (via the included file). The bot actor for `gh`/API (PRs, issues, comments) is provided by `GH_TOKEN` in the agent's environment — **not** by rewriting `origin`. Plain `git push` uses the repo's normal credential (the push actor is you, unless your push mechanism also uses `GH_TOKEN`). The agent must not rewrite `origin` either (see the skill).
+- **Result:** commits authored in any worktree show as `<name>[bot]` in the commit list. Plain `git push` uses the repo's normal credential. `gh`/API calls (PRs, issues, comments) made with `GH_TOKEN` in the agent's environment are the bot.
 
 If you later want the *push* to be the bot too, do it outside this script (e.g.
 a separate remote or credential helper scoped to the worktree) — but the
