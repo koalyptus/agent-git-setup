@@ -165,7 +165,7 @@ _RESOLVE_ID() {
 	local _enc _id _auth=()
 	_enc="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "$1" 2>/dev/null || true)"
 	if [ -n "${GH_TOKEN:-}" ]; then
-		_auth=(-H "Authorization: Bearer ***")
+		_auth=(-H "Authorization: Bearer ${GH_TOKEN}")
 	fi
 	_id="$(curl -sf "${_auth[@]}" -H "Accept: application/vnd.github.v3+json" "https://api.github.com/users/${_enc}" 2>/dev/null |
 		python3 -c 'import sys,json; print(json.load(sys.stdin).get("id",""))' 2>/dev/null || true)"
