@@ -74,7 +74,7 @@ Do the one-time App setup first, then give the agent the values below.
 
 ### 3. Paste this prompt to the agent
 
-Pick **one** of these — whichever matches your setup. Replace every `[...]` then send the whole block (no line-deleting, no `REPO_PATH` — agent infers the current repo):
+Pick **one** of these — whichever matches your setup. Replace every `[...]` then send the whole block (no line-deleting). `<repo-dir>` is the repo (or a worktree of it) you want the agent to work in; the agent can also infer the current repo:
 
 #### Git-only
 
@@ -86,10 +86,9 @@ Use the agent-git-setup skill. Set up a bot git identity for current repo.
 AGENT_GIT_NAME=[myagent[bot]]
 GIT_USER_NAME=[my-git-user-name]
 
-After setting the env vars above, run `scripts/agent-git-setup.sh <worktree-dir>` where
-`<worktree-dir>` is the worktree your harness already created for the agent.
+After setting the env vars above, run `scripts/agent-git-setup.sh <repo-dir>` once per repo — `<repo-dir>` is any worktree or the main repo.
 
-Then do your git work inside that worktree. Do not touch the main tree.
+This is a ONE-OFF per repo: every worktree (existing and future) now commits as the bot, while the main repo stays human. No re-run needed for new worktrees.
 ```
 
 #### GitHub App
@@ -113,9 +112,9 @@ This is a ONE-OFF per repo: every worktree (existing and future) now commits as 
 
 1. The agent authenticates itself if needed. If it has to use GitHub (open PRs, comment on issues), it creates its own short-lived token — you don't provide one. If it only makes local commits, no token is needed at all.
 
-2. The agent resolves the bot's numeric id via the public GitHub API (`GET /users/<bot>`).
+2. The agent resolves the GitHub handle from `GIT_USER_NAME` to its numeric id via the public GitHub API (`GET /users/<handle>` — no `GH_TOKEN` needed).
 
-3. The agent runs `scripts/agent-git-setup.sh <worktree-dir>` inside the worktree its harness already created. The script writes the bot identity into that worktree's OWN config file (scoped to the worktree, never the main repo) and prints `isolation verified — main tree untouched` on success; if it prints `ERROR`, the worktreeConfig extension is missing — ask the human to enable it and re-run.
+3. The agent runs `scripts/agent-git-setup.sh <repo-dir>` once per repo. The script writes the bot identity into `.git/agent-bot-identity.config` (shared, inside the repo's `.git/`) and adds a conditional include that scopes it to all worktrees — the main repo's own `.git` is excluded by the glob, so it stays human. On success it prints `isolation verified — main tree untouched, all worktrees bot`.
 
 4. The agent does all its work inside that worktree. Commits appear as {agent-name}[bot] in the commit list (no badge by default). GitHub actions appear as {agent-name}[bot] (when a token was needed), and git push still uses your account. Your main checkout is never changed.
 
@@ -294,13 +293,14 @@ export GH_TOKEN="$(mint-my-token)"            # backend-specific; not this scrip
 export AGENT_GIT_NAME="myagent[bot]"
 export GIT_USER_NAME="my-git-user-name"           # handle; script/skill resolves to numeric id
 
-scripts/agent-git-setup.sh ~/dev/my-repo/.worktrees/agent   # the worktree the harness created
-# -> worktree user.name/user.email set to myagent[bot] <bot_id+myagent[bot]@users.noreply.github.com>
-#    commits there: myagent[bot] (agent name shows in commit list)
-#    your ~/dev/my-repo main tree: untouched
+scripts/agent-git-setup.sh ~/dev/my-repo   # the repo (or any worktree of it)
+# -> .git/agent-bot-identity.config set to myagent[bot] <bot_id+myagent[bot]@users.noreply.github.com>,
+#    included for every worktree via includeIf
+#    commits in any worktree: myagent[bot] (agent name shows in commit list)
+#    your ~/dev/my-repo main tree: untouched (excluded by the glob)
 ```
 
-Re-running is **idempotent**: the worktree identity is reconfigured, not recreated.
+Re-running is **idempotent**: the bot identity is reconfigured, not recreated.
 
 ## Why a worktree
 
