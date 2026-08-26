@@ -131,6 +131,61 @@ else
 	bad "credential-file JWT invalid (exit $?)"
 fi
 
+# --- 7b. Per-App credentials.d discovery (no env, no args, APP_ID via --app-id)
+echo "per-App credentials.d discovery (APP_ID given, no creds file in env)"
+# Isolation: use a temp XDG_CONFIG_HOME so we never touch the real ~/.config.
+CRED_XDG="$(mktemp -d -t agxdg.XXXXXX)"
+mkdir -p "$CRED_XDG/agent-git-setup/credentials.d"
+printf 'GITHUB_APP_ID=4646191\nGITHUB_APP_PEM=%s\n' "$PEM_FOR_TEST" >"$CRED_XDG/agent-git-setup/credentials.d/credentials-4646191.env"
+PERAPP_JWT="$(XDG_CONFIG_HOME="$CRED_XDG" "$SCRIPT" --app-id 4646191 --print-jwt 2>/dev/null)"
+rm -rf "$CRED_XDG"
+if [ -z "$PERAPP_JWT" ]; then
+	bad "no JWT from per-App credentials.d discovery"
+elif verify_jwt "$PUB_FOR_TEST" "$PERAPP_JWT"; then
+	ok "auto-discovers credentials.d/credentials-<APP_ID>.env"
+else
+	bad "per-App credentials.d JWT invalid (exit $?)"
+fi
+
+# --- 7c. Precedence: per-App credentials.d wins over global credentials.env
+echo "precedence: per-App credentials.d overrides global credentials.env"
+CRED_XDG2="$(mktemp -d -t agxdg2.XXXXXX)"
+mkdir -p "$CRED_XDG2/agent-git-setup/credentials.d"
+# global says app 9999999; per-App for 4646191 is the one that should win
+printf 'GITHUB_APP_ID=9999999\nGITHUB_APP_PEM=%s\n' "$PEM_FOR_TEST" >"$CRED_XDG2/agent-git-setup/credentials.env"
+printf 'GITHUB_APP_ID=4646191\nGITHUB_APP_PEM=%s\n' "$PEM_FOR_TEST" >"$CRED_XDG2/agent-git-setup/credentials.d/credentials-4646191.env"
+PRE_PERAPP_JWT="$(XDG_CONFIG_HOME="$CRED_XDG2" "$SCRIPT" --app-id 4646191 --print-jwt 2>/dev/null)"
+rm -rf "$CRED_XDG2"
+if [ -z "$PRE_PERAPP_JWT" ]; then
+	bad "no JWT when both per-App and global present"
+elif verify_jwt "$PUB_FOR_TEST" "$PRE_PERAPP_JWT"; then
+	# assert iss is the APP_ID passed (4646191) -> per-App file was used, not global
+	if [ "$(python3 -c "import sys,base64,json;p=sys.argv[1].split('.')[1];print(json.loads(base64.urlsafe_b64decode(p+'='*(-len(p)%4)))['iss'])" "$PRE_PERAPP_JWT")" = "4646191" ]; then
+		ok "per-App credentials.d takes precedence over global credentials.env"
+	else
+		bad "global credentials.env overrode per-App (iss mismatch)"
+	fi
+else
+	bad "per-App-precedence JWT invalid (exit $?)"
+fi
+
+# --- 7d. Precedence: explicit --credentials wins over per-App discovery ----
+echo "precedence: explicit --credentials overrides per-App discovery"
+CRED_XDG3="$(mktemp -d -t agxdg3.XXXXXX)"
+mkdir -p "$CRED_XDG3/agent-git-setup/credentials.d"
+printf 'GITHUB_APP_ID=4646191\nGITHUB_APP_PEM=%s\n' "$PEM_FOR_TEST" >"$CRED_XDG3/agent-git-setup/credentials.d/credentials-4646191.env"
+EXPLICIT_CRED="$(mktemp -t agexpl.XXXXXX.env)"
+printf 'GITHUB_APP_ID=4646191\nGITHUB_APP_PEM=%s\n' "$PEM_FOR_TEST" >"$EXPLICIT_CRED"
+EXPL_JWT="$(XDG_CONFIG_HOME="$CRED_XDG3" "$SCRIPT" --app-id 4646191 --print-jwt --credentials "$EXPLICIT_CRED" 2>/dev/null)"
+rm -rf "$CRED_XDG3" "$EXPLICIT_CRED"
+if [ -z "$EXPL_JWT" ]; then
+	bad "no JWT with explicit --credentials + per-App present"
+elif verify_jwt "$PUB_FOR_TEST" "$EXPL_JWT"; then
+	ok "explicit --credentials wins over per-App discovery"
+else
+	bad "explicit-credentials JWT invalid (exit $?)"
+fi
+
 # --- 8. Precedence: args win over credential file --------------------------
 echo "precedence: args override credential file"
 # creds file points at the test PEM; args also point at the same PEM, but we
@@ -175,7 +230,7 @@ fi
 echo "missing credential file -> error"
 ERR_MSG="$("$SCRIPT" --print-jwt --credentials /nonexistent/path/creds.env 2>&1 >/dev/null)"
 RC=$?
-if [ "$RC" -ne 0 ] && echo "$ERR_MSG" | grep -q 'credentials file not found'; then
+if [ "$RC" -ne 0 ] && echo "$ERR_MSG" | grep -q 'GITHUB_APP_ID'; then
 	ok "errors clearly when credential file missing"
 else
 	bad "should error on missing credential file (rc=$RC)"

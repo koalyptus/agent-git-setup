@@ -5,3 +5,6 @@
 # never commit this — it lets the holder mint bot tokens as your app
 agent-git-setup-credentials.env
 **/agent-git-setup/credentials.env
+
+# per-App credential files (each holds App ID + PEM path; chmod 600)
+**/agent-git-setup/credentials.d/

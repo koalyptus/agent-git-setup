@@ -60,22 +60,19 @@ harnesses can fetch the support files).
    `GITHUB_APP_PEM` values in the user's prompt. These come from a GitHub App
    created beforehand (one-time, outside this flow) and its downloaded PEM; the
    user pastes the App ID and the PEM *path* into the prompt. The agent writes
-   the file itself, once:
+   the file itself, once, under `credentials.d/` keyed by App ID (so each App /
+   repo identity is independent):
    ```bash
    CRED_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/agent-git-setup"
-   mkdir -p "$CRED_DIR"
+   mkdir -p "$CRED_DIR/credentials.d"
    umask 077   # ensures the file is created 600
-   cat > "$CRED_DIR/credentials.env" <<EOF
+   cat > "$CRED_DIR/credentials.d/credentials-${GITHUB_APP_ID}.env" <<EOF
    GITHUB_APP_ID=${GITHUB_APP_ID}
    GITHUB_APP_PEM=${GITHUB_APP_PEM}
    EOF
-   chmod 600 "$CRED_DIR/credentials.env"
+   chmod 600 "$CRED_DIR/credentials.d/credentials-${GITHUB_APP_ID}.env"
    ```
-   (Override the path with `AGENT_GIT_CREDENTIALS=…` or `--credentials`.) The
-   file holds only the public App ID and the **path** to the PEM — never the PEM
-   bytes or a live token. The user's handle `GIT_USER_NAME` (e.g.
-   `my-git-user-name`) is also given in the prompt; the skill/script resolves it
-   to the numeric id via the GitHub API — no `curl | jq` by the user.
+   `mint-token.sh` resolves creds in this order: explicit `--credentials`/`AGENT_GIT_CREDENTIALS` → `credentials.d/credentials-<APP_ID>.env` (auto-picked from the App ID in the prompt, no name→app-id mapping needed) → global `credentials.env` (single-identity default). So one bot per repo is first-class: give a distinct App ID per repo, and the right creds file is found automatically. The file holds only the public App ID and the **path** to the PEM — never the PEM bytes or a live token. The user's handle `GIT_USER_NAME` (e.g. `my-git-user-name`) is also given in the prompt; the skill/script resolves it to the numeric id via the GitHub API — no `curl | jq` by the user.
 2. **Mint a token (arg-free, automatic from the credentials file):** every
    session the agent runs — no env vars, no `--app-id`/`--pem` needed:
    ```bash
