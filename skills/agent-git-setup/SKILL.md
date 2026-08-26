@@ -58,14 +58,33 @@ harnesses can fetch the support files).
 
 1. **One-time, outside the agent:** create a GitHub App (see README "GitHub App
    setup"), download its PEM, install it on the target repos, and note the
-   App ID, the PEM path, and your handle `GIT_USER_NAME`
-   (e.g. `my-git-user-name` — the skill/script will resolve it to the numeric id
-   via the GitHub API; you never run `curl | jq`).
-2. **Mint a token** with the repo's own helper:
+   App ID and the PEM path. Put them in a credentials file **once** so the agent
+   never passes tokens per session:
    ```bash
-   source <(./scripts/mint-token.sh --app-id "$APP_ID" --pem "$PEM_PATH" --shell)
+   mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/agent-git-setup"
+   # YOU set perms: chmod 600 this file (holds only the public App ID + PEM path)
+   cat > "${XDG_CONFIG_HOME:-$HOME/.config}/agent-git-setup/credentials.env" <<'EOF'
+   GITHUB_APP_ID=4646191
+   GITHUB_APP_PEM=/path/to/your-app.pem
+   EOF
+   # chmod 600 "${XDG_CONFIG_HOME:-$HOME/.config}/agent-git-setup/credentials.env"
+   ```
+   (Override the path with `AGENT_GIT_CREDENTIALS=…` or `--credentials`.) The
+   file holds only the public App ID and the **path** to the PEM — never the PEM
+   bytes or a live token. Your handle `GIT_USER_NAME` (e.g. `my-git-user-name`)
+   is given to the agent at runtime; the skill/script resolves it to the numeric
+   id via the GitHub API — you never run `curl | jq`.
+2. **Mint a token (arg-free, automatic from the credentials file):** every
+   session the agent runs — no env vars, no `--app-id`/`--pem` needed:
+   ```bash
+   source <(./scripts/mint-token.sh --shell)
    # GH_TOKEN is now exported in the agent's shell
    ```
+   If `GITHUB_APP_ID`/`GITHUB_APP_PEM` are already in the environment or passed
+   as args, those win; otherwise the credentials file is sourced. This is why the
+   agent is a GitHub actor **without you passing a token each session** — but the
+   token itself is per-session (GitHub issues ~1h tokens; the script re-mints on
+   demand). See the split note below.
 3. **Set the bot identity (human gives the handle, agent resolves the id):**
    ```bash
    export AGENT_GIT_NAME="myagent[bot]"
@@ -119,7 +138,7 @@ The token is short-lived (~1h); re-run step 2 for a fresh one in long sessions.
 - A GitHub App (App ID + PEM) — only if you use `scripts/mint-token.sh` for `gh`/API as the bot (see README §2). Not needed for Git-only.
 
 ## Steps
-1. **If you need `gh`/API as the bot (PRs, issues, comments), this step is MANDATORY.** Mint and export `GH_TOKEN` (step 2 of the Happy path) — or otherwise ensure a push-capable token is already in the environment — *before* any `gh`/API call. Without it, `gh` silently falls back to the human's `gh auth` login and every comment/PR/issue is attributed to the human, not the bot. This is the single most common failure: the agent does git-commit work as the bot but posts to GitHub as the human because `GH_TOKEN` was never exported. Not needed for the local commit author alone. Then resolve `GIT_USER_NAME` to a numeric id via the public GitHub API (`GET /users/<handle>` — unauthenticated; add `Authorization: Bearer ${GH_TOKEN}` only when a token is set):
+1. **If you need `gh`/API as the bot (PRs, issues, comments), this step is MANDATORY.** Mint and export `GH_TOKEN` — automatically from the one-time credentials file (see Happy path step 1): `source <(./scripts/mint-token.sh --shell)`. With the credentials file in place this needs **no env vars and no args**; `GH_TOKEN` is exported in-session. (If `GITHUB_APP_ID`/`GITHUB_APP_PEM` are already set in the environment, or passed as `--app-id`/`--pem`, those take precedence.) *Before* any `gh`/API call — without `GH_TOKEN`, `gh` silently falls back to the human's `gh auth` login and every comment/PR/issue is attributed to the human, not the bot. This is the single most common failure: the agent does git-commit work as the bot but posts to GitHub as the human because `GH_TOKEN` was never exported. Not needed for the local commit author alone. Then resolve `GIT_USER_NAME` to a numeric id via the public GitHub API (`GET /users/<handle>` — unauthenticated; add `Authorization: Bearer ${GH_TOKEN}` only when a token is set):
    `curl -s https://api.github.com/users/$GIT_USER_NAME | jq .id` (unauthenticated, public; add `Authorization: Bearer ${GH_TOKEN}` only when a `GH_TOKEN` is needed for `gh`/API).
 2. Export `AGENT_GIT_NAME` / `GIT_USER_NAME`.
 3. Run `scripts/agent-git-setup.sh <repo-dir>` once per repo — `<repo-dir>` is
@@ -145,6 +164,7 @@ export GIT_USER_NAME="my-git-user-name"   # handle; resolved to numeric id via A
 
 ## Pitfalls
 - **GitHub handle, not numeric id.** The human provides `GIT_USER_NAME` (e.g. `my-git-user-name`). Either the skill (step 2 above) or `scripts/agent-git-setup.sh` resolves it to the numeric id via the public API (`GET https://api.github.com/users/$GIT_USER_NAME` — no auth; Bearer added only when `GH_TOKEN` is set). The commit email is `{bot_id}+{AGENT_GIT_NAME}@users.noreply.github.com` — agent name appears in the commit list. `GIT_USER_ID` can still be set directly for hermetic tests or offline use, but it is never asked for in the prompt.
+- **Credentials file permissions are YOUR responsibility.** The one-time `credentials.env` holds only the public App ID + the **path** to the PEM (not the PEM bytes, not a token). You `chmod 600` it. The script never writes the PEM or a token to disk. If the file is world-readable, anyone who can read it can mint bot tokens as your app — so set perms deliberately.
 - **Re-running is safe (idempotent).** The repo-wide bot identity is rewritten, not recreated; future worktrees keep inheriting it.
 - **No origin is fine.** If the repo has no `origin`, the script still sets the bot commit author; only the (optional) push remote is absent. Plain `git push` uses the human account owner's push credential — the push actor is the human, by design.
 - **No worktreeConfig needed.** The script uses git's `includeIf` conditional include, which works on git 2.43+ without any extension or harness setup. The main repo's own `.git` directory is excluded by the glob, so it stays human. `GH_TOKEN` in env drives `gh`/API as the bot — **not** rewriting `origin`.

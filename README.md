@@ -100,17 +100,22 @@ Use the agent-git-setup skill. Set up a bot git identity for current repo.
 
 AGENT_GIT_NAME=[myagent[bot]]
 GIT_USER_NAME=[my-git-user-name]
-GITHUB_APP_ID=[4646191]
-GITHUB_APP_PEM=[/path/to/myagent.pem]
 
 After setting the env vars above (mint the token first if using the GitHub App), run `scripts/agent-git-setup.sh <repo-dir>` once per repo — `<repo-dir>` is any worktree or the main repo.
 
 This is a ONE-OFF per repo: every worktree (existing and future) now commits as the bot, while the main repo stays human. No re-run needed for new worktrees.
 ```
 
+Note: for the GitHub App flow, the App ID + PEM live in a credentials file
+(`${XDG_CONFIG_HOME:-$HOME/.config}/agent-git-setup/credentials.env`, set up
+once — `chmod 600` it; you supply the perms). The skill mints `GH_TOKEN` from
+that file automatically, so you do **not** pass a token per session.
+
 ## 4. What happens
 
-1. The agent authenticates itself if needed. If it has to use GitHub (open PRs, comment on issues), it creates its own short-lived token — you don't provide one. If it only makes local commits, no token is needed at all.
+1. The agent authenticates itself if needed. If it has to use GitHub (open PRs, comment on issues), it mints its own short-lived token from the one-time credentials file — you don't provide one per session. If it only makes local commits, no token is needed at all.
+
+   **Two identities, two lifetimes:** the **commit author** (`user.name`/`user.email`, written once into `.git/`) is *one-off per repo* and survives restarts with no env. The **GitHub API actor** (`GH_TOKEN`, used for PRs/issues/comments) is *per-session*: GitHub issues short-lived tokens (~1h), so the script re-mints one from the credentials file each session (or on expiry). The credentials file is long-lived; the token derived from it is not. This is why "the agent is a GitHub actor" is automatic once the credentials file exists, but is never a stored token on disk.
 
 2. The agent resolves its **bot** identity first: `AGENT_GIT_BOT_ID` if set, otherwise the numeric id of `AGENT_GIT_NAME` via the public GitHub API (`GET /users/<handle>`; sends `GH_TOKEN` as Bearer when present, for higher rate limits). Only if the bot id cannot be resolved does it fall back to `GIT_USER_NAME` (your handle) so setup still succeeds.
 

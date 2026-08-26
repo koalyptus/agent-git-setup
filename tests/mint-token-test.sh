@@ -114,6 +114,47 @@ else
 	ok "skipped (no GITHUB_APP_PEM set)"
 fi
 
+# 7. Credential-file discovery (hermetic, offline): no env vars, no
+#    --app-id/--pem args — the script must source a credentials file and mint.
+echo "credential-file discovery"
+CRED_FILE="$(mktemp -t agcreds.XXXXXX.env)"
+printf 'GITHUB_APP_ID=4646191\nGITHUB_APP_PEM=%s\n' "$PEM_FOR_TEST" >"$CRED_FILE"
+DISCOVERED_JWT="$("$SCRIPT" --print-jwt --credentials "$CRED_FILE" 2>/dev/null)"
+rm -f "$CRED_FILE"
+PUB2="$(mktemp -t mintpub2.XXXXXX.pem)"
+openssl rsa -in "$PEM_FOR_TEST" -pubout -out "$PUB2" 2>/dev/null
+if [ -z "$DISCOVERED_JWT" ]; then
+	bad "no JWT from credential-file discovery"
+	rm -f "$PUB2"
+else
+	if python3 - "$PUB2" "$DISCOVERED_JWT" <<'PY'; then
+import sys, base64, json
+from cryptography.hazmat.primitives import serialization, hashes
+from cryptography.hazmat.primitives.asymmetric import padding
+pub_path, jwt = sys.argv[1], sys.argv[2]
+parts = jwt.split(".")
+if len(parts) != 3:
+    sys.exit(2)
+header = json.loads(base64.urlsafe_b64decode(parts[0] + "=" * (-len(parts[0]) % 4)))
+payload = json.loads(base64.urlsafe_b64decode(parts[1] + "=" * (-len(parts[1]) % 4)))
+sig = base64.urlsafe_b64decode(parts[2] + "=" * (-len(parts[2]) % 4))
+if header.get("alg") != "RS256" or payload.get("iss") != 4646191:
+    sys.exit(4)
+with open(pub_path, "rb") as f:
+    pub = serialization.load_pem_public_key(f.read())
+try:
+    pub.verify(sig, (parts[0] + "." + parts[1]).encode(), padding.PKCS1v15(), hashes.SHA256())
+except Exception:
+    sys.exit(5)
+sys.exit(0)
+PY
+		ok "mints from credential file with no env/args"
+	else
+		bad "JWT from credential file invalid (exit $?)"
+	fi
+	rm -f "$PUB2"
+fi
+
 echo
 echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

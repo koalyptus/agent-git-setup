@@ -13,6 +13,7 @@ set -euo pipefail
 APP_ID="${GITHUB_APP_ID:-}"
 PEM="${GITHUB_APP_PEM:-}"
 INSTALL_ID="${GITHUB_APP_INSTALL_ID:-}"
+CREDENTIALS_FILE="${AGENT_GIT_CREDENTIALS:-${XDG_CONFIG_HOME:-$HOME/.config}/agent-git-setup/credentials.env}"
 SHELL_OUT=0
 PRINT_JWT=0
 
@@ -30,6 +31,10 @@ while [ $# -gt 0 ]; do
 		INSTALL_ID="$2"
 		shift 2
 		;;
+	--credentials)
+		CREDENTIALS_FILE="$2"
+		shift 2
+		;;
 	--shell)
 		SHELL_OUT=1
 		shift
@@ -45,8 +50,27 @@ while [ $# -gt 0 ]; do
 	esac
 done
 
-: "${APP_ID:?set GITHUB_APP_ID or pass --app-id}"
-: "${PEM:?set GITHUB_APP_PEM or pass --pem (path to the app private key .pem)}"
+# Credential-file discovery (one-time, agent-agnostic): if the App ID / PEM
+# were not given via env or args, source them from a persisted credentials
+# file so the agent never has to pass tokens per session. The file holds only
+# GITHUB_APP_ID (public) and GITHUB_APP_PEM (path to the secret) — never the
+# private key bytes or a live token.
+if [ -z "$APP_ID" ] || [ -z "$PEM" ]; then
+	if [ -r "$CREDENTIALS_FILE" ]; then
+		# shellcheck disable=SC1090
+		. "$CREDENTIALS_FILE"
+		APP_ID="${APP_ID:-${GITHUB_APP_ID:-}}"
+		PEM="${PEM:-${GITHUB_APP_PEM:-}}"
+		INSTALL_ID="${INSTALL_ID:-${GITHUB_APP_INSTALL_ID:-}}"
+	else
+		echo "mint-token.sh: no App creds in env/args and credentials file not found:" >&2
+		echo "  $CREDENTIALS_FILE" >&2
+		echo "  Create it once (chmod 600) with: GITHUB_APP_ID=…  GITHUB_APP_PEM=/path/to.pem" >&2
+	fi
+fi
+
+: "${APP_ID:?set GITHUB_APP_ID, pass --app-id, or put it in $CREDENTIALS_FILE}"
+: "${PEM:?set GITHUB_APP_PEM, pass --pem (path to the app private key .pem), or put it in $CREDENTIALS_FILE}"
 
 # Build an RS256 JWT from app_id + pem without the `jwt` submodule
 # (portable across cryptography versions). Prints the token on stdout.
