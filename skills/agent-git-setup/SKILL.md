@@ -65,12 +65,12 @@ harnesses can fetch the support files).
    ```bash
    CRED_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/agent-git-setup"
    mkdir -p "$CRED_DIR/credentials.d"
-   umask 077   # ensures the file is created 600
    cat > "$CRED_DIR/credentials.d/credentials-${GITHUB_APP_ID}.env" <<EOF
    GITHUB_APP_ID=${GITHUB_APP_ID}
    GITHUB_APP_PEM=${GITHUB_APP_PEM}
    EOF
-   chmod 600 "$CRED_DIR/credentials.d/credentials-${GITHUB_APP_ID}.env"
+   # NOTE: the agent does NOT set file permissions. The user must chmod 600
+   # this file (and the PEM) — see the File-permissions pitfall.
    ```
    `mint-token.sh` resolves creds in this order: explicit `--credentials`/`AGENT_GIT_CREDENTIALS` → `credentials.d/credentials-<APP_ID>.env` (auto-picked from the App ID in the prompt, no name→app-id mapping needed) → global `credentials.env` (single-identity default). So one bot per repo is first-class: give a distinct App ID per repo, and the right creds file is found automatically. The file holds only the public App ID and the **path** to the PEM — never the PEM bytes or a live token. The user's handle `GIT_USER_NAME` (e.g. `my-git-user-name`) is also given in the prompt; the skill/script resolves it to the numeric id via the GitHub API — no `curl | jq` by the user.
 2. **Mint a token (arg-free, automatic from the credentials file):** every
@@ -131,7 +131,7 @@ The token is short-lived (~1h); re-run step 2 for a fresh one in long sessions.
   worktrees via `includeIf` and needs no `worktreeConfig` extension.
 - The bot identity:
   - `AGENT_GIT_NAME` — e.g. `myagent[bot]`. The bot's own numeric id is resolved from this name via the GitHub API (`GET /users/<name>`); if `GH_TOKEN` is set it is sent as Bearer for higher rate limits. This is the **primary** bot identity. `AGENT_GIT_BOT_ID` can override it with the numeric id directly (offline-safe, no API call).
-  - `GIT_USER_NAME` — *(optional)* your GitHub handle (e.g. `my-git-user-name`). Used **only as a last-resort fallback** when the bot id cannot be resolved, so the setup still succeeds as you rather than failing. Prefer `AGENT_GIT_NAME`/`AGENT_GIT_BOT_ID` so commits stay bot. The script resolves it to a numeric id via the GitHub API only on that fallback path.
+  - `GIT_USER_NAME` — *(optional)* the **human account owner's** GitHub handle (e.g. `my-git-user-name`), not the agent's. Used **only as a last-resort fallback** when the bot id cannot be resolved, so the setup still succeeds attributed to the human rather than failing. Prefer `AGENT_GIT_NAME`/`AGENT_GIT_BOT_ID` so commits stay bot. The script resolves it to a numeric id via the GitHub API only on that fallback path.
   - (Optional) `GH_TOKEN` — only if you also want `gh`/API as the bot (PRs, issues, comments, and API commits for Verified badge). Not needed for the local commit author.
 - `python3` with the `cryptography` package if you use `scripts/mint-token.sh` (GitHub App path). Not needed for Git-only commit author.
 - A GitHub App (App ID + PEM) — only if you use `scripts/mint-token.sh` for `gh`/API as the bot (see README §2). Not needed for Git-only.
@@ -162,8 +162,8 @@ export GIT_USER_NAME="my-git-user-name"   # handle; resolved to numeric id via A
 ```
 
 ## Pitfalls
-- **Bot id from the bot name, not your handle.** The bot's numeric id is resolved from `AGENT_GIT_NAME` (or set directly via `AGENT_GIT_BOT_ID`) — that is the primary identity. `GIT_USER_NAME` is only a **last-resort fallback**: if the bot id cannot be resolved, commits are attributed to you (human) so setup still succeeds. The script resolves whichever name it uses to a numeric id via the public API (`GET https://api.github.com/users/<name>` — no auth; Bearer added only when `GH_TOKEN` is set). The commit/commit-email is `<id>+<AGENT_GIT_NAME>@users.noreply.github.com` — agent name appears in the commit list. `GIT_USER_ID` can still be set directly for hermetic tests or offline use, but it is never asked for in the prompt.
-- **File permissions.** You (the agent) write the credentials file yourself with `chmod 600` (via `umask 077`), so its perms are set — don't relax them. The file holds only the public App ID + the **path** to the PEM (not the PEM bytes, not a token). The **PEM** is the user's to secure: tell them to `chmod 600` the `.pem` they downloaded (you read it but never write or relax its perms). If either file is world-readable, anyone who can read it can mint bot tokens as the app.
+- **Bot id comes from the bot name, not the human's handle.** The bot's numeric id is resolved from `AGENT_GIT_NAME` (or set directly via `AGENT_GIT_BOT_ID`) — that is the primary identity. `GIT_USER_NAME` is the **human account owner's** handle, used **only as a last-resort fallback**: if the bot id cannot be resolved, commits are attributed to the human so setup still succeeds. The agent must not treat `GIT_USER_NAME` as its own handle — it belongs to the person who owns the repo. The script resolves whichever name it uses to a numeric id via the public API (`GET https://api.github.com/users/<name>` — no auth; Bearer added only when `GH_TOKEN` is set). The commit/commit-email is `<id>+<AGENT_GIT_NAME>@users.noreply.github.com` — agent name appears in the commit list. `GIT_USER_ID` can still be set directly for hermetic tests or offline use, but it is never asked for in the prompt.
+- **File permissions are the user's responsibility.** The credentials file holds only the public App ID + the **path** to the PEM (not the PEM bytes, not a token). The user `chmod 600` both the credentials file and the PEM they downloaded. The agent never sets or relaxes file permissions. If either file is world-readable, anyone who can read it can mint bot tokens as the app.
 - **Re-running is safe (idempotent).** The repo-wide bot identity is rewritten, not recreated; future worktrees keep inheriting it.
 - **No origin is fine.** If the repo has no `origin`, the script still sets the bot commit author; only the (optional) push remote is absent. Plain `git push` uses the human account owner's push credential — the push actor is the human, by design.
 - **No worktreeConfig needed.** The script uses git's `includeIf` conditional include, which works on git 2.43+ without any extension or harness setup. The main repo's own `.git` directory is excluded by the glob, so it stays human. `GH_TOKEN` in env drives `gh`/API as the bot — **not** rewriting `origin`.
