@@ -66,7 +66,7 @@ WT=""
 
 echo "1. Happy path: one-off setup scopes all worktrees, main untouched"
 REPO="$(make_repo with-origin)"
-export AGENT_GIT_NAME="myagent[bot]" GIT_USER_NAME="my-git-user-name" GIT_USER_ID=320010330 GH_TOKEN=dummy
+export AGENT_GIT_NAME="myagent[bot]" AGENT_GIT_BOT_ID=320010330 GH_TOKEN=dummy
 make_worktree "$REPO"
 WT="$WT_DIR"
 if "$SCRIPT" "$REPO" >/dev/null 2>&1; then
@@ -85,7 +85,7 @@ else
 fi
 # worktree reads as bot
 assert_eq "$(git -C "$WT" config user.name)" "myagent[bot]" "worktree user.name = bot"
-assert_eq "$(git -C "$WT" config user.email)" "320010330+my-git-user-name@users.noreply.github.com" "worktree commit author is bot noreply (email uses human handle)"
+assert_eq "$(git -C "$WT" config user.email)" "320010330+myagent[bot]@users.noreply.github.com" "worktree commit author is bot noreply (email uses bot name)"
 
 echo "2. Idempotent re-run"
 if "$SCRIPT" "$REPO" >/dev/null 2>&1; then ok "second run exits 0"; else bad "second run failed"; fi
@@ -123,25 +123,35 @@ rm -rf "$NOTREPO"
 
 echo "8. Noreply email construction (GIT_USER_ID + GIT_USER_NAME)"
 REPO8="$(make_repo with-origin)"
-export AGENT_GIT_NAME="agent-laptop[bot]" GIT_USER_NAME="my-git-user-name" GIT_USER_ID=320004057 GH_TOKEN=dummy
+export AGENT_GIT_NAME="agent-laptop[bot]" AGENT_GIT_BOT_ID=320004057 GH_TOKEN=dummy
 "$SCRIPT" "$REPO8" >/dev/null 2>&1
 make_worktree "$REPO8"
 WT8="$WT_DIR"
 assert_eq "$(git -C "$WT8" config user.name)" "agent-laptop[bot]" "agent-laptop[bot]"
-assert_eq "$(git -C "$WT8" config user.email)" "320004057+my-git-user-name@users.noreply.github.com" "noreply from GIT_USER_ID (email uses human handle)"
+assert_eq "$(git -C "$WT8" config user.email)" "320004057+agent-laptop[bot]@users.noreply.github.com" "noreply from bot id (email uses bot name)"
 
-echo "9. Noreply fallback without GIT_USER_NAME (GIT_USER_ID + AGENT_GIT_NAME)"
+echo "9. Noreply from bot id via AGENT_GIT_BOT_ID (no network needed)"
 REPO9="$(make_repo with-origin)"
-export AGENT_GIT_NAME="myagent[bot]" GIT_USER_ID=320010330
+export AGENT_GIT_NAME="myagent[bot]" AGENT_GIT_BOT_ID=320010330
 unset GIT_USER_NAME GH_TOKEN
 "$SCRIPT" "$REPO9" >/dev/null 2>&1
 make_worktree "$REPO9"
 WT9="$WT_DIR"
-assert_eq "$(git -C "$WT9" config user.email)" "320010330+myagent[bot]@users.noreply.github.com" "fallback email"
+assert_eq "$(git -C "$WT9" config user.email)" "320010330+myagent[bot]@users.noreply.github.com" "email from bot id (offline-safe)"
+
+echo "9b. Last-resort human fallback when bot id cannot be resolved"
+REPO9b="$(make_repo with-origin)"
+export AGENT_GIT_NAME="unresolvable-bot-xyz[bot]" GIT_USER_NAME="my-git-user-name" GIT_USER_ID=320010330
+unset AGENT_GIT_BOT_ID GH_TOKEN
+if "$SCRIPT" "$REPO9b" >/dev/null 2>&1; then ok "human fallback produces a setup (no failure)"; else bad "human fallback should not fail"; fi
+make_worktree "$REPO9b"
+WT9b="$WT_DIR"
+assert_eq "$(git -C "$WT9b" config user.name)" "unresolvable-bot-xyz[bot]" "worktree name stays the bot name"
+assert_eq "$(git -C "$WT9b" config user.email)" "320010330+my-git-user-name@users.noreply.github.com" "human-attributed fallback email (id from GIT_USER_ID)"
 
 echo "10. No signing by default"
 REPO10="$(make_repo with-origin)"
-export AGENT_GIT_NAME="myagent[bot]" GIT_USER_NAME="my-git-user-name" GIT_USER_ID=320010330 GH_TOKEN=dummy
+export AGENT_GIT_NAME="myagent[bot]" AGENT_GIT_BOT_ID=320010330 GH_TOKEN=dummy
 "$SCRIPT" "$REPO10" >/dev/null 2>&1
 if [ -z "$(git -C "$REPO10" config commit.gpgsign 2>/dev/null)" ] && [ -z "$(git -C "$REPO10" config user.signingkey 2>/dev/null)" ]; then
 	ok "no commit.gpgsign / user.signingkey set"
@@ -151,7 +161,7 @@ fi
 
 echo "11. No hooks / no core.hooksPath written (harness owns hooks)"
 REPO11="$(make_repo with-origin)"
-export AGENT_GIT_NAME="myagent[bot]" GIT_USER_NAME="my-git-user-name" GIT_USER_ID=320010330 GH_TOKEN=dummy
+export AGENT_GIT_NAME="myagent[bot]" AGENT_GIT_BOT_ID=320010330 GH_TOKEN=dummy
 "$SCRIPT" "$REPO11" >/dev/null 2>&1
 if [ -n "$(git -C "$REPO11" config core.hooksPath 2>/dev/null)" ]; then
 	bad "script must not set core.hooksPath"
@@ -175,10 +185,22 @@ echo "14. Works when given a LINKED WORKTREE path (not just the main repo)"
 REPO14="$(make_repo with-origin)"
 make_worktree "$REPO14"
 WT14="$WT_DIR"
-export AGENT_GIT_ALLOW_TMP=1 AGENT_GIT_NAME="myagent[bot]" GIT_USER_NAME="my-git-user-name" GIT_USER_ID=320010330
+export AGENT_GIT_ALLOW_TMP=1 AGENT_GIT_NAME="myagent[bot]" AGENT_GIT_BOT_ID=320010330
 if "$SCRIPT" "$WT14" >/dev/null 2>&1; then ok "script exits 0 from worktree path"; else bad "script should exit 0 from worktree path"; fi
 assert_eq "$(git -C "$WT14" config user.name)" "myagent[bot]" "worktree-path input: worktree reads bot"
 assert_eq "$(git -C "$REPO14" config user.name)" "human" "worktree-path input: main stays human"
+
+echo "15. True failure only when NOTHING resolves (no bot id, no human fallback)"
+REPO15="$(make_repo with-origin)"
+export AGENT_GIT_NAME="definitely-not-a-real-bot-xyz[bot]"
+unset AGENT_GIT_BOT_ID GIT_USER_NAME GH_TOKEN
+if "$SCRIPT" "$REPO15" >/dev/null 2>&1; then TRUE15=0; else TRUE15=$?; fi
+if [ "${TRUE15:-0}" -ne 0 ]; then ok "exits non-zero when nothing resolves"; else bad "should exit non-zero when nothing resolves"; fi
+if [ -f "$REPO15/.git/agent-bot-identity.config" ]; then
+	bad "bot config written despite no resolvable identity"
+else
+	ok "no bot config file written when nothing resolves"
+fi
 
 echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

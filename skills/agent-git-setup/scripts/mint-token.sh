@@ -13,6 +13,9 @@ set -euo pipefail
 APP_ID="${GITHUB_APP_ID:-}"
 PEM="${GITHUB_APP_PEM:-}"
 INSTALL_ID="${GITHUB_APP_INSTALL_ID:-}"
+CREDENTIALS_FILE="${AGENT_GIT_CREDENTIALS:-}"
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/agent-git-setup"
+DEFAULT_CREDENTIALS_FILE="$CONFIG_DIR/credentials.env"
 SHELL_OUT=0
 PRINT_JWT=0
 
@@ -30,6 +33,10 @@ while [ $# -gt 0 ]; do
 		INSTALL_ID="$2"
 		shift 2
 		;;
+	--credentials)
+		CREDENTIALS_FILE="$2"
+		shift 2
+		;;
 	--shell)
 		SHELL_OUT=1
 		shift
@@ -45,8 +52,50 @@ while [ $# -gt 0 ]; do
 	esac
 done
 
-: "${APP_ID:?set GITHUB_APP_ID or pass --app-id}"
-: "${PEM:?set GITHUB_APP_PEM or pass --pem (path to the app private key .pem)}"
+# Credential-file discovery (one-time, agent-agnostic): if the App ID / PEM
+# were not given via env or args, source them from a persisted credentials
+# file so the agent never has to pass tokens per session. The file holds only
+# GITHUB_APP_ID (public) and GITHUB_APP_PEM (path to the secret) — never the
+# private key bytes or a live token.
+#
+# Resolution order when creds are not in env/args:
+#   1. explicit  --credentials <file> / AGENT_GIT_CREDENTIALS=<file>
+#   2. per-App   $CONFIG_DIR/credentials.d/credentials-<APP_ID>.env
+#                (first-class: one bot identity per GitHub App / per repo)
+#   3. global    $CONFIG_DIR/credentials.env  (single-identity default)
+# The agent is given GITHUB_APP_ID in its prompt, so (2) is selected
+# automatically — no name->app-id mapping needed (app-id is numeric).
+CRED_FILE_USED=""
+resolve_credentials() {
+	if [ -n "$CREDENTIALS_FILE" ]; then
+		CRED_FILE_USED="$CREDENTIALS_FILE"
+	elif [ -n "$APP_ID" ] && [ -r "$CONFIG_DIR/credentials.d/credentials-${APP_ID}.env" ]; then
+		CRED_FILE_USED="$CONFIG_DIR/credentials.d/credentials-${APP_ID}.env"
+	elif [ -r "$DEFAULT_CREDENTIALS_FILE" ]; then
+		CRED_FILE_USED="$DEFAULT_CREDENTIALS_FILE"
+	fi
+}
+
+if [ -z "$APP_ID" ] || [ -z "$PEM" ]; then
+	resolve_credentials
+	if [ -n "$CRED_FILE_USED" ] && [ -r "$CRED_FILE_USED" ]; then
+		# shellcheck disable=SC1090
+		. "$CRED_FILE_USED"
+		APP_ID="${APP_ID:-${GITHUB_APP_ID:-}}"
+		PEM="${PEM:-${GITHUB_APP_PEM:-}}"
+		INSTALL_ID="${INSTALL_ID:-${GITHUB_APP_INSTALL_ID:-}}"
+	else
+		echo "mint-token.sh: no App creds in env/args and no credentials file found." >&2
+		echo "  Looked for (in order):" >&2
+		[ -n "$CREDENTIALS_FILE" ] && echo "    --credentials $CREDENTIALS_FILE" >&2
+		[ -n "$APP_ID" ] && echo "    $CONFIG_DIR/credentials.d/credentials-${APP_ID}.env" >&2
+		echo "    $DEFAULT_CREDENTIALS_FILE" >&2
+		echo "  Create one (chmod 600) with: GITHUB_APP_ID=…  GITHUB_APP_PEM=/path/to.pem" >&2
+	fi
+fi
+
+: "${APP_ID:?set GITHUB_APP_ID, pass --app-id, or put it in a credentials file (see mint-token.sh discovery order)}"
+: "${PEM:?set GITHUB_APP_PEM, pass --pem (path to the app private key .pem), or put it in a credentials file}"
 
 # Build an RS256 JWT from app_id + pem without the `jwt` submodule
 # (portable across cryptography versions). Prints the token on stdout.
