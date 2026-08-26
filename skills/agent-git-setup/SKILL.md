@@ -119,8 +119,8 @@ The token is short-lived (~1h); re-run step 2 for a fresh one in long sessions.
 - A GitHub App (App ID + PEM) — only if you use `scripts/mint-token.sh` for `gh`/API as the bot (see README §2). Not needed for Git-only.
 
 ## Steps
-1. If you need `gh`/API as the bot (PRs, issues), mint and export `GH_TOKEN` (step 2 of the Happy path) or otherwise ensure a push-capable token is in the environment. Not needed for commit author alone. Then resolve `GIT_USER_NAME` to a numeric id via the public GitHub API (`GET /users/<handle>` — unauthenticated; add `Authorization: Bearer *** only when a token is set):
-   `curl -s https://api.github.com/users/$GIT_USER_NAME | jq .id` (unauthenticated, public; add `Authorization: Bearer *** only when a `GH_TOKEN` is needed for `gh`/API).
+1. **If you need `gh`/API as the bot (PRs, issues, comments), this step is MANDATORY.** Mint and export `GH_TOKEN` (step 2 of the Happy path) — or otherwise ensure a push-capable token is already in the environment — *before* any `gh`/API call. Without it, `gh` silently falls back to the human's `gh auth` login and every comment/PR/issue is attributed to the human, not the bot. This is the single most common failure: the agent does git-commit work as the bot but posts to GitHub as the human because `GH_TOKEN` was never exported. Not needed for the local commit author alone. Then resolve `GIT_USER_NAME` to a numeric id via the public GitHub API (`GET /users/<handle>` — unauthenticated; add `Authorization: Bearer ${GH_TOKEN}` only when a token is set):
+   `curl -s https://api.github.com/users/$GIT_USER_NAME | jq .id` (unauthenticated, public; add `Authorization: Bearer ${GH_TOKEN}` only when a `GH_TOKEN` is needed for `gh`/API).
 2. Export `AGENT_GIT_NAME` / `GIT_USER_NAME`.
 3. Run `scripts/agent-git-setup.sh <repo-dir>` once per repo — `<repo-dir>` is
    any worktree or the main repo (or omit it to use cwd). In practice,
@@ -149,6 +149,7 @@ export GIT_USER_NAME="my-git-user-name"   # handle; resolved to numeric id via A
 - **No origin is fine.** If the repo has no `origin`, the script still sets the bot commit author; only the (optional) push remote is absent. Plain `git push` uses the human account owner's push credential — the push actor is the human, by design.
 - **No worktreeConfig needed.** The script uses git's `includeIf` conditional include, which works on git 2.43+ without any extension or harness setup. The main repo's own `.git` directory is excluded by the glob, so it stays human. `GH_TOKEN` in env drives `gh`/API as the bot — **not** rewriting `origin`.
 - **Token expiry.** `GH_TOKEN` is typically short-lived (~1h). If a token expires while a sub-agent is still working, commits using that token will fail. The agent should detect the failure, re-run `scripts/mint-token.sh` (or its configured token minter) for a fresh `GH_TOKEN`, and retry the work.
+- **Silent human fallback (the #1 gotcha).** If `GH_TOKEN` is NOT in the environment when the agent makes a `gh`/API call (comment, PR, issue), `gh` silently uses the human's `gh auth` login — so the post lands under the human, not the bot. There is no error. The only fix is to mint+export `GH_TOKEN` (skill step 2) *before* any `gh`/API call. If you provided a GitHub App prompt and still see human-attributed comments, suspect a missing `GH_TOKEN` first.
 - **`cryptography` required for minting.** `scripts/mint-token.sh` needs `python3 -c "import cryptography"`. `scripts/agent-git-setup.sh` does NOT need it.
 - **Push/PR is the human's action.** The script only sets commit AUTHOR identity. It never pushes and never opens a PR. Pushing and opening PRs are done by the human from the main repo.
 
