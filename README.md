@@ -80,7 +80,7 @@ Pick **one** of these — whichever matches your setup. Replace every `[...]` th
 
 #### Git-only
 
-Use the prompt below with replaced values prepared in step 2.
+Fill in the `[...]` and paste the prompt below to the agent.
 
 ```text
 Use the agent-git-setup skill. Set up a bot git identity for current repo.
@@ -88,14 +88,12 @@ Use the agent-git-setup skill. Set up a bot git identity for current repo.
 AGENT_GIT_NAME=[myagent[bot]]
 GIT_USER_NAME=[my-git-user-name]
 
-After setting the env vars above, run `scripts/agent-git-setup.sh <repo-dir>` once per repo — `<repo-dir>` is any worktree or the main repo.
-
-This is a ONE-OFF per repo: every worktree (existing and future) now commits as the bot, while the main repo stays human. No re-run needed for new worktrees.
+The agent runs `scripts/agent-git-setup.sh <repo-dir>` once per repo — `<repo-dir>` is any worktree or the main repo. This is a ONE-OFF per repo: every worktree (existing and future) now commits as the bot, while the main repo stays human. No re-run needed for new worktrees.
 ```
 
 #### GitHub App
 
-Use the prompt below with replaced values prepared in step 2.
+Fill in the `[...]` and paste the prompt below to the agent.
 
 ```text
 Use the agent-git-setup skill. Set up a bot git identity for current repo.
@@ -105,9 +103,7 @@ GIT_USER_NAME=[my-git-user-name]
 GITHUB_APP_ID=[4646191]
 GITHUB_APP_PEM=[/path/to/myagent.pem]
 
-After setting the env vars above (mint the token first if using the GitHub App), run `scripts/agent-git-setup.sh <repo-dir>` once per repo — `<repo-dir>` is any worktree or the main repo.
-
-This is a ONE-OFF per repo: every worktree (existing and future) now commits as the bot, while the main repo stays human. No re-run needed for new worktrees.
+The agent runs `scripts/agent-git-setup.sh <repo-dir>` once per repo — `<repo-dir>` is any worktree or the main repo. The agent writes the credentials file from the App ID / PEM above and mints `GH_TOKEN` from it automatically (no token passed per session). This is a ONE-OFF per repo: every worktree (existing and future) now commits as the bot, while the main repo stays human. No re-run needed for new worktrees.
 ```
 
 Note: the agent writes the one-time credentials file itself from the `GITHUB_APP_ID` / `GITHUB_APP_PEM` values in your prompt. For multiple bot identities (one per repo), the agent writes `credentials.d/credentials-<APP_ID>.env` (keyed by the numeric App ID from your prompt) and `mint-token.sh` auto-selects it — no name→app-id mapping needed. The file holds only the public App ID + the **path** to the PEM you already downloaded, never the PEM bytes or a live token. From then on the skill mints `GH_TOKEN` from that file automatically, so you do **not** pass a token per session.
