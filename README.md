@@ -42,9 +42,11 @@ You will fill the `[...]` placeholders in step 3 with these values.
 
 #### GitHub App
 
-Do the one-time App setup first, then give the agent the values below.
+You need a GitHub App (with its PEM) and its App ID. If you already have one,
+skip to the values below. To create one, see the steps under "Creating a GitHub
+App".
 
-**One-time App setup**
+**Creating a GitHub App** (one-time, if not already done)
 
 1. **Create the app** — GitHub → **Settings → Developer settings → GitHub Apps → New GitHub App**. For a private automation-only app set only:
    - **GitHub App name**: e.g. `myagent` (this becomes `myagent[bot]` on GitHub), matches `AGENT_GIT_NAME` without the `[bot]` part.

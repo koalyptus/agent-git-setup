@@ -57,9 +57,10 @@ harnesses can fetch the support files).
 > `make sync-skill-scripts` and commit the bundle copy in the same commit.
 
 1. **The agent writes the one-time credentials file** from the `GITHUB_APP_ID` /
-   `GITHUB_APP_PEM` values in the user's prompt (the user only created the App
-   and downloaded the PEM on GitHub.com — they paste the App ID and the PEM
-   *path* into the prompt). The agent does this itself, once:
+   `GITHUB_APP_PEM` values in the user's prompt. These come from a GitHub App
+   created beforehand (one-time, outside this flow) and its downloaded PEM; the
+   user pastes the App ID and the PEM *path* into the prompt. The agent writes
+   the file itself, once:
    ```bash
    CRED_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/agent-git-setup"
    mkdir -p "$CRED_DIR"
