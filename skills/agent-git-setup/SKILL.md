@@ -56,24 +56,25 @@ harnesses can fetch the support files).
 > repo root is the source of truth. If you edit a root script, run
 > `make sync-skill-scripts` and commit the bundle copy in the same commit.
 
-1. **One-time, outside the agent:** create a GitHub App (see README "GitHub App
-   setup"), download its PEM, install it on the target repos, and note the
-   App ID and the PEM path. Put them in a credentials file **once** so the agent
-   never passes tokens per session:
+1. **The agent writes the one-time credentials file** from the `GITHUB_APP_ID` /
+   `GITHUB_APP_PEM` values in the user's prompt (the user only created the App
+   and downloaded the PEM on GitHub.com — they paste the App ID and the PEM
+   *path* into the prompt). The agent does this itself, once:
    ```bash
-   mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/agent-git-setup"
-   # YOU set perms: chmod 600 this file (holds only the public App ID + PEM path)
-   cat > "${XDG_CONFIG_HOME:-$HOME/.config}/agent-git-setup/credentials.env" <<'EOF'
-   GITHUB_APP_ID=4646191
-   GITHUB_APP_PEM=/path/to/your-app.pem
+   CRED_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/agent-git-setup"
+   mkdir -p "$CRED_DIR"
+   umask 077   # ensures the file is created 600
+   cat > "$CRED_DIR/credentials.env" <<EOF
+   GITHUB_APP_ID=${GITHUB_APP_ID}
+   GITHUB_APP_PEM=${GITHUB_APP_PEM}
    EOF
-   # chmod 600 "${XDG_CONFIG_HOME:-$HOME/.config}/agent-git-setup/credentials.env"
+   chmod 600 "$CRED_DIR/credentials.env"
    ```
    (Override the path with `AGENT_GIT_CREDENTIALS=…` or `--credentials`.) The
    file holds only the public App ID and the **path** to the PEM — never the PEM
-   bytes or a live token. Your handle `GIT_USER_NAME` (e.g. `my-git-user-name`)
-   is given to the agent at runtime; the skill/script resolves it to the numeric
-   id via the GitHub API — you never run `curl | jq`.
+   bytes or a live token. The user's handle `GIT_USER_NAME` (e.g.
+   `my-git-user-name`) is also given in the prompt; the skill/script resolves it
+   to the numeric id via the GitHub API — no `curl | jq` by the user.
 2. **Mint a token (arg-free, automatic from the credentials file):** every
    session the agent runs — no env vars, no `--app-id`/`--pem` needed:
    ```bash

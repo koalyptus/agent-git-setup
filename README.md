@@ -100,16 +100,15 @@ Use the agent-git-setup skill. Set up a bot git identity for current repo.
 
 AGENT_GIT_NAME=[myagent[bot]]
 GIT_USER_NAME=[my-git-user-name]
+GITHUB_APP_ID=[4646191]
+GITHUB_APP_PEM=[/path/to/myagent.pem]
 
 After setting the env vars above (mint the token first if using the GitHub App), run `scripts/agent-git-setup.sh <repo-dir>` once per repo — `<repo-dir>` is any worktree or the main repo.
 
 This is a ONE-OFF per repo: every worktree (existing and future) now commits as the bot, while the main repo stays human. No re-run needed for new worktrees.
 ```
 
-Note: for the GitHub App flow, the App ID + PEM live in a credentials file
-(`${XDG_CONFIG_HOME:-$HOME/.config}/agent-git-setup/credentials.env`, set up
-once — `chmod 600` it; you supply the perms). The skill mints `GH_TOKEN` from
-that file automatically, so you do **not** pass a token per session.
+Note: the agent writes the one-time credentials file itself from the `GITHUB_APP_ID` / `GITHUB_APP_PEM` values in your prompt (it `mkdir`s the dir, writes `credentials.env`, and `chmod 600`s it — you do not create the file by hand). The file holds only the public App ID + the **path** to the PEM you already downloaded, never the PEM bytes or a live token. From then on the skill mints `GH_TOKEN` from that file automatically, so you do **not** pass a token per session.
 
 ## 4. What happens
 
