@@ -112,7 +112,7 @@ Note: the agent writes the one-time credentials file itself from the `GITHUB_APP
 
 1. The agent authenticates itself if needed. If it has to use GitHub (open PRs, comment on issues), it mints its own short-lived token from the one-time credentials file — you don't provide one per session. If it only makes local commits, no token is needed at all.
 
-   **Two identities, two lifetimes:** the **commit author** (`user.name`/`user.email`, written once into `.git/`) is *one-off per repo* and survives restarts with no env. The **GitHub API actor** (`GH_TOKEN`, used for PRs/issues/comments) is *per-session*: GitHub issues short-lived tokens (~1h), so the script re-mints one from the credentials file each session (or on expiry). The credentials file is long-lived; the token derived from it is not. This is why "the agent is a GitHub actor" is automatic once the credentials file exists, but is never a stored token on disk.
+   **Two identities, two lifetimes:** the **commit author** (`user.name`/`user.email`, written once into `.git/`) is *one-off per repo* and works under any harness with no extra setup. The **GitHub API actor** (`GH_TOKEN`, used for PRs/issues/comments) is *per-session*: GitHub issues short-lived tokens (~1h), so the script re-mints one from the credentials file each session (or on expiry). Because the mint step lives in the skill, each harness you use needs the skill installed to act as the bot on GitHub; a harness without it still commits as the bot but posts to GitHub as you. The credentials file is long-lived; the token derived from it is not. This is why "the agent is a GitHub actor" is automatic once the credentials file exists *and the skill is present in that harness*, but is never a stored token on disk.
 
 2. The agent resolves its **bot** identity first: `AGENT_GIT_BOT_ID` if set, otherwise the numeric id of `AGENT_GIT_NAME` via the public GitHub API (`GET /users/<handle>`; sends `GH_TOKEN` as Bearer when present, for higher rate limits). Only if the bot id cannot be resolved does it fall back to `GIT_USER_NAME` (your handle) so setup still succeeds.
 
@@ -126,7 +126,7 @@ Full details, diagrams, and reference tables are below (GitHub App setup is alre
 
 ```
 ┌──────────────────────────────────────┐
-│              Human                    │
+│              You                     │
 │   gives agent prompt                  │
 │   ────────────────────────────────   │
 │   "Use agent-git-setup skill on      │
@@ -203,10 +203,8 @@ It handles two distinct things:
 
 ## What it is not
 
-- **Not backend-specific.** Works the same under any agent or harness.
-- **Not token-agnostic by accident — by design.** It does **not** mint tokens and
-  contains no secrets. It expects `GH_TOKEN` to already be present in the
-  environment (minted by whatever backend/agent you use) and only *consumes* it.
+- **Commit identity is harness-agnostic; the API actor needs the skill.** The bot commit author is plain git config in `.git/`, so it works under any agent or harness with no extra setup. Acting as the bot on GitHub (`GH_TOKEN`) needs the skill installed in that harness, because the mint step lives there — a harness without the skill still commits as the bot but posts to GitHub as you (unless you run `source <(./scripts/mint-token.sh --shell)` yourself).
+- **Token-agnostic in consumption, with a provided minter.** The scripts only *consume* `GH_TOKEN` (for `gh`/API as the bot); they never assume a specific backend. This repo also ships `scripts/mint-token.sh`, which mints `GH_TOKEN` from a GitHub App (RS256 JWT, `python3` + `cryptography`) using the persisted credentials file — so the agent provides its own token without you passing one per session. The credentials file holds only the public App ID + the **path** to the PEM; no token is ever stored on disk.
 - **Not a worktree manager.** The harness owns worktree creation, branching,
   hooks, and `core.hooksPath`. This script only writes bot identity into the
   shared repo config (scoped to all worktrees via `includeIf`) — it never creates
@@ -291,7 +289,7 @@ variables above — it is **not** optional.
 ### Example
 
 ```bash
-export GH_TOKEN="$(mint-my-token)"            # backend-specific; not this script's job
+export GH_TOKEN="$(scripts/mint-token.sh --print-jwt)"   # this repo's GitHub App minter (uses the persisted credentials file)
 export AGENT_GIT_NAME="myagent[bot]"
 export GIT_USER_NAME="my-git-user-name"           # handle; script/skill resolves to numeric id
 
@@ -312,11 +310,7 @@ yours — no `git config` discipline required, no collision.
 
 ## Backend notes (how the token gets there)
 
-`scripts/agent-git-setup.sh` only consumes `GH_TOKEN`. How it arrives is the backend's
-job — any mechanism that places a push-capable token in the agent's environment
-works (for example, a GitHub App install token minted at agent launch, or a
-fine-grained token provisioned by the harness). The script is agnostic to all
-of the above.
+`scripts/agent-git-setup.sh` only consumes `GH_TOKEN`. This repo also ships `scripts/mint-token.sh`, the expected minter: it produces `GH_TOKEN` from a GitHub App (using the persisted credentials file) and is what the agent uses in the happy path (`source <(./scripts/mint-token.sh --shell)>`). Other mechanisms work too — any way of placing a token in the agent's environment is fine (for example a fine-grained token provisioned by the harness). The script is agnostic to how `GH_TOKEN` arrives; `mint-token.sh` is simply the bundled default.
 
 ## License
 
