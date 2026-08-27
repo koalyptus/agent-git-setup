@@ -61,7 +61,8 @@ done
 # Credential-file discovery (one-time, agent-agnostic): if the App ID / PEM
 # were not given via env or args, source them from a persisted credentials
 # file so the agent never has to pass tokens per session. The file holds only
-# GITHUB_APP_ID (public) and GITHUB_APP_PEM (path to the secret) — never the
+# GITHUB_APP_ID (public), GITHUB_APP_PEM (path to the secret), and optionally
+# AGENT_GIT_BOT_ID (the App's single bot user id, static per App) — never the
 # private key bytes or a live token.
 #
 # Resolution order when creds are not in env/args:
@@ -185,6 +186,14 @@ TOKEN="$(mint_token)"
 
 if [ "$SHELL_OUT" -eq 1 ]; then
 	echo "export GH_TOKEN=$TOKEN"
+	# Emit the App's bot id (if known) so the agent can persist it into the
+	# credentials file / env. AGENT_GIT_BOT_ID is static per App; when present,
+	# agent-git-setup.sh uses it as the commit-email prefix so commits are
+	# attributed to the bot account (not the human). Git-only flows never run
+	# this script and are unaffected.
+	if [ -n "${AGENT_GIT_BOT_ID:-}" ]; then
+		echo "export AGENT_GIT_BOT_ID=$AGENT_GIT_BOT_ID"
+	fi
 else
 	printf '%s\n' "$TOKEN"
 fi
