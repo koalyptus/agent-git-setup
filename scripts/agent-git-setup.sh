@@ -35,6 +35,22 @@
 #   GitHub App flow: bot noreply for local commits + `gh` with `GH_TOKEN` for
 #   API commits (GitHub signs server-side → agent name + Verified badge).
 #
+# The agent opens PRs / acts on GitHub AS THE BOT via `gh` + `GH_TOKEN` in its
+# environment (PRs, issues, comments, API commits for the Verified badge). So
+# `GH_TOKEN` is mandatory in the agent flow. `--preflight` (below) fails closed
+# if it is missing — rather than silently falling back to the human's `gh auth`.
+#
+# PREFLOW GUARDRAIL:
+#   Run `agent-git-setup.sh --preflight` BEFORE any git/gh work. It fails
+#   non-zero (fail-closed) if the agent is in the MAIN repo (commits there would
+#   be attributed to YOU, the human — the includeIf glob excludes the main
+#   tree's .git, so a main-tree commit is human) or if `GH_TOKEN` is missing (no
+#   bot PR/API actor). This converts the most common mis-attribution failure —
+#   an agent committing from the main tree as the human — from documentation
+#   into a hard mechanism, without the script ever creating or demanding a
+#   worktree. `--preflight` reads state only; it does not manage worktrees or
+#   hooks.
+#
 # Required environment variables:
 #   AGENT_GIT_NAME    Commit author name, e.g. myagent[bot].
 #   GIT_USER_NAME     GitHub handle (e.g. my-git-user-name). LAST-RESORT fallback
@@ -45,10 +61,14 @@
 #                     If set, used directly as the fallback noreply prefix.
 #                     Otherwise the script fetches the id via the public API.
 #
-# Optional environment variables:
+# Mandatory environment variables (agent flow):
 #   GH_TOKEN              A GitHub token (e.g. an App install token) for
-#                         `gh`/API operations as the bot (PRs, issues,
-#                         comments, and API commits for Verified badge).
+#                         `gh`/API operations AS THE BOT (PRs, issues,
+#                         comments, and API commits for Verified badge). The
+#                         agent opens PRs as the bot, so this is required in the
+#                         agent flow. `--preflight` fails closed if it is missing.
+#
+# Optional environment variables:
 #   AGENT_GIT_SIGNINGKEY  DEPRECATED — SSH signing does not verify for bot
 #                         noreply emails. Kept for backward compatibility
 #                         but has no effect on bot identity commits.
@@ -58,14 +78,21 @@
 #                         public GitHub API (uses GH_TOKEN as Bearer if set).
 #
 # Usage:
+#   agent-git-setup.sh --preflight [<repo-dir>]
 #   agent-git-setup.sh <repo-dir>      # any worktree or the main repo of the repo
 #   agent-git-setup.sh                 # operates on the cwd's repo
 
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
-# Argument handling
+# Argument / mode handling
 # ---------------------------------------------------------------------------
+
+MODE="setup"
+if [ "${1:-}" = "--preflight" ]; then
+	MODE="preflight"
+	shift || true
+fi
 
 # Operate on the repo the agent is in. A worktree or the main repo both resolve
 # to the SAME shared .git, so we only need the toplevel. The includeIf we write
@@ -75,6 +102,50 @@ if [ -n "${1:-}" ]; then
 else
 	REPO_PATH="$(git rev-parse --show-toplevel)"
 fi
+
+# ---------------------------------------------------------------------------
+# Preflight: fail-closed state checks (read-only, no worktree management)
+# ---------------------------------------------------------------------------
+
+preflight() {
+	local ok=0
+
+	# (1) Are we inside a linked worktree, or in the main repo?
+	local git_dir
+	git_dir="$(git -C "$REPO_PATH" rev-parse --absolute-git-dir 2>/dev/null || true)"
+	if [ "$(basename "$(dirname "$git_dir")")" != "worktrees" ]; then
+		# Not under .git/worktrees/<name>: this is the main repo (or an
+		# unrecognised layout). Commits here are attributed to the account owner (human) because
+		# the includeIf glob excludes the main tree's .git.
+		echo "agent-git-setup.sh: PREFLOW FAIL: $REPO_PATH is not a linked worktree." >&2
+		echo "  No worktree present -> commits made here are attributed to the account owner (human)." >&2
+		echo "  Ask the harness/agent to place you in the agent worktree it created, then re-run." >&2
+		ok=1
+	fi
+
+	# (2) GH_TOKEN mandatory in the agent flow (bot PRs/API). Fail closed.
+	if [ -z "${GH_TOKEN:-}" ]; then
+		echo "agent-git-setup.sh: PREFLOW FAIL: GH_TOKEN is unset." >&2
+		echo "  The agent opens PRs / acts on GitHub AS THE BOT, so a token is required." >&2
+		echo "  Mint one (scripts/mint-token.sh) and export GH_TOKEN before any git/gh work." >&2
+		ok=1
+	fi
+
+	if [ "$ok" -ne 0 ]; then
+		echo "agent-git-setup.sh: preflight aborted (fail-closed). Fix the above and re-run." >&2
+		exit 1
+	fi
+	echo "agent-git-setup.sh: preflight OK — in a worktree, GH_TOKEN present."
+	exit 0
+}
+
+if [ "$MODE" = "preflight" ]; then
+	preflight
+fi
+
+# ---------------------------------------------------------------------------
+# Setup path (from here down: only runs in setup mode)
+# ---------------------------------------------------------------------------
 
 if [ ! -d "$REPO_PATH/.git" ] && [ ! -f "$REPO_PATH/.git" ]; then
 	echo "agent-git-setup.sh: $REPO_PATH is not a git repository" >&2
@@ -276,12 +347,12 @@ fi
 echo "agent-git-setup.sh: isolation verified — main tree untouched, all worktrees bot"
 echo "agent-git-setup.sh: one-off setup; future worktrees inherit bot identity automatically"
 
-# Push actor is NOT configured here. Plain `git push` uses the human's
-# credential — the push actor is the human, by design. Pushing and opening
-# PRs are HUMAN actions; this script only sets commit AUTHOR identity.
-# The bot gh/API actor (PRs, issues, comments) is provided by GH_TOKEN in
-# the agent's environment, which drives gh/API calls as the bot.
+# Push actor: this script does NOT configure push. The agent opens PRs as the
+# bot via `gh` + GH_TOKEN in its environment. Plain `git push` still uses the
+# repo's normal credential by default; that is harness/push-mechanism territory,
+# not this script's. The bot API actor (PRs, issues, comments, API commits for
+# the Verified badge) is provided by GH_TOKEN.
 
 echo "agent-git-setup.sh: done. All worktrees in: $REPO_PATH"
 echo "  author = $AGENT_GIT_NAME <$COMMIT_EMAIL>"
-echo "  push actor = human (design); gh/API actor = bot via GH_TOKEN"
+echo "  PR/API actor = bot via GH_TOKEN (agent opens PRs as the bot)"

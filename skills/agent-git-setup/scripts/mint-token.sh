@@ -11,8 +11,14 @@
 set -euo pipefail
 
 APP_ID="${GITHUB_APP_ID:-}"
-PEM="${GITHUB_APP_PEM:-}"
-INSTALL_ID="${GITHUB_APP_INSTALL_ID:-}"
+# App credentials are NOT seeded from the environment here. Explicit
+# --app-id/--pem args take precedence, then persisted credentials files are
+# discovered, and only as a last resort does the environment act as a fallback
+# (inside resolve_credentials). Pre-seeding from env at the top would let an
+# ambient GITHUB_APP_PEM shadow an explicit --pem argument and corrupt the
+# documented precedence.
+PEM=""
+INSTALL_ID=""
 CREDENTIALS_FILE="${AGENT_GIT_CREDENTIALS:-}"
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/agent-git-setup"
 DEFAULT_CREDENTIALS_FILE="$CONFIG_DIR/credentials.env"
@@ -81,10 +87,15 @@ if [ -z "$APP_ID" ] || [ -z "$PEM" ]; then
 	if [ -n "$CRED_FILE_USED" ] && [ -r "$CRED_FILE_USED" ]; then
 		# shellcheck disable=SC1090
 		. "$CRED_FILE_USED"
-		APP_ID="${APP_ID:-${GITHUB_APP_ID:-}}"
-		PEM="${PEM:-${GITHUB_APP_PEM:-}}"
-		INSTALL_ID="${INSTALL_ID:-${GITHUB_APP_INSTALL_ID:-}}"
-	else
+	fi
+	# Env fallback (last resort) applies whether or not a credentials file was
+	# found: file-sourced values win, then the environment fills any gap. This
+	# keeps "GITHUB_APP_ID/GITHUB_APP_PEM in env, no args, no file" working,
+	# and stays hermetic because the test suite unsets these vars.
+	APP_ID="${APP_ID:-${GITHUB_APP_ID:-}}"
+	PEM="${PEM:-${GITHUB_APP_PEM:-}}"
+	INSTALL_ID="${INSTALL_ID:-${GITHUB_APP_INSTALL_ID:-}}"
+	if [ -z "$APP_ID" ] || [ -z "$PEM" ]; then
 		echo "mint-token.sh: no App creds in env/args and no credentials file found." >&2
 		echo "  Looked for (in order):" >&2
 		[ -n "$CREDENTIALS_FILE" ] && echo "    --credentials $CREDENTIALS_FILE" >&2

@@ -12,6 +12,13 @@ Give an AI agent a bot identity so its git commits and GitHub actions are clearl
   macOS. **Windows is not supported as-is** — `bash` + `git` under WSL or Git
   Bash will work, but native `cmd`/`PowerShell` will not (the script uses POSIX
   shell features).
+- **`gh` (GitHub CLI) is required for the bot GitHub-actor path.** If the agent
+  opens PRs, comments, or otherwise acts on GitHub as the bot, it does so via
+  `gh` + `GH_TOKEN` in its environment — the script does not rewrite `origin`
+  or push directly. Plain local commits need only `git` (no token, no `gh`);
+  the GitHub API actor path needs **both** `gh` installed **and** a `GH_TOKEN`
+  minted (see "Token minting is fundamental" below and `--preflight`, which
+  fails closed when `gh` would silently fall back to your human `gh auth`).
 - `Make install` installs `shellcheck`/`shfmt`, `Python 3` and `cryptography` if needed.
 
 ## Install
@@ -184,9 +191,10 @@ are attributed to a bot, while your main checkout stays exactly as you.
 
 The bot identity is the **commit author** (the `user.name`/`user.email` stamped
 on each commit). It does **not** change who pushes: a plain `git push` from the
-worktree uses your normal credential, so the push actor stays you. GitHub-side
-operations driven by `GH_TOKEN` in the agent's environment (PRs, issues,
-comments via `gh`/API) are the bot. See "Commit-author isolation" below.
+worktree uses your normal credential, but the **PR/API actor is the bot** — the
+agent opens PRs and acts on GitHub as the bot via `gh` + `GH_TOKEN` in its
+environment (PRs, issues, comments via `gh`/API are the bot). See
+"Commit-author isolation" below.
 
 It handles two distinct things:
 
@@ -217,7 +225,7 @@ It handles two distinct things:
 **push credential**. This is a deliberate, safe choice:
 
 - The script writes `user.name`/`user.email` to `.git/agent-bot-identity.config` and adds a conditional include (`includeIf "gitdir/i:**/.git/worktrees/**"`) to the shared `.git/config`. On git 2.43+ this scopes the bot identity to every linked worktree — including ones created after the script runs — while the main repo's own `.git` directory is excluded by the glob, so it stays yours. No `worktreeConfig` extension and no harness setup required. After writing, the script prints `isolation verified — main tree untouched, all worktrees bot`.
-- Rewriting `origin` to inject a token would change your main tree too — exactly what we avoid. The script does **not** set `remote.origin.url` in the repo config; it only sets `user.name`/`user.email` (via the included file). The bot actor for `gh`/API (PRs, issues, comments) is provided by `GH_TOKEN` in the agent's environment — **not** by rewriting `origin`. Plain `git push` uses the repo's normal credential (the push actor is you, unless your push mechanism also uses `GH_TOKEN`). The agent must not rewrite `origin` either (see the skill).
+- Rewriting `origin` to inject a token would change your main tree too — exactly what we avoid. The script does **not** set `remote.origin.url` in the repo config; it only sets `user.name`/`user.email` (via the included file). The bot actor for `gh`/API (PRs, issues, comments) is provided by `GH_TOKEN` in the agent's environment — **not** by rewriting `origin`. Plain `git push` uses the repo's normal credential (a raw push falls back to your credential, unless your push mechanism also uses `GH_TOKEN`) — but the agent opens PRs **as the bot** via `gh` + `GH_TOKEN`. The agent must not rewrite `origin` either (see the skill).
 - **Result:** commits authored in any worktree show as `<name>[bot]` in the commit list. Plain `git push` uses the repo's normal credential. `gh`/API calls (PRs, issues, comments) made with `GH_TOKEN` in the agent's environment are the bot.
 
 If you later want the *push* to be the bot too, do it outside this script (e.g.
