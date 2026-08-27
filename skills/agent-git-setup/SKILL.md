@@ -68,11 +68,20 @@ harnesses can fetch the support files).
    cat > "$CRED_DIR/credentials.d/credentials-${GITHUB_APP_ID}.env" <<EOF
    GITHUB_APP_ID=${GITHUB_APP_ID}
    GITHUB_APP_PEM=${GITHUB_APP_PEM}
+   AGENT_GIT_BOT_ID=${AGENT_GIT_BOT_ID}
    EOF
    # NOTE: the agent does NOT set file permissions. The user must chmod 600
    # this file (and the PEM) — see the File-permissions pitfall.
    ```
-   `mint-token.sh` resolves creds in this order: explicit `--credentials`/`AGENT_GIT_CREDENTIALS` → `credentials.d/credentials-<APP_ID>.env` (auto-picked from the App ID in the prompt, no name→app-id mapping needed) → global `credentials.env` (single-identity default). So one bot per repo is first-class: give a distinct App ID per repo, and the right creds file is found automatically. The file holds only the public App ID and the **path** to the PEM — never the PEM bytes or a live token. The user's handle `GIT_USER_NAME` (e.g. `my-git-user-name`) is also given in the prompt; the skill/script resolves it to the numeric id via the GitHub API — no `curl | jq` by the user.
+   `AGENT_GIT_BOT_ID` is the App's **single, static bot user id** (the numeric
+   id of the `<app-slug>[bot]` account — find it once on the App's bot account
+   page, or via `gh api users/<app-slug>[bot]`). It is the commit-email prefix
+   that makes commits attribute to the **bot account**, not the human. If it is
+   absent, `agent-git-setup.sh` falls back to the human's noreply (bot name
+   still shows, but the commit is filed under the human account). `mint-token.sh
+   --shell` re-emits `AGENT_GIT_BOT_ID` from this file so the value stays in the
+   agent's environment across sessions.
+   `mint-token.sh` resolves creds in this order: explicit `--credentials`/`AGENT_GIT_CREDENTIALS` → `credentials.d/credentials-<APP_ID>.env` (auto-picked from the App ID in the prompt, no name→app-id mapping needed) → global `credentials.env` (single-identity default). So one bot per repo is first-class: give a distinct App ID per repo, and the right creds file is found automatically. The file holds only the public App ID, the **path** to the PEM, and the static bot id — never the PEM bytes or a live token. The user's handle `GIT_USER_NAME` (e.g. `my-git-user-name`) is also given in the prompt; the skill/script resolves it to the numeric id via the GitHub API — no `curl | jq` by the user.
 2. **Mint a token (arg-free, automatic from the credentials file):** every
    session the agent runs — no env vars, no `--app-id`/`--pem` needed:
    ```bash
