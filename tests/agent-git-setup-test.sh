@@ -145,14 +145,17 @@ else
 	rc=$?
 	if [ "$rc" -ne 0 ]; then ok "exits non-zero without GIT_USER_NAME/GIT_USER_ID"; else bad "exit code wrong"; fi
 fi
-# GH_TOKEN is now optional for the commit-author path (public GET /users/<handle>)
+# GH_TOKEN is now MANDATORY (the agent opens PRs as the bot). Setup must fail
+# closed without it.
 unset GH_TOKEN
 export AGENT_GIT_NAME="myagent[bot]" GIT_USER_ID=268339505
 if "$SCRIPT" "$WT6" >/dev/null 2>&1; then
-	ok "succeeds without GH_TOKEN when GIT_USER_ID set (GH_TOKEN optional)"
+	bad "script must fail without GH_TOKEN (now mandatory)"
 else
-	bad "should succeed without GH_TOKEN when GIT_USER_ID is set"
+	rc=$?
+	if [ "$rc" -ne 0 ]; then ok "exits non-zero without GH_TOKEN (now mandatory)"; else bad "exit code wrong"; fi
 fi
+export GH_TOKEN=dummy_token
 
 # 6b. Invalid GIT_USER_NAME (not a GitHub handle) is rejected before any network call
 echo "invalid handle rejected"
@@ -181,8 +184,7 @@ echo "noreply email construction"
 REPO8="$(make_repo with-origin)"
 make_worktree "$REPO8"
 WT8="$WT"
-unset GH_TOKEN
-export AGENT_GIT_NAME="agent-laptop[bot]" GIT_USER_ID=268339505 GIT_USER_NAME=my-git-user-name AGENT_GIT_BOT_ID=320004057
+export GH_TOKEN=dummy_token AGENT_GIT_NAME="agent-laptop[bot]" GIT_USER_ID=268339505 GIT_USER_NAME=my-git-user-name AGENT_GIT_BOT_ID=320004057
 if "$SCRIPT" "$WT8" >/dev/null 2>&1; then
 	assert_eq "$(git -C "$WT8" config user.name)" "agent-laptop[bot]" "email test: user.name still the bot"
 	assert_eq "$(git -C "$WT8" config user.email)" "320004057+agent-laptop[bot]@users.noreply.github.com" "email uses bot noreply (id+botname@...)"
@@ -266,6 +268,45 @@ else
 	bad "no-hook test: setup failed"
 fi
 unset AGENT_GIT_BOT_ID
+
+# 13. --preflight fails closed in the MAIN repo (would attribute to human)
+echo "preflight refuses main repo"
+REPO13="$(make_repo with-origin)"
+git -C "$REPO13" config extensions.worktreeConfig true
+export AGENT_GIT_NAME="myagent[bot]" GIT_USER_ID=268339505 GH_TOKEN=dummy_token
+if "$SCRIPT" --preflight "$REPO13" >/dev/null 2>&1; then
+	bad "preflight must fail in the main repo"
+else
+	rc=$?
+	if [ "$rc" -ne 0 ]; then ok "preflight exits non-zero in main repo"; else bad "exit code wrong"; fi
+fi
+OUT13="$("$SCRIPT" --preflight "$REPO13" 2>&1)" || true
+if echo "$OUT13" | grep -qi "attributed to YOU (human)"; then
+	ok "preflight names human-attribution consequence"
+else
+	bad "preflight did not name human-attribution consequence"
+fi
+
+# 14. --preflight fails closed when GH_TOKEN is missing
+echo "preflight requires GH_TOKEN"
+REPO14="$(make_repo with-origin)"
+make_worktree "$REPO14"
+WT14="$WT"
+export AGENT_GIT_NAME="myagent[bot]" GIT_USER_ID=268339505
+unset GH_TOKEN
+if "$SCRIPT" --preflight "$WT14" >/dev/null 2>&1; then
+	bad "preflight must fail without GH_TOKEN"
+else
+	rc=$?
+	if [ "$rc" -ne 0 ]; then ok "preflight exits non-zero without GH_TOKEN"; else bad "exit code wrong"; fi
+fi
+export GH_TOKEN=dummy_token
+# and passes (exit 0) when both conditions hold
+if "$SCRIPT" --preflight "$WT14" >/dev/null 2>&1; then
+	ok "preflight passes in worktree with GH_TOKEN"
+else
+	bad "preflight should pass in worktree with GH_TOKEN"
+fi
 
 echo
 

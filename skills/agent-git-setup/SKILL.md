@@ -41,7 +41,9 @@ not worth the key management complexity for ephemeral agent environments
 
 **Git-only flow:** bot noreply, no signing → agent name shows, no badge.
 **GitHub App flow:** bot noreply for local commits + `gh` with `GH_TOKEN` for
-API commits (GitHub signs server-side → agent name + Verified badge).
+API commits (GitHub signs server-side → agent name + Verified badge). The agent
+opens PRs as the bot via `gh` + `GH_TOKEN` — `GH_TOKEN` is therefore mandatory
+in the agent flow.
 
 ## Happy path (end-to-end, self-contained)
 
@@ -90,6 +92,9 @@ harnesses can fetch the support files).
    script errors and tells the agent to **ASK THE HUMAN** whether they may enable
    it (`git config extensions.worktreeConfig true` in the main repo, one-time).
    The script never enables it silently — that writes to the human's main repo.
+   Before any git/gh work, run `scripts/agent-git-setup.sh --preflight .`:
+   it fails closed if you are in the main tree (commits there would be attributed
+   to YOU, the human) or if `GH_TOKEN` is unset (no bot PR/API actor).
 5. **Work inside the worktree** the harness created. Commits there are
    `<name>[bot]`; `gh`/API calls use the bot; your main tree is untouched.
    **Agent must not** rewrite `origin` or set `remote.origin.url` in the
@@ -102,9 +107,9 @@ harnesses can fetch the support files).
 The token is short-lived (~1h); re-run step 2 for a fresh one in long sessions.
 
 ## Key concepts
-- **Commit author = bot name + bot noreply email, push actor = human, gh/API = bot.** The worktree's own config file gets `user.name` (bot name) + `user.email` (bot noreply). `GH_TOKEN` in the environment drives `gh`/API (PRs, issues, comments) as the bot. Plain `git push` uses the human account owner's credential — the push actor is the human, by design. (The `scripts/agent-git-setup.sh` script never rewrites `origin`, because worktrees share remotes and rewriting would touch the main tree.)
+- **Commit author = bot name + bot noreply email; PR/API actor = bot via `GH_TOKEN`; plain `git push` = your credential.** The worktree's own config file gets `user.name` (bot name) + `user.email` (bot noreply). `GH_TOKEN` in the environment drives `gh`/API (PRs, issues, comments) as the bot — the agent opens PRs as the bot. Plain `git push` uses the human account owner's credential by default (the script never rewrites `origin`, because worktrees share remotes and rewriting would touch the main tree). `GH_TOKEN` is mandatory in the agent flow; run `--preflight` before any git/gh work.
 - **Worktree isolation.** All bot config is scoped to the worktree's own config file. The human's main tree stays theirs. No collision, no `git config` discipline required.
-- **Identity only — no worktree management.** The harness owns worktree creation, branching, hooks, and `core.hooksPath`. This skill only writes commit-author identity. It will not install guard hooks or push the branch; committing is the agent's job, pushing/opening PRs is the human's.
+- **Identity only — no worktree management.** The harness owns worktree creation, branching, hooks, and `core.hooksPath`. This skill only writes commit-author identity. It will not install guard hooks or push the branch; committing is the agent's job, and the agent opens PRs as the bot via `gh` + `GH_TOKEN`. Run `scripts/agent-git-setup.sh --preflight .` before any git/gh work — it fails closed outside a worktree (human-attributed commits) or when `GH_TOKEN` is missing.
 - **Token minting is fundamental.** The happy path requires a token, and this repo provides `scripts/mint-token.sh` to mint one from a GitHub App (RS256 JWT, needs only `python3` + `cryptography`). It is the expected, primary token source — not an optional extra. `scripts/agent-git-setup.sh` itself stays token-agnostic (it only *consumes* `GH_TOKEN`), which means other backends may supply a token their own way too, but for this repo's standalone flow `scripts/mint-token.sh` is what the agent uses.
 - **Backend-neutral.** Works under any agent/harness.
 
@@ -116,12 +121,12 @@ The token is short-lived (~1h); re-run step 2 for a fresh one in long sessions.
 - The bot identity:
   - `AGENT_GIT_NAME` — e.g. `myagent[bot]`.
   - `GIT_USER_NAME` — the GitHub handle whose numeric id becomes the noreply prefix (e.g. `my-git-user-name`). The script resolves it to the numeric id via the GitHub API (`GET /users/<handle>` — no token needed; when `GH_TOKEN` is set it is used as Bearer for higher rate limits / private). The commit email is `{bot_id}+{AGENT_GIT_NAME}@users.noreply.github.com` so the agent name appears in the commit list.
-  - (Optional) `GH_TOKEN` — only if you also want `gh`/API as the bot (PRs, issues, comments, and API commits for Verified badge). Not needed for the local commit author.
+  - `GH_TOKEN` — **required** in the agent flow: the agent opens PRs / acts on GitHub as the bot via `gh`+`GH_TOKEN` (PRs, issues, comments, and API commits for Verified badge). Set it before any `gh`/API call and before `--preflight`.
 - `python3` with the `cryptography` package if you use `scripts/mint-token.sh` (GitHub App path). Not needed for Git-only commit author.
 - A GitHub App (App ID + PEM) — only if you use `scripts/mint-token.sh` for `gh`/API as the bot (see README §2). Not needed for Git-only.
 
 ## Steps
-1. If you need `gh`/API as the bot (PRs, issues), mint and export `GH_TOKEN` (step 2 of the Happy path) or otherwise ensure a push-capable token is in the environment. Not needed for commit author alone. Then resolve `GIT_USER_NAME` to a numeric id via the public GitHub API (`GET /users/<handle>` — unauthenticated; add `Authorization: Bearer *** only when a token is set):
+1. **Mandatory in the agent flow: `GH_TOKEN` (bot PRs/API).** Mint and export `GH_TOKEN` (step 2 of the Happy path) or otherwise ensure a push-capable token is in the environment — *before* any `gh`/API call **and before `--preflight`**. The agent opens PRs as the bot, so this is required, not optional. Without it, `gh` silently falls back to the human's `gh auth` login and every comment/PR/issue is attributed to the human. Then resolve `GIT_USER_NAME` to a numeric id via the public GitHub API (`GET /users/<handle>` — unauthenticated; add `Authorization: Bearer *** only when a token is set):`
    `curl -s https://api.github.com/users/$GIT_USER_NAME | jq .id` (unauthenticated, public; add `Authorization: Bearer *** only when a `GH_TOKEN` is needed for `gh`/API).
 2. Export `AGENT_GIT_NAME` / `GIT_USER_NAME`.
 3. Run `scripts/agent-git-setup.sh <worktree-dir>` where `<worktree-dir>` is the
@@ -142,17 +147,17 @@ export AGENT_GIT_NAME="myagent[bot]"
 export GIT_USER_NAME="my-git-user-name"   # handle; resolved to numeric id via API
 
 /tmp/agent-git-setup/scripts/agent-git-setup.sh .   # cwd = the agent's worktree (harness-made)
-# agent commits as myagent[bot]; push/PR is the human's action
+# agent commits as myagent[bot]; it opens PRs as myagent[bot] via gh + GH_TOKEN
 ```
 
 ## Pitfalls
 - **GitHub handle, not numeric id.** The human provides `GIT_USER_NAME` (e.g. `my-git-user-name`). Either the skill (step 2 above) or `scripts/agent-git-setup.sh` resolves it to the numeric id via the public API (`GET https://api.github.com/users/$GIT_USER_NAME` — no auth; Bearer added only when `GH_TOKEN` is set). The commit email is `{bot_id}+{AGENT_GIT_NAME}@users.noreply.github.com` — agent name appears in the commit list. `GIT_USER_ID` can still be set directly for hermetic tests or offline use, but it is never asked for in the prompt.
 - **Re-running is safe (idempotent).** The worktree identity is reconfigured, not recreated.
-- **No origin is fine.** If the repo has no `origin`, the script still sets the bot commit author; only the (optional) push remote is absent. Plain `git push` uses the human account owner's push credential — the push actor is the human, by design.
+- **Push/PR as the bot.** The agent opens PRs as the bot via `gh` + `GH_TOKEN`. The script only sets commit AUTHOR identity and never rewrites `origin`; the bot PR actor comes from `GH_TOKEN`. Run `scripts/agent-git-setup.sh --preflight .` before any git/gh work — it fails closed outside a worktree (commits would be attributed to YOU, the human) or when `GH_TOKEN` is missing.
+- **No origin is fine.** If the repo has no `origin`, the script still sets the bot commit author; only the (optional) push remote is absent. Plain `git push` uses the human account owner's push credential by default — the PR/API actor is the bot via `GH_TOKEN`, not `git push`.
 - **worktreeConfig must be enabled by the harness.** The script reads `extensions.worktreeConfig` (git 2.43+) so the per-worktree config is actually read; without it the bot identity would leak. The script does NOT enable it — if missing, it tells the agent to ask the human. `GH_TOKEN` in env drives `gh`/API as the bot — **not** rewriting `origin`.
-- **Token expiry.** `GH_TOKEN` is typically short-lived (~1h). If a token expires while a sub-agent is still working, commits using that token will fail. The agent should detect the failure, re-run `scripts/mint-token.sh` (or its configured token minter) for a fresh `GH_TOKEN`, and retry the work.
+- **Token expiry.** `GH_TOKEN` is typically short-lived (~1h). If a token expires while a sub-agent is still working, `gh`/API calls as the bot will fail. The agent should detect the failure, re-run `scripts/mint-token.sh` (or its configured token minter) for a fresh `GH_TOKEN`, and retry the work.
 - **`cryptography` required for minting.** `scripts/mint-token.sh` needs `python3 -c "import cryptography"`. `scripts/agent-git-setup.sh` does NOT need it.
-- **Push/PR is the human's action.** The script only sets commit AUTHOR identity. It never pushes and never opens a PR. Pushing and opening PRs are done by the human from the main repo.
 
 ## Repository
 The script, the token minter, and this skill live together at
