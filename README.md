@@ -12,6 +12,13 @@ Give an AI agent a bot identity so its git commits and GitHub actions are clearl
   macOS. **Windows is not supported as-is** — `bash` + `git` under WSL or Git
   Bash will work, but native `cmd`/`PowerShell` will not (the script uses POSIX
   shell features).
+- **`gh` (GitHub CLI) is required for the bot GitHub-actor path.** If the agent
+  opens PRs, comments, or otherwise acts on GitHub as the bot, it does so via
+  `gh` + `GH_TOKEN` in its environment — the script does not rewrite `origin`
+  or push directly. Plain local commits need only `git` (no token, no `gh`);
+  the GitHub API actor path needs **both** `gh` installed **and** a `GH_TOKEN`
+  minted (see "Token minting is fundamental" below and `--preflight`, which
+  fails closed when `gh` would silently fall back to your human `gh auth`).
 - `Make install` installs `shellcheck`/`shfmt`, `Python 3` and `cryptography` if needed.
 
 ## Install
