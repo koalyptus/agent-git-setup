@@ -202,5 +202,44 @@ else
 	ok "no bot config file written when nothing resolves"
 fi
 
+# 16. --preflight fails closed in the MAIN repo (would attribute to human).
+#     The includeIf glob excludes the main tree's .git, so a main-tree commit
+#     is human-attributed. Preflight must refuse.
+echo "16. --preflight refuses the main repo"
+REPO16="$(make_repo with-origin)"
+export AGENT_GIT_NAME="myagent[bot]" AGENT_GIT_BOT_ID=320010330 GH_TOKEN=dummy
+if "$SCRIPT" --preflight "$REPO16" >/dev/null 2>&1; then
+	bad "preflight must fail in the main repo"
+else
+	rc=$?
+	if [ "$rc" -ne 0 ]; then ok "preflight exits non-zero in main repo"; else bad "exit code wrong"; fi
+fi
+OUT16="$("$SCRIPT" --preflight "$REPO16" 2>&1)" || true
+if echo "$OUT16" | grep -qi "attributed to YOU (human)"; then
+	ok "preflight names human-attribution consequence"
+else
+	bad "preflight did not name human-attribution consequence"
+fi
+
+# 17. --preflight fails closed when GH_TOKEN is missing, passes when present.
+echo "17. --preflight requires GH_TOKEN"
+REPO17="$(make_repo with-origin)"
+make_worktree "$REPO17"
+WT17="$WT_DIR"
+export AGENT_GIT_NAME="myagent[bot]" AGENT_GIT_BOT_ID=320010330
+unset GH_TOKEN
+if "$SCRIPT" --preflight "$WT17" >/dev/null 2>&1; then
+	bad "preflight must fail without GH_TOKEN"
+else
+	rc=$?
+	if [ "$rc" -ne 0 ]; then ok "preflight exits non-zero without GH_TOKEN"; else bad "exit code wrong"; fi
+fi
+export GH_TOKEN=dummy
+if "$SCRIPT" --preflight "$WT17" >/dev/null 2>&1; then
+	ok "preflight passes in worktree with GH_TOKEN"
+else
+	bad "preflight should pass in worktree with GH_TOKEN"
+fi
+
 echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

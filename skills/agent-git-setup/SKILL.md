@@ -119,7 +119,7 @@ harnesses can fetch the support files).
 The token is short-lived (~1h); re-run step 2 for a fresh one in long sessions.
 
 ## Key concepts
-- **Commit author = bot name + bot noreply email, push actor = human, gh/API = bot.** The worktree's own config file gets `user.name` (bot name) + `user.email` (bot noreply). `GH_TOKEN` in the environment drives `gh`/API (PRs, issues, comments) as the bot. Plain `git push` uses the human account owner's credential — the push actor is the human, by design. (The `scripts/agent-git-setup.sh` script never rewrites `origin`, because worktrees share remotes and rewriting would touch the main tree.)
+- **Commit author = bot name + bot noreply email; PR/API actor = bot via `GH_TOKEN`; plain `git push` = your credential.** The included file gets `user.name` (bot name) + `user.email` (bot noreply). `GH_TOKEN` in the environment drives `gh`/API (PRs, issues, comments) as the bot — the agent opens PRs as the bot. Plain `git push` uses the human account owner's credential by default (the script never rewrites `origin`, because worktrees share remotes and rewriting would touch the main tree). `GH_TOKEN` is mandatory in the agent flow; run `--preflight` before any git/gh work.
 - **Worktree isolation.** All bot config is scoped to the worktree's own config file. The human's main tree stays theirs. No collision, no `git config` discipline required.
 - **Identity only — no worktree management.** The harness owns worktree creation, branching, hooks, and `core.hooksPath`. This skill only writes commit-author identity. It will not install guard hooks or push the branch; committing is the agent's job, pushing/opening PRs is the human's.
 - **Token minting is fundamental.** The happy path requires a token, and this repo provides `scripts/mint-token.sh` to mint one from a GitHub App (RS256 JWT, needs only `python3` + `cryptography`). It is the expected, primary token source — not an optional extra. `scripts/agent-git-setup.sh` itself stays token-agnostic (it only *consumes* `GH_TOKEN`), which means other backends may supply a token their own way too, but for this repo's standalone flow `scripts/mint-token.sh` is what the agent uses.
@@ -158,7 +158,7 @@ export AGENT_GIT_NAME="myagent[bot]"
 export GIT_USER_NAME="my-git-user-name"   # handle; resolved to numeric id via API
 
 /tmp/agent-git-setup/scripts/agent-git-setup.sh .   # cwd = the agent's worktree (harness-made)
-# agent commits as myagent[bot]; push/PR is the human's action
+# agent commits as myagent[bot]; it opens PRs as myagent[bot] via gh + GH_TOKEN
 ```
 
 ## Pitfalls
@@ -170,7 +170,7 @@ export GIT_USER_NAME="my-git-user-name"   # handle; resolved to numeric id via A
 - **Token expiry.** `GH_TOKEN` is typically short-lived (~1h). If a token expires while a sub-agent is still working, commits using that token will fail. The agent should detect the failure, re-run `scripts/mint-token.sh` (or its configured token minter) for a fresh `GH_TOKEN`, and retry the work.
 - **Silent human fallback (the #1 gotcha).** If `GH_TOKEN` is NOT in the environment when the agent makes a `gh`/API call (comment, PR, issue), `gh` silently uses the human's `gh auth` login — so the post lands under the human, not the bot. There is no error. The only fix is to mint+export `GH_TOKEN` (skill step 2) *before* any `gh`/API call. If you provided a GitHub App prompt and still see human-attributed comments, suspect a missing `GH_TOKEN` first.
 - **`cryptography` required for minting.** `scripts/mint-token.sh` needs `python3 -c "import cryptography"`. `scripts/agent-git-setup.sh` does NOT need it.
-- **Push/PR is the human's action.** The script only sets commit AUTHOR identity. It never pushes and never opens a PR. Pushing and opening PRs are done by the human from the main repo.
+- **Push/PR as the bot.** The agent opens PRs as the bot via `gh` + `GH_TOKEN`. The script only sets commit AUTHOR identity and never rewrites `origin`; the bot PR actor comes from `GH_TOKEN`. Run `scripts/agent-git-setup.sh --preflight .` before any git/gh work — it fails closed outside a worktree (commits would be attributed to YOU, the human) or when `GH_TOKEN` is missing.
 
 ## Repository
 The script, the token minter, and this skill live together at
