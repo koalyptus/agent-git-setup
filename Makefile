@@ -85,3 +85,19 @@ sync-check:
 
 # Run everything CI runs, locally, before pushing.
 ci: sync-check test lint
+
+# Cut a release: tag main (must be clean + synced with origin/main) and create
+# a GitHub Release with auto-generated notes. Usage: make release VERSION=x.y.z
+# Requires `gh` authenticated and the working tree on `main`, up to date.
+.PHONY: release
+release:
+	@test -n "$(VERSION)" || { echo "usage: make release VERSION=x.y.z" >&2; exit 1; }
+	@test "$$(git rev-parse --abbrev-ref HEAD)" = "main" || { echo "release must run on main (currently $$(git rev-parse --abbrev-ref HEAD))" >&2; exit 1; }
+	@git fetch origin main >/dev/null 2>&1
+	@git merge --ff-only origin/main >/dev/null 2>&1 || { echo "main is not up to date with origin/main (fetch + ff failed)" >&2; exit 1; }
+	@git diff --quiet || { echo "working tree is dirty; commit or stash first" >&2; exit 1; }
+	@git rev-parse -q --verify "v$(VERSION)" >/dev/null && { echo "tag v$(VERSION) already exists" >&2; exit 1; } || true
+	git tag -a "v$(VERSION)" -m "Release v$(VERSION)"
+	git push --tags
+	gh release create "v$(VERSION)" --generate-notes
+	@echo "released v$(VERSION)"
