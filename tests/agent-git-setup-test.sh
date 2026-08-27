@@ -215,7 +215,7 @@ else
 	if [ "$rc" -ne 0 ]; then ok "preflight exits non-zero in main repo"; else bad "exit code wrong"; fi
 fi
 OUT16="$("$SCRIPT" --preflight "$REPO16" 2>&1)" || true
-if echo "$OUT16" | grep -qi "attributed to YOU (human)"; then
+if echo "$OUT16" | grep -qi "attributed to the account owner (human)"; then
 	ok "preflight names human-attribution consequence"
 else
 	bad "preflight did not name human-attribution consequence"

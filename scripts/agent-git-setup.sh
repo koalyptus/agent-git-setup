@@ -115,10 +115,10 @@ preflight() {
 	git_dir="$(git -C "$REPO_PATH" rev-parse --absolute-git-dir 2>/dev/null || true)"
 	if [ "$(basename "$(dirname "$git_dir")")" != "worktrees" ]; then
 		# Not under .git/worktrees/<name>: this is the main repo (or an
-		# unrecognised layout). Commits here are attributed to YOU (human) because
+		# unrecognised layout). Commits here are attributed to the account owner (human) because
 		# the includeIf glob excludes the main tree's .git.
 		echo "agent-git-setup.sh: PREFLOW FAIL: $REPO_PATH is not a linked worktree." >&2
-		echo "  No worktree present -> commits made here are attributed to YOU (human)." >&2
+		echo "  No worktree present -> commits made here are attributed to the account owner (human)." >&2
 		echo "  Ask the harness/agent to place you in the agent worktree it created, then re-run." >&2
 		ok=1
 	fi
@@ -236,7 +236,7 @@ _RESOLVE_ID() {
 	local _enc _id _auth=()
 	_enc="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "$1" 2>/dev/null || true)"
 	if [ -n "${GH_TOKEN:-}" ]; then
-		_auth=(-H "Authorization: Bearer ***")
+		_auth=(-H "Authorization: Bearer ${GH_TOKEN}")
 	fi
 	_id="$(curl -sf "${_auth[@]}" -H "Accept: application/vnd.github.v3+json" "https://api.github.com/users/${_enc}" 2>/dev/null |
 		python3 -c 'import sys,json; print(json.load(sys.stdin).get("id",""))' 2>/dev/null || true)"
