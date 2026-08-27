@@ -110,17 +110,32 @@ fi
 preflight() {
 	local ok=0
 
-	# (1) Are we inside a linked worktree, or in the main repo?
-	local git_dir
-	git_dir="$(git -C "$REPO_PATH" rev-parse --absolute-git-dir 2>/dev/null || true)"
-	if [ "$(basename "$(dirname "$git_dir")")" != "worktrees" ]; then
-		# Not under .git/worktrees/<name>: this is the main repo (or an
-		# unrecognised layout). Commits here are attributed to the account owner (human) because
-		# the includeIf glob excludes the main tree's .git.
-		echo "agent-git-setup.sh: PREFLOW FAIL: $REPO_PATH is not a linked worktree." >&2
-		echo "  No worktree present -> commits made here are attributed to the account owner (human)." >&2
-		echo "  Ask the harness/agent to place you in the agent worktree it created, then re-run." >&2
+	# (1) Is the bot commit identity actually IN EFFECT here? This is the real
+	# guard, and it is deliberately location-agnostic: we do NOT check where the
+	# worktree lives on disk. We check the EFFECT — that git resolves the commit
+	# author identity to AGENT_GIT_NAME for this repo. The bot identity is applied
+	# by the includeIf the setup script wrote into the target repo's .git/config
+	# (gitdir/i:**/.git/worktrees/**), which fires for any LINKED WORKTREE of that
+	# repo regardless of where the harness placed it. A main-repo checkout, a
+	# detached checkout, or a separate clone (even under ~/.agent-git-setup) will
+	# NOT resolve to AGENT_GIT_NAME, so this fails closed instead of silently
+	# committing as the account owner (human).
+	if [ -z "${AGENT_GIT_NAME:-}" ]; then
+		echo "agent-git-setup.sh: PREFLOW FAIL: AGENT_GIT_NAME is unset." >&2
+		echo "  The bot commit identity cannot be verified without it. Export AGENT_GIT_NAME (e.g. myagent[bot])." >&2
 		ok=1
+	else
+		local resolved
+		resolved="$(git -C "$REPO_PATH" config user.name 2>/dev/null || true)"
+		if [ "$resolved" != "$AGENT_GIT_NAME" ]; then
+			echo "agent-git-setup.sh: PREFLOW FAIL: bot identity not in effect at $REPO_PATH." >&2
+			echo "  Resolved user.name='${resolved:-<empty>}' but expected '$AGENT_GIT_NAME'." >&2
+			echo "  You are not in a linked worktree of the target repo where the bot identity" >&2
+			echo "  applies (main checkout, detached checkout, or a separate clone all fail this)." >&2
+			echo "  Run 'scripts/agent-git-setup.sh <repo-dir>' from a proper 'git worktree' of the" >&2
+			echo "  target repo, then re-run. Location is irrelevant — only that the bot identity resolves." >&2
+			ok=1
+		fi
 	fi
 
 	# (2) GH_TOKEN mandatory in the agent flow (bot PRs/API). Fail closed.
@@ -135,7 +150,7 @@ preflight() {
 		echo "agent-git-setup.sh: preflight aborted (fail-closed). Fix the above and re-run." >&2
 		exit 1
 	fi
-	echo "agent-git-setup.sh: preflight OK — in a worktree, GH_TOKEN present."
+	echo "agent-git-setup.sh: preflight OK — bot identity in effect, GH_TOKEN present."
 	exit 0
 }
 

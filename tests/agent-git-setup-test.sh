@@ -202,10 +202,10 @@ else
 	ok "no bot config file written when nothing resolves"
 fi
 
-# 16. --preflight fails closed in the MAIN repo (would attribute to human).
-#     The includeIf glob excludes the main tree's .git, so a main-tree commit
-#     is human-attributed. Preflight must refuse.
-echo "16. --preflight refuses the main repo"
+# 16. --preflight fails closed in the MAIN repo (bot identity not in effect).
+#     The includeIf glob excludes the main tree's .git, so the main checkout's
+#     user.name is human, not AGENT_GIT_NAME. Preflight must refuse.
+echo "16. --preflight refuses the main repo (bot identity not in effect)"
 REPO16="$(make_repo with-origin)"
 export AGENT_GIT_NAME="myagent[bot]" AGENT_GIT_BOT_ID=320010330 GH_TOKEN=dummy
 if "$SCRIPT" --preflight "$REPO16" >/dev/null 2>&1; then
@@ -215,18 +215,21 @@ else
 	if [ "$rc" -ne 0 ]; then ok "preflight exits non-zero in main repo"; else bad "exit code wrong"; fi
 fi
 OUT16="$("$SCRIPT" --preflight "$REPO16" 2>&1)" || true
-if echo "$OUT16" | grep -qi "attributed to the account owner (human)"; then
-	ok "preflight names human-attribution consequence"
+if echo "$OUT16" | grep -qi "bot identity not in effect"; then
+	ok "preflight names the bot-identity-not-in-effect cause"
 else
-	bad "preflight did not name human-attribution consequence"
+	bad "preflight did not name the bot-identity-not-in-effect cause"
 fi
 
-# 17. --preflight fails closed when GH_TOKEN is missing, passes when present.
-echo "17. --preflight requires GH_TOKEN"
+# 17. --preflight fails closed when GH_TOKEN is missing; passes in a PROPER
+#     linked worktree where the bot identity actually resolves.
+echo "17. --preflight requires GH_TOKEN; passes when bot identity resolves"
 REPO17="$(make_repo with-origin)"
 make_worktree "$REPO17"
 WT17="$WT_DIR"
 export AGENT_GIT_NAME="myagent[bot]" AGENT_GIT_BOT_ID=320010330
+# Apply the bot identity to the repo (writes includeIf into the shared .git).
+"$SCRIPT" "$REPO17" >/dev/null 2>&1
 unset GH_TOKEN
 if "$SCRIPT" --preflight "$WT17" >/dev/null 2>&1; then
 	bad "preflight must fail without GH_TOKEN"
@@ -236,10 +239,27 @@ else
 fi
 export GH_TOKEN=dummy
 if "$SCRIPT" --preflight "$WT17" >/dev/null 2>&1; then
-	ok "preflight passes in worktree with GH_TOKEN"
+	ok "preflight passes in linked worktree with bot identity + GH_TOKEN"
 else
-	bad "preflight should pass in worktree with GH_TOKEN"
+	bad "preflight should pass in linked worktree with bot identity + GH_TOKEN"
 fi
+
+# 18. --preflight is location-agnostic but effect-strict: a SEPARATE clone
+#     (even under a non-standard path) with AGENT_GIT_NAME set still fails,
+#     because it is not a linked worktree of the target repo so the bot
+#     identity never resolves. Proves we test the EFFECT, not the path.
+echo "18. --preflight fails in a separate clone (bot identity never resolves)"
+REPO18="$(make_repo with-origin)"
+# A separate clone (not a linked worktree) of REPO18's upstream.
+CLONE18="$(mktemp -d "${SANDBOX}/clone18.XXXXXX")"
+git -C "$REPO18" clone --quiet "$(git -C "$REPO18" remote get-url origin 2>/dev/null || echo "$REPO18")" "$CLONE18" 2>/dev/null || git clone --quiet "$REPO18" "$CLONE18" 2>/dev/null
+export AGENT_GIT_NAME="myagent[bot]" AGENT_GIT_BOT_ID=320010330 GH_TOKEN=dummy
+if "$SCRIPT" --preflight "$CLONE18" >/dev/null 2>&1; then
+	bad "preflight must fail in a separate clone (no bot identity)"
+else
+	ok "preflight fails closed in a separate clone (effect-based, not path-based)"
+fi
+rm -rf "$CLONE18"
 
 echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

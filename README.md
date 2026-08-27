@@ -18,7 +18,11 @@ Give an AI agent a bot identity so its git commits and GitHub actions are clearl
   or push directly. Plain local commits need only `git` (no token, no `gh`);
   the GitHub API actor path needs **both** `gh` installed **and** a `GH_TOKEN`
   minted (see "Token minting is fundamental" below and `--preflight`, which
-  fails closed when `gh` would silently fall back to your human `gh auth`).
+  fails closed when `gh` would silently fall back to your human `gh auth`, or
+  when the bot commit identity is not actually in effect for the repo you are
+  in — i.e. you are not in a linked worktree of the target repo). The identity
+  check is effect-based (it verifies `git` resolves `user.name` to
+  `AGENT_GIT_NAME`), so it is harness- and location-agnostic.
 - `Make install` installs `shellcheck`/`shfmt`, `Python 3` and `cryptography` if needed.
 
 ## Install

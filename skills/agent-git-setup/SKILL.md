@@ -144,7 +144,9 @@ The token is short-lived (~1h); re-run step 2 for a fresh one in long sessions.
   `GH_TOKEN` — so `gh` must be installed **and** a `GH_TOKEN` minted. The
   script does not rewrite `origin` or push directly. `--preflight` fails
   closed when `GH_TOKEN` is missing (so `gh` cannot silently fall back to your
-  human `gh auth` login).
+  human `gh auth` login) and when the bot commit identity is not actually in
+  effect for the repo you are in (e.g. a main checkout, detached checkout, or
+  a separate clone — not a linked worktree of the target repo).
 - The bot identity:
   - `AGENT_GIT_NAME` — e.g. `myagent[bot]`. The bot's own numeric id is resolved from this name via the GitHub API (`GET /users/<name>`); if `GH_TOKEN` is set it is sent as Bearer for higher rate limits. This is the **primary** bot identity. `AGENT_GIT_BOT_ID` can override it with the numeric id directly (offline-safe, no API call).
   - `GIT_USER_NAME` — *(optional)* the **human account owner's** GitHub handle (e.g. `my-git-user-name`), not the agent's. Used **only as a last-resort fallback** when the bot id cannot be resolved, so the setup still succeeds attributed to the human rather than failing. Prefer `AGENT_GIT_NAME`/`AGENT_GIT_BOT_ID` so commits stay bot. The script resolves it to a numeric id via the GitHub API only on that fallback path.
@@ -186,7 +188,7 @@ export GIT_USER_NAME="my-git-user-name"   # handle; resolved to numeric id via A
 - **Token expiry.** `GH_TOKEN` is typically short-lived (~1h). If a token expires while a sub-agent is still working, commits using that token will fail. The agent should detect the failure, re-run `scripts/mint-token.sh` (or its configured token minter) for a fresh `GH_TOKEN`, and retry the work.
 - **Silent human fallback (the #1 gotcha).** If `GH_TOKEN` is NOT in the environment when the agent makes a `gh`/API call (comment, PR, issue), `gh` silently uses the human's `gh auth` login — so the post lands under the human, not the bot. There is no error. The only fix is to mint+export `GH_TOKEN` (skill step 2) *before* any `gh`/API call. If you provided a GitHub App prompt and still see human-attributed comments, suspect a missing `GH_TOKEN` first.
 - **`cryptography` required for minting.** `scripts/mint-token.sh` needs `python3 -c "import cryptography"`. `scripts/agent-git-setup.sh` does NOT need it.
-- **Push/PR as the bot.** The agent opens PRs as the bot via `gh` + `GH_TOKEN`. The script only sets commit AUTHOR identity and never rewrites `origin`; the bot PR actor comes from `GH_TOKEN`. Run `scripts/agent-git-setup.sh --preflight .` before any git/gh work — it fails closed outside a worktree (commits would be attributed to YOU, the human) or when `GH_TOKEN` is missing.
+- **Push/PR as the bot.** The agent opens PRs as the bot via `gh` + `GH_TOKEN`. The script only sets commit AUTHOR identity and never rewrites `origin`; the bot PR actor comes from `GH_TOKEN`. Run `scripts/agent-git-setup.sh --preflight .` before any git/gh work — it fails closed when the bot commit identity is not in effect (you are not in a linked worktree of the target repo, so commits would be attributed to the account owner) or when `GH_TOKEN` is missing. The check is effect-based, not path-based: it verifies `git` resolves `user.name` to `AGENT_GIT_NAME`, so any harness that creates a proper `git worktree` of the repo satisfies it regardless of where that worktree lives on disk.
 
 ## Repository
 The script, the token minter, and this skill live together at
