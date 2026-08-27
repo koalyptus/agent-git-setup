@@ -8,7 +8,16 @@
 # fully hermetic. Covers all credential resolution paths, precedence rules,
 # error handling, and output formats.
 #
+# HERMETIC SEAL: the tests mints use an ephemeral key with app-id 4646191 and
+# verify against it. If ambient GITHUB_APP_ID / GITHUB_APP_PEM / GH_TOKEN are
+# present in the environment (e.g. a developer shell that just minted a real
+# token), mint-token.sh's discovery paths would pick them up and mint a JWT
+# with the wrong iss / key, failing the hardcoded verification. Unset them so
+# the suite is deterministic regardless of the calling environment.
+#
 set -uo pipefail
+
+unset GITHUB_APP_ID GITHUB_APP_PEM GITHUB_APP_NAME GH_TOKEN
 
 SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../scripts/mint-token.sh"
 
