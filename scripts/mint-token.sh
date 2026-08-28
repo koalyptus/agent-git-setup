@@ -189,7 +189,7 @@ if [ "$SHELL_OUT" -eq 1 ]; then
 	# Emit the App's bot id (if known) so the agent can persist it into the
 	# credentials file / env. AGENT_GIT_BOT_ID is static per App; when present,
 	# agent-git-setup.sh uses it as the commit-email prefix so commits are
-	# attributed to the bot account (not the human). Git-only flows never run
+	# attributed to the bot account, not the account owner. Git-only flows never run
 	# this script and are unaffected.
 	if [ -n "${AGENT_GIT_BOT_ID:-}" ]; then
 		echo "export AGENT_GIT_BOT_ID=$AGENT_GIT_BOT_ID"

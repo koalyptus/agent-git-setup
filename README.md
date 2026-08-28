@@ -12,17 +12,7 @@ Give an AI agent a bot identity so its git commits and GitHub actions are clearl
   macOS. **Windows is not supported as-is** — `bash` + `git` under WSL or Git
   Bash will work, but native `cmd`/`PowerShell` will not (the script uses POSIX
   shell features).
-- **`gh` (GitHub CLI) is required for the bot GitHub-actor path.** If the agent
-  opens PRs, comments, or otherwise acts on GitHub as the bot, it does so via
-  `gh` + `GH_TOKEN` in its environment — the script does not rewrite `origin`
-  or push directly. Plain local commits need only `git` (no token, no `gh`);
-  the GitHub API actor path needs **both** `gh` installed **and** a `GH_TOKEN`
-  minted (see "Token minting is fundamental" below and `--preflight`, which
-  fails closed when `gh` would silently fall back to your human `gh auth`, or
-  when the bot commit identity is not actually in effect for the repo you are
-  in — i.e. you are not in a linked worktree of the target repo). The identity
-  check is effect-based (it verifies `git` resolves `user.name` to
-  `AGENT_GIT_NAME`), so it is harness- and location-agnostic.
+- **`gh` (GitHub CLI) is required for the bot GitHub-actor path** (PRs, comments, API commits). Plain local commits need only `git`.
 - `Make install` installs `shellcheck`/`shfmt`, `Python 3` and `cryptography` if needed.
 
 ## Install
@@ -98,8 +88,6 @@ Use the agent-git-setup skill. Set up a bot git identity for current repo.
 
 AGENT_GIT_NAME=[myagent[bot]]
 GIT_USER_NAME=[my-git-user-name]
-
-The agent runs `scripts/agent-git-setup.sh <repo-dir>` once per repo — `<repo-dir>` is any worktree or the main repo. This is a ONE-OFF per repo: every worktree (existing and future) now commits as the bot, while your main repo stays untouched. No re-run needed for new worktrees.
 ```
 
 #### GitHub App
@@ -113,25 +101,15 @@ AGENT_GIT_NAME=[myagent[bot]]
 GIT_USER_NAME=[my-git-user-name]
 GITHUB_APP_ID=[4646191]
 GITHUB_APP_PEM=[/path/to/myagent.pem]
-
-The agent runs `scripts/agent-git-setup.sh <repo-dir>` once per repo — `<repo-dir>` is any worktree or the main repo. The agent writes the credentials file from the App ID / PEM above and mints `GH_TOKEN` from it automatically (no token passed per session). The credentials file should also carry `AGENT_GIT_BOT_ID` (the App's static bot user id) so commits attribute to the bot account, not the human. This is a ONE-OFF per repo: every worktree (existing and future) now commits as the bot, while your main repo stays untouched. No re-run needed for new worktrees.
 ```
 
 Note: the agent writes the one-time credentials file itself from the `GITHUB_APP_ID` / `GITHUB_APP_PEM` values in your prompt. For multiple bot identities (one per repo), the agent writes `credentials.d/credentials-<APP_ID>.env` (keyed by the numeric App ID from your prompt) and `mint-token.sh` auto-selects it — no name→app-id mapping needed. The file holds only the public App ID + the **path** to the PEM you already downloaded, never the PEM bytes or a live token. From then on the skill mints `GH_TOKEN` from that file automatically, so you do **not** pass a token per session.
 
 ## 4. What happens
 
-1. The agent authenticates itself if needed. If it has to use GitHub (open PRs, comment on issues), it mints its own short-lived token from the one-time credentials file — you don't provide one per session. If it only makes local commits, no token is needed at all.
+See `skills/agent-git-setup/SKILL.md` for the step-by-step the agent follows (resolve bot id → write identity → work in worktree). Summary: commits land as `<name>[bot]`; your main repo is untouched; GitHub actions need a per-session `GH_TOKEN` the agent mints from the credentials file.
 
-   **Two identities, two lifetimes:** the **commit author** (`user.name`/`user.email`, written once into `.git/`) is *one-off per repo* and works under any harness with no extra setup. The **GitHub API actor** (`GH_TOKEN`, used for PRs/issues/comments) is *per-session*: GitHub issues short-lived tokens (~1h), so the script re-mints one from the credentials file each session (or on expiry). Because the mint step lives in the skill, each harness you use needs the skill installed to act as the bot on GitHub; a harness without it still commits as the bot but posts to GitHub as you. The credentials file is long-lived; the token derived from it is not. This is why "the agent is a GitHub actor" is automatic once the credentials file exists *and the skill is present in that harness*, but is never a stored token on disk.
-
-2. The agent resolves its **bot** identity first: `AGENT_GIT_BOT_ID` if set, otherwise the numeric id of `AGENT_GIT_NAME` via `gh api users/<slug>[bot]` (your `gh` auth — already in the environment for the bot-PR path). The App's bot account is `<app-slug>[bot]`; this lookup returns the App's static bot user id (e.g. `320010330` for `agent-oracle-1[bot]`). The agent then **persists that id into the credentials file** as `AGENT_GIT_BOT_ID` so it survives across sessions and `mint-token.sh --shell` re-emits it. Note: the App JWT / installation token minted by `mint-token.sh` cannot resolve the bot id (that endpoint needs user auth) — `gh` is the working source. Only if the bot id cannot be resolved does it fall back to `GIT_USER_NAME` (your handle) so setup still succeeds.
-
-3. The agent runs `scripts/agent-git-setup.sh <repo-dir>` once per repo. The script writes the bot identity into `.git/agent-bot-identity.config` (shared, inside the repo's `.git/`) and adds a conditional include that scopes it to all worktrees — the main repo's own `.git` is excluded by the glob, so your main repo stays untouched. On success it prints `isolation verified — main tree untouched, all worktrees bot`.
-
-4. The agent does all its work inside that worktree. Commits appear as {agent-name}[bot] in the commit list (no badge by default). GitHub actions appear as {agent-name}[bot] (when a token was needed), and git push still uses your account. Your main checkout is never changed.
-
-Full details, diagrams, and reference tables are below (GitHub App setup is already in §2 above).
+Full details, diagrams, and reference tables are below.
 
 ## Flow diagram (happy path)
 

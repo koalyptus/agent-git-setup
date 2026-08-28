@@ -146,11 +146,23 @@ The token is short-lived (~1h); re-run step 2 for a fresh one in long sessions.
   closed when `GH_TOKEN` is missing (so `gh` cannot silently fall back to your
   human `gh auth` login) and when the bot commit identity is not actually in
   effect for the repo you are in (e.g. a main checkout, detached checkout, or
-  a separate clone — not a linked worktree of the target repo).
+  a separate clone — not a linked worktree of the target repo). It goes
+  further than "is a token set": it verifies the EFFECTIVE `gh` actor via
+  `gh api user`. If the token resolves to a **human** (User) account instead of
+  a **Bot**, `--preflight` refuses. The agent must stop and ask the account owner
+  for explicit approval; only on that approval does the agent set
+  `AGENT_GIT_ALLOW_HUMAN_ACTOR=1` (for the session) and re-run preflight. There is
+  no default and no silent fallback. An account-owner PAT in `GH_TOKEN` is the
+  classic bug (every `gh`/API call lands under the account owner); this check
+  catches it. When `gh`/network is unavailable it degrades to a WARNING (cannot
+  verify identity) rather than a hard block, so hermetic/offline runs still
+  proceed — but the agent must still mint the bot token as the documented happy
+  path in that case.
 - The bot identity:
   - `AGENT_GIT_NAME` — e.g. `myagent[bot]`. The bot's own numeric id is resolved from this name via `gh api users/<slug>[bot]` (your `gh` auth — the App JWT / install token minted by `mint-token.sh` cannot resolve it). `AGENT_GIT_BOT_ID` can override it with the numeric id directly (offline-safe, no API call). The agent persists the resolved id into the credentials file as `AGENT_GIT_BOT_ID`.
-  - `GIT_USER_NAME` — *(optional)* the **human account owner's** GitHub handle (e.g. `my-git-user-name`), not the agent's. Used **only as a last-resort fallback** when the bot id cannot be resolved, so the setup still succeeds attributed to the human rather than failing. Prefer `AGENT_GIT_NAME`/`AGENT_GIT_BOT_ID` so commits stay bot. The script resolves it to a numeric id via the GitHub API only on that fallback path.
-  - `GH_TOKEN` — **required in the agent flow** (the agent opens PRs / acts on GitHub as the bot). Mint and export it before any `gh`/API call and before `--preflight`. Not needed for the local commit author alone.
+  - `GIT_USER_NAME` — the **account owner's** GitHub handle (e.g. `my-git-user-name`), not the agent's. Used **only as a last-resort fallback** when the bot id cannot be resolved, so the setup still succeeds attributed to the account owner rather than failing. Prefer `AGENT_GIT_NAME`/`AGENT_GIT_BOT_ID` so commits stay bot. The script resolves it to a numeric id via the GitHub API only on that fallback path.
+  - `GH_TOKEN` — **required in the agent flow** (the agent opens PRs / acts on GitHub as the bot). The agent mints and exports it before any `gh`/API call and before `--preflight`. Not needed for the local commit author alone. `--preflight` verifies the token resolves to a **Bot** actor (`gh api user`); if it resolves to the account owner, the agent re-mints the bot token (preferred) or, only on the account owner's explicit approval, sets `AGENT_GIT_ALLOW_HUMAN_ACTOR=1` and proceeds as the account owner for that session.
+  - `AGENT_GIT_ALLOW_HUMAN_ACTOR` — *(default unset)* the agent sets this to `1` ONLY after the account owner explicitly approves acting as them (last resort when bot-token mint fails). It is the agent's record of that approval; the account owner never sets it by hand. There is no default: an account-owner PAT passed as `GH_TOKEN` makes `--preflight` fail closed until the agent sets this on approval. Never use it as a workaround for a missing bot token — mint the bot token instead (`source <(scripts/mint-token.sh --shell)`).
 - `python3` with the `cryptography` package if you use `scripts/mint-token.sh` (GitHub App path). Not needed for Git-only commit author.
 - A GitHub App (App ID + PEM) — only if you use `scripts/mint-token.sh` for `gh`/API as the bot (see README §2). Not needed for Git-only.
 
