@@ -180,22 +180,26 @@ preflight() {
 		fi
 		if [ "${actor_type:-}" = "User" ]; then
 			# Token resolves to the ACCOUNT OWNER (User) account, not the bot.
-			# This is the fail-closed case: refuse unless the account owner has
-			# EXPLICITLY consented. Consent is encoded as
-			# AGENT_GIT_ALLOW_HUMAN_ACTOR=1 — there is NO default, no prompt
-			# mid-script (preflight is non-interactive by design); running with
-			# the account-owner actor requires a conscious export.
+			# This is the fail-closed case. The agent MUST NOT proceed and MUST
+			# NOT silently fall back to the account owner. Instead it stops and
+			# asks the account owner for explicit consent (out of band — e.g. in
+			# the chat). On that explicit "yes", the AGENT sets
+			# AGENT_GIT_ALLOW_HUMAN_ACTOR=1 for that session and re-runs
+			# preflight; the account owner never types the flag by hand. There is
+			# NO default and no silent fallback. Running as the account owner is
+			# only ever the agent's record of your approved consent.
 			if [ "${AGENT_GIT_ALLOW_HUMAN_ACTOR:-}" = "1" ]; then
-				echo "agent-git-setup.sh: PREFLOW WARN: GH_TOKEN actor is the ACCOUNT OWNER '$actor_login' (AGENT_GIT_ALLOW_HUMAN_ACTOR=1)." >&2
-				echo "  Proceeding as the account owner by explicit consent — gh/API calls attribute to YOU." >&2
+				echo "agent-git-setup.sh: PREFLOW WARN: proceeding as the ACCOUNT OWNER '$actor_login' — AGENT_GIT_ALLOW_HUMAN_ACTOR=1 was set by the agent after your explicit consent." >&2
+				echo "  gh/API calls will be attributed to YOU, not the bot. This is the last-resort fallback you approved." >&2
 			else
 				echo "agent-git-setup.sh: PREFLOW FAIL: GH_TOKEN resolves to the ACCOUNT OWNER '$actor_login', not the bot." >&2
 				echo "  gh/API calls would be attributed to YOU, not the bot. The ambient gh auth" >&2
 				echo "  login is your PAT — that is NOT the agent identity." >&2
-				echo "  Fix: mint the bot token and export it before any gh/API work:" >&2
+				echo "  Preferred fix: mint the bot token and export it before any gh/API work:" >&2
 				echo "    source <(scripts/mint-token.sh --shell)   # writes GH_TOKEN from the App creds" >&2
-				echo "  Only if you truly intend to act as the account owner, export AGENT_GIT_ALLOW_HUMAN_ACTOR=1" >&2
-				echo "  (explicit consent — there is no default and no silent fallback)." >&2
+				echo "  Only if that genuinely fails (creds gone / App revoked) AND you explicitly approve," >&2
+				echo "  tell the agent to proceed as you. The agent then sets AGENT_GIT_ALLOW_HUMAN_ACTOR=1" >&2
+				echo "  for this session and re-runs preflight — you do NOT export it yourself." >&2
 				ok=1
 			fi
 		elif [ -z "${actor_type:-}" ]; then
