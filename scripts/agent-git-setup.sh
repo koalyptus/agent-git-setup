@@ -43,10 +43,10 @@
 # PREFLOW GUARDRAIL:
 #   Run `agent-git-setup.sh --preflight` BEFORE any git/gh work. It fails
 #   non-zero (fail-closed) if the agent is in the MAIN repo (commits there would
-#   be attributed to YOU, the account owner — the includeIf glob excludes the main
-#   tree's .git, so a main-tree commit is attributed to the account owner) or if `GH_TOKEN` is missing (no
+#   be attributed to you — the includeIf glob excludes the main
+#   tree's .git, so a main-tree commit is attributed to you) or if `GH_TOKEN` is missing (no
 #   bot PR/API actor). This converts the most common mis-attribution failure —
-#   an agent committing from the main tree as the account owner — from documentation
+#   an agent committing from the main tree as you — from documentation
 #   into a hard mechanism, without the script ever creating or demanding a
 #   worktree. `--preflight` reads state only; it does not manage worktrees or
 #   hooks.
@@ -156,7 +156,7 @@ preflight() {
 		# trade-off is documented: when `gh`/network is absent we cannot stop a
 		# your-PAT fallback, so the agent MUST still mint the bot token from
 		# the credentials file as the documented happy path.
-		local actor_type actor_login gh_rc
+		local actor_type gh_rc
 		if command -v gh >/dev/null 2>&1; then
 			# The account owner's PAT can read `gh api user` (200, type "User").
 			# A GitHub App INSTALLATION token cannot (it returns 403 —
@@ -175,7 +175,6 @@ preflight() {
 			gh_rc=$?
 			if [ "$gh_rc" -eq 0 ]; then
 				actor_type="$(printf '%s' "$who" | sed -n 's/.*"type":"\([^"]*\)".*/\1/p')"
-				actor_login="$(printf '%s' "$who" | sed -n 's/.*"login":"\([^"]*\)".*/\1/p')"
 			fi
 		fi
 		if [ "${actor_type:-}" = "User" ]; then
@@ -189,17 +188,14 @@ preflight() {
 			# NO default and no silent fallback. Running as the account owner is
 			# only ever the agent's record of your approved consent.
 			if [ "${AGENT_GIT_ALLOW_HUMAN_ACTOR:-}" = "1" ]; then
-				echo "agent-git-setup.sh: PREFLOW WARN: proceeding as the ACCOUNT OWNER '$actor_login' — AGENT_GIT_ALLOW_HUMAN_ACTOR=1 was set by the agent after your explicit consent." >&2
-				echo "  gh/API calls will be attributed to YOU, not the bot. This is the last-resort fallback you approved." >&2
+				echo "agent-git-setup.sh: PREFLOW WARN: proceeding as your account — approved explicitly; gh/API calls attributed to you, not the bot." >&2
 			else
-				echo "agent-git-setup.sh: PREFLOW FAIL: GH_TOKEN resolves to the ACCOUNT OWNER '$actor_login', not the bot." >&2
-				echo "  gh/API calls would be attributed to YOU, not the bot. The ambient gh auth" >&2
-				echo "  login is your PAT — that is NOT the agent identity." >&2
-				echo "  Preferred fix: mint the bot token and export it before any gh/API work:" >&2
-				echo "    source <(scripts/mint-token.sh --shell)   # writes GH_TOKEN from the App creds" >&2
-				echo "  Only if that genuinely fails (creds gone / App revoked) AND you explicitly approve," >&2
-				echo "  tell the agent to proceed as you. The agent then sets AGENT_GIT_ALLOW_HUMAN_ACTOR=1" >&2
-				echo "  for this session and re-runs preflight — you do NOT export it yourself." >&2
+				echo "agent-git-setup.sh: PREFLOW FAIL: GH_TOKEN is your account, not the bot." >&2
+				echo "  gh/API calls would be attributed to you, not the bot." >&2
+				echo "  Fix: mint the bot token, then export GH_TOKEN before any gh/API work:" >&2
+				echo "    source <(scripts/mint-token.sh --shell)" >&2
+				echo "  If that fails and you want the agent to act as you, approve it —" >&2
+				echo "  the agent will ask and proceed for this session only." >&2
 				ok=1
 			fi
 		elif [ -z "${actor_type:-}" ]; then
@@ -305,7 +301,7 @@ INCLUDE_KEY="includeIf.gitdir/i:**/.git/worktrees/**.path"
 
 : "${AGENT_GIT_NAME:?set AGENT_GIT_NAME, e.g. myagent[bot]}"
 
-# GIT_USER_NAME (optional, account-owner-facing handle) is validated for shape and, ONLY
+# GIT_USER_NAME (the account-owner's GitHub handle) is validated for shape and, ONLY
 # as a LAST-RESORT fallback when the bot id cannot be resolved, used to attribute
 # commits to the account owner. The primary bot identity always comes from the bot's own
 # numeric id; the account-owner handle is never preferred over it.

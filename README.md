@@ -12,23 +12,7 @@ Give an AI agent a bot identity so its git commits and GitHub actions are clearl
   macOS. **Windows is not supported as-is** — `bash` + `git` under WSL or Git
   Bash will work, but native `cmd`/`PowerShell` will not (the script uses POSIX
   shell features).
-- **`gh` (GitHub CLI) is required for the bot GitHub-actor path.** If the agent
-  opens PRs, comments, or otherwise acts on GitHub as the bot, it does so via
-  `gh` + `GH_TOKEN` in its environment — the script does not rewrite `origin`
-  or push directly. Plain local commits need only `git` (no token, no `gh`);
-  the GitHub API actor path needs **both** `gh` installed **and** a `GH_TOKEN`
-  minted (see "Token minting is fundamental" below and `--preflight`, which
-  fails closed when `gh` would silently fall back to your account owner's `gh auth`, or
-  when the bot commit identity is not actually in effect for the repo you are
-  in — i.e. you are not in a linked worktree of the target repo). The identity
-  check is effect-based (it verifies `git` resolves `user.name` to
-  `AGENT_GIT_NAME`), so it is harness- and location-agnostic. `--preflight` goes
-  further and verifies the EFFECTIVE `gh` actor via `gh api user`: if `GH_TOKEN`
-  resolves to a **human** (User) account rather than a **Bot**, it refuses unless
-  `AGENT_GIT_ALLOW_HUMAN_ACTOR=1` is exported (explicit account-owner consent — no
-  default, no silent fallback). When `gh`/network is unavailable it warns rather
-  than blocks. An account-owner PAT in `GH_TOKEN` is the classic bug (every `gh`/API call
-  lands under you); this check catches it.
+- **`gh` (GitHub CLI) is required for the bot GitHub-actor path** (PRs, comments, API commits). Plain local commits need only `git`.
 - `Make install` installs `shellcheck`/`shfmt`, `Python 3` and `cryptography` if needed.
 
 ## Install
@@ -120,7 +104,7 @@ GIT_USER_NAME=[my-git-user-name]
 GITHUB_APP_ID=[4646191]
 GITHUB_APP_PEM=[/path/to/myagent.pem]
 
-The agent runs `scripts/agent-git-setup.sh <repo-dir>` once per repo — `<repo-dir>` is any worktree or the main repo. The agent writes the credentials file from the App ID / PEM above and mints `GH_TOKEN` from it automatically (no token passed per session). The credentials file should also carry `AGENT_GIT_BOT_ID` (the App's static bot user id) so commits attribute to the bot account, not the account owner. This is a ONE-OFF per repo: every worktree (existing and future) now commits as the bot, while your main repo stays untouched. No re-run needed for new worktrees.
+The agent runs `scripts/agent-git-setup.sh <repo-dir>` once per repo — `<repo-dir>` is any worktree or the main repo. The agent writes the credentials file from the App ID / PEM above and mints `GH_TOKEN` from it automatically (no token passed per session). It also writes `AGENT_GIT_BOT_ID` so commits attribute to the bot, not you. This is ONE-OFF per repo: every worktree (existing and future) commits as the bot, while your main repo stays untouched.
 ```
 
 Note: the agent writes the one-time credentials file itself from the `GITHUB_APP_ID` / `GITHUB_APP_PEM` values in your prompt. For multiple bot identities (one per repo), the agent writes `credentials.d/credentials-<APP_ID>.env` (keyed by the numeric App ID from your prompt) and `mint-token.sh` auto-selects it — no name→app-id mapping needed. The file holds only the public App ID + the **path** to the PEM you already downloaded, never the PEM bytes or a live token. From then on the skill mints `GH_TOKEN` from that file automatically, so you do **not** pass a token per session.
