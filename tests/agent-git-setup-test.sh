@@ -327,7 +327,7 @@ else
 	if [ "$rc" -ne 0 ]; then ok "preflight fails closed when GH_TOKEN actor is the account owner"; else bad "exit code wrong"; fi
 fi
 OUT19b="$("$SCRIPT" --preflight "$WT19" 2>&1)" || true
-if echo "$OUT19b" | grep -qi "GH_TOKEN is your account, not the bot"; then
+if echo "$OUT19b" | grep -qi "GH_TOKEN is the account owner"; then
 	ok "account-owner-actor failure names the ACCOUNT OWNER consequence"
 else
 	bad "account-owner-actor failure did not name the ACCOUNT OWNER consequence"

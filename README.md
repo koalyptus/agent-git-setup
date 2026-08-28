@@ -104,7 +104,7 @@ GIT_USER_NAME=[my-git-user-name]
 GITHUB_APP_ID=[4646191]
 GITHUB_APP_PEM=[/path/to/myagent.pem]
 
-The agent runs `scripts/agent-git-setup.sh <repo-dir>` once per repo — `<repo-dir>` is any worktree or the main repo. The agent writes the credentials file from the App ID / PEM above and mints `GH_TOKEN` from it automatically (no token passed per session). It also writes `AGENT_GIT_BOT_ID` so commits attribute to the bot, not you. This is ONE-OFF per repo: every worktree (existing and future) commits as the bot, while your main repo stays untouched.
+The agent runs `scripts/agent-git-setup.sh <repo-dir>` once per repo — `<repo-dir>` is any worktree or the main repo. The agent writes the credentials file from the App ID / PEM above and mints `GH_TOKEN` from it automatically (no token passed per session). It also writes `AGENT_GIT_BOT_ID` so commits attribute to the bot, not the account owner. This is ONE-OFF per repo: every worktree (existing and future) commits as the bot, while your main repo stays untouched.
 ```
 
 Note: the agent writes the one-time credentials file itself from the `GITHUB_APP_ID` / `GITHUB_APP_PEM` values in your prompt. For multiple bot identities (one per repo), the agent writes `credentials.d/credentials-<APP_ID>.env` (keyed by the numeric App ID from your prompt) and `mint-token.sh` auto-selects it — no name→app-id mapping needed. The file holds only the public App ID + the **path** to the PEM you already downloaded, never the PEM bytes or a live token. From then on the skill mints `GH_TOKEN` from that file automatically, so you do **not** pass a token per session.
