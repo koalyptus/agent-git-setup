@@ -191,11 +191,11 @@ preflight() {
 				echo "agent-git-setup.sh: PREFLOW WARN: proceeding as the account owner — approved explicitly; gh/API calls attributed to the account owner, not the bot." >&2
 			else
 				echo "agent-git-setup.sh: PREFLOW FAIL: GH_TOKEN is the account owner's, not the bot." >&2
-				echo "  gh/API calls would be attributed to the account owner, not the bot." >&2
-				echo "  Fix: mint the bot token, then export GH_TOKEN before any gh/API work:" >&2
+				echo "  (to the agent) gh/API calls would be attributed to the account owner, not the bot." >&2
+				echo "  (to the agent) Fix: re-mint the bot token and export it before any gh/API work:" >&2
 				echo "    source <(scripts/mint-token.sh --shell)" >&2
-				echo "  If that fails and the account owner wants the agent to act as them, approve it —" >&2
-				echo "  the agent will ask and proceed for this session only." >&2
+				echo "  (to the agent) If that fails, STOP and ask the account owner to approve acting as them;" >&2
+				echo "  only on explicit approval set AGENT_GIT_ALLOW_HUMAN_ACTOR=1 and re-run preflight for this session." >&2
 				ok=1
 			fi
 		elif [ -z "${actor_type:-}" ]; then
@@ -208,8 +208,8 @@ preflight() {
 				: # bot install token (403) or unreadable — do not block
 			else
 				echo "agent-git-setup.sh: PREFLOW WARN: could not verify GH_TOKEN actor (gh not installed / network unavailable)." >&2
-				echo "  Cannot confirm the token is the App bot — if it is the account owner's PAT, gh/API" >&2
-				echo "  calls will be attributed to the account owner. Mint the bot token (scripts/mint-token.sh" >&2
+				echo "  (to the agent) Cannot confirm the token is the App bot — if it is the account owner's PAT, gh/API" >&2
+				echo "  calls will be attributed to the account owner. Re-mint the bot token (scripts/mint-token.sh" >&2
 				echo "  --shell) and ensure gh + network before any gh/API work." >&2
 			fi
 		else
