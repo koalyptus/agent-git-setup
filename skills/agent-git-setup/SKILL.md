@@ -210,8 +210,39 @@ export GIT_USER_NAME="my-git-user-name"   # handle; resolved to numeric id via A
 - **`cryptography` required for minting.** `scripts/mint-token.sh` needs `python3 -c "import cryptography"`. `scripts/agent-git-setup.sh` does NOT need it.
 |- **Push/PR as the bot.** The agent opens PRs as the bot via `gh` + `GH_TOKEN`. The script only sets commit AUTHOR identity and never rewrites `origin`; the bot PR actor comes from `GH_TOKEN`. Run `scripts/agent-git-setup.sh --preflight .` on Linux/macOS or `scripts/agent-git-setup.ps1 --preflight .` on Windows before any git/gh work — it fails closed when the bot commit identity is not in effect (you are not in a linked worktree of the target repo, so commits would be attributed to the account owner) or when `GH_TOKEN` is missing. The check is effect-based, not path-based: it verifies `git` resolves `user.name` to `AGENT_GIT_NAME`, so any harness that creates a proper `git worktree` of the repo satisfies it regardless of where that worktree lives on disk.
 
-## Repository
-The script, the token minter, and this skill live together at
-https://github.com/koalyptus/agent-git-setup — clone it and put
-`scripts/agent-git-setup.sh` (Linux/macOS) and `scripts/agent-git-setup.ps1`
-(Windows) on PATH (or call them by absolute path).
+## Windows / PowerShell native support
+
+`scripts/agent-git-setup.ps1` provides native Windows support
+(`cmd`/`PowerShell`), mirroring the bash script's identity-only
+semantics (commit-author isolation via `includeIf`, no origin rewrite,
+no hooks, no worktree management). Both scripts share the same
+environment variables and behavior.
+
+### PowerShell environment variables
+
+|| Variable             | Meaning                                                              |
+||----------------------|----------------------------------------------------------------------|
+|| `AGENT_GIT_NAME`     | Commit author name, e.g. `myagent[bot]`. Preferred identity source. |
+|| `GIT_USER_NAME`      | GitHub handle (e.g. `my-git-user-name`). LAST-RESORT fallback only. |
+|| `GH_TOKEN`           | *(Optional)* A GitHub token for `gh`/API as the bot. Same semantics as the bash flow. |
+|| `AGENT_GIT_BOT_ID`   | *(hidden fallback)* Numeric id for the bot noreply email. Offline-safe. |
+|| `AGENT_GIT_ALLOW_TMP`| *(hidden)* Opt-in to allow running from an ephemeral location.        |
+
+### Usage
+
+```powershell
+$env:GH_TOKEN = (scripts/mint-token.sh --print-jwt)
+$env:AGENT_GIT_NAME = "myagent[bot]"
+$env:GIT_USER_NAME = "my-git-user-name"
+scripts/agent-git-setup.ps1 <repo-dir>
+```
+
+### Testing
+
+```powershell
+pwsh tests/agent-git-setup-test.ps1
+```
+
+## References
+
+- `references/windows-support.md` — Windows support details: PowerShell port design, test parity, CI integration, and known differences from the bash script.
