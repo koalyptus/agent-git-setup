@@ -48,5 +48,9 @@ jobs:
       - name: Install PSScriptAnalyzer + lint PowerShell scripts
         shell: pwsh
         run: |
+          Set-StrictMode -Version latest
+          $ErrorActionPreference = "Stop"
           Install-Module -Name PSScriptAnalyzer -Scope CurrentUser -Force -ErrorAction SilentlyContinue
-          Invoke-PSScriptAnalyzer -Path scripts/agent-git-setup.ps1 tests/agent-git-setup-test.ps1
+          $result = Invoke-PSScriptAnalyzer -Path scripts/agent-git-setup.ps1 tests/agent-git-setup-test.ps1
+          if ($null -ne $result) { $result | Format-Table -AutoSize }
+          if ($null -ne $result -and $result.Count -gt 0) { exit 1 }
