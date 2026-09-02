@@ -13,15 +13,24 @@ jobs:
       - name: Verify skill bundle matches source-of-truth scripts
         run: make sync-check
 
-  test:
+  test-linux:
     needs: sync-check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - name: Run hermetic tests
+      - name: Run hermetic tests (bash)
         run: bash tests/agent-git-setup-test.sh
       - name: Run mint-token tests
         run: bash tests/mint-token-test.sh
+
+  test-windows:
+    needs: sync-check
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Run hermetic tests (PowerShell)
+        shell: pwsh
+        run: pwsh tests/agent-git-setup-test.ps1
 
   lint:
     needs: sync-check
@@ -32,7 +41,12 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y shellcheck
           curl -sS https://webi.sh/shfmt | sh
-      - name: Run shellcheck
-        run: shellcheck scripts/agent-git-setup.sh scripts/mint-token.sh skills/agent-git-setup/scripts/agent-git-setup.sh skills/agent-git-setup/scripts/mint-token.sh tests/agent-git-setup-test.sh tests/mint-token-test.sh
-      - name: Run shfmt
-        run: shfmt -d scripts/agent-git-setup.sh scripts/mint-token.sh skills/agent-git-setup/scripts/agent-git-setup.sh skills/agent-git-setup/scripts/mint-token.sh tests/agent-git-setup-test.sh tests/mint-token-test.sh
+      - name: Run shellcheck + shfmt (bash scripts)
+        run: |
+          shellcheck scripts/agent-git-setup.sh scripts/mint-token.sh skills/agent-git-setup/scripts/agent-git-setup.sh skills/agent-git-setup/scripts/mint-token.sh tests/agent-git-setup-test.sh tests/mint-token-test.sh
+          shfmt -d scripts/agent-git-setup.sh scripts/mint-token.sh skills/agent-git-setup/scripts/agent-git-setup.sh skills/agent-git-setup/scripts/mint-token.sh tests/agent-git-setup-test.sh tests/mint-token-test.sh
+      - name: Install PSScriptAnalyzer + lint PowerShell scripts
+        shell: pwsh
+        run: |
+          Install-Module -Name PSScriptAnalyzer -Scope CurrentUser -Force -ErrorAction SilentlyContinue
+          Invoke-PSScriptAnalyzer -Path scripts/agent-git-setup.ps1 tests/agent-git-setup-test.ps1

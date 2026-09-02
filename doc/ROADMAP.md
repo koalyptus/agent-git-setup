@@ -3,23 +3,15 @@
 Loose plan for agent-git-setup. Nothing here is committed to a release; it is
 a working list so contributors (human or agent) know what is considered.
 
-## Windows / PowerShell native support (planned, CI-verified)
+## Windows / PowerShell native support (done)
 
-The script currently targets bash on Linux/macOS. Native Windows
-(`cmd`/`PowerShell`) is not supported, though WSL and Git Bash work.
-
-Plan:
-- Add `agent-git-setup.ps1` — a PowerShell port of the same logic (git worktree
-  add, write the worktree's own config file, idempotent, no origin rewrite,
-  optional signing). Scope is commit-author isolation only: like the bash
-  script, it does NOT make `git push` the bot — only the commit author and
-  gh/API actor via `GH_TOKEN`.
-- Add `agent-git-setup-test.ps1` — hermetic tests (temp repo, sandboxed
-  `$env:HOME` / `$env:GIT_CONFIG_GLOBAL`, dummy token, no network, cleanup in
-  `finally`).
-- Extend `.github/workflows/test.yml` with a `windows` job on
-  `windows-latest` that runs the `.ps1` tests. The Windows runner is the
-  verification loop (the Linux box cannot run PowerShell).
+`scripts/agent-git-setup.ps1` provides native Windows support
+(`cmd`/`PowerShell`), mirroring the bash script's identity-only
+semantics (commit-author isolation via `includeIf`, no origin rewrite,
+no hooks, no worktree management). The hermetic test suite now runs
+on both platforms: `tests/agent-git-setup-test.sh` (Linux/macOS) and
+`tests/agent-git-setup-test.ps1` (Windows). CI runs both jobs in
+`.github/workflows/ci.yml`.
 
 ## Verify treehouse integration (planned)
 
