@@ -24,6 +24,10 @@ lint:
 	shfmt -d $(SCRIPT) $(MINT) $(TEST) $(MINT_TEST)
 	@if command -v pwsh >/dev/null 2>&1; then pwsh -Command "Invoke-PSScriptAnalyzer -Path $(PSCRIPT) $(PTEST)"; else echo "pwsh not found — skipping PSScriptAnalyzer"; fi
 
+lint-bash:
+	shellcheck $(SCRIPT) $(MINT) $(TEST) $(MINT_TEST)
+	shfmt -d $(SCRIPT) $(MINT) $(TEST) $(MINT_TEST)
+
 install:
 	@command -v shellcheck >/dev/null 2>&1 && echo "shellcheck: ok ($$(shellcheck --version | head -1))" || \
 	  (echo "shellcheck: installing…" && \
