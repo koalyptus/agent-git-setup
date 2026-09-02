@@ -10,7 +10,7 @@
 # Mirrors tests/agent-git-setup-test.sh: same cases, same coverage,
 # PowerShell-native (no bash, no shuf, no mktemp, no fake-gh bash heredoc).
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Continue"
 
 # Hermetic: never inherit ambient git author/committer identity from the
 # caller's environment (a bot-commit export in the dev shell would otherwise
@@ -37,6 +37,7 @@ function AssertEq($Actual, $Expected, $Name) {
     if ($Actual -eq $Expected) { Ok $Name } else { Bad "$Name (got '$Actual' expected '$Expected')" }
 }
 function Cleanup { Remove-Item $Sandbox -Recurse -Force -ErrorAction SilentlyContinue }
+# Cleanup on exit (best-effort; the trap below covers normal exit).
 Register-ObjectEvent -InputObject (Get-EventSubscriber) -SourceIdentifier PowerShell.Exiting -Action { Cleanup } | Out-Null
 try { Cleanup } catch {}
 
@@ -62,13 +63,10 @@ function MakeRepo($WithOrigin) {
 
 # make_worktree <repo>: the HARNESS creates the worktree (not the script).
 $WtSeq = 0
-$WtDir = ""
 function MakeWorktree($Repo) {
     $WtSeq++
     $Name = "wt-" + $WtSeq
-    $Dir = Join-Path $Sandbox ("wt/" + (Split-Path $Repo -Leaf) + "-" + $Name + ".XXXXXX")
-    # Use a deterministic subdir since mktemp-style temp dirs are tricky in pwsh.
-    $Dir = Join-Path $Sandbox "wt/" + (Split-Path $Repo -Leaf) + "-" + $Name
+    $Dir = Join-Path $Sandbox "wt" ((Split-Path $Repo -Leaf) + "-" + $Name)
     if (Test-Path $Dir) { Remove-Item $Dir -Recurse -Force }
     New-Item -ItemType Directory -Path $Dir -Force | Out-Null
     & git -C "$Repo" worktree add -q -b ("agent-" + $Name) "$Dir"
@@ -85,8 +83,6 @@ function MakeFakeGh($Kind, $Login = "") {
     $GhPath = Join-Path $BinDir "gh"
     if ($Kind -eq "human") {
         $Payload = '{"type":"User","login":"' + $Login + '"}'
-        Set-Content -Path $GhPath -Value "@echo off`nif `"$1`"==`"api`" if `"$2`"==`"user`" echo $Payload& exit 0`nexec /usr/bin/gh `*$*" -Encoding ASCII
-        # Use a real PowerShell-based gh mock for pwsh.
         $Content = @"
 `$args | Out-Null
 if (`$args[0] -eq 'api' -and `$args[1] -eq 'user') {
@@ -107,7 +103,7 @@ exec /usr/bin/gh `$args
 "@
         Set-Content -Path $GhPath -Value $Content -Encoding UTF8
     }
-    chmod +x $GhPath 2>/dev/null | Out-Null
+    try { chmod +x $GhPath } catch {}
     return $BinDir
 }
 
@@ -258,10 +254,10 @@ if (-not (Test-Path (Join-Path $Repo15 ".git" "agent-bot-identity.config"))) { O
 # --preflight tests. We use a fake `gh` on a local PATH to avoid calling the real gh.
 function RunPreflight($Repo, $GhBin) {
     $envPath = $env:PATH
-    if ($GhBin) { $env:PATH = "$GhBin;$envPath" }
+    if ($GhBin) { $env:PATH = "$GhBin" + [System.IO.Path]::PathSeparator + $envPath }
     $Rc = 0
     try { & $Script --preflight $Repo *> $null } catch { $Rc = $LASTEXITCODE }
-    if ($GhBin) { $env:PATH = $envPath }
+    if ($GhBin) { $env:Path = $envPath }
     return $Rc
 }
 
@@ -316,7 +312,7 @@ $Rc = RunPreflight $WtDir $GhBin
 if ($Rc -eq 0) { Ok "preflight passes when GH_TOKEN is a bot install token (gh api user 403)" } else { Bad "preflight should pass when GH_TOKEN is a bot install token" }
 # 19b: human token (gh api user -> User), no consent -> preflight FAILS.
 $GhBin = MakeFakeGh "human" "koalyptus"
-$env:AGENT_GIT_ALLOW_HUMAN_ACTOR = $null
+Remove-Item env:AGENT_GIT_ALLOW_HUMAN_ACTOR -ErrorAction SilentlyContinue
 $Rc = RunPreflight $WtDir $GhBin
 if ($Rc -ne 0) { Ok "preflight fails closed when GH_TOKEN actor is the account owner (no consent)" } else { Bad "exit code wrong" }
 $Out19b = & $Script --preflight $WtDir 2>&1
@@ -334,8 +330,8 @@ if ($Rc -eq 0) { Ok "preflight passes (does not block) when gh is present but un
 $NoGhBin = Join-Path $Sandbox "noghbin"
 New-Item -ItemType Directory -Path $NoGhBin -Force | Out-Null
 # Remove gh from PATH by putting only a minimal dir that has git and bash-like tools via pwsh.
-$OrigPath = $env:PATH
-$env:PATH = "$NoGhBin:$env:PATH"
+$OrigPath = $env:Path
+$env:Path = "$NoGhBin" + [System.IO.Path]::PathSeparator + $env:Path
 # Create fake git that works via the real git on PATH (no gh in path).
 $Rc = RunPreflight $WtDir $null
 if ($Rc -eq 0) { Ok "preflight passes (warns) when gh is unavailable" } else { Bad "preflight must not hard-fail when gh is unavailable" }
