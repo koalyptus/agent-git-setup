@@ -45,16 +45,24 @@ jobs:
       - name: Install PSScriptAnalyzer + lint PowerShell scripts
         shell: pwsh
         run: |
-          Set-StrictMode -Version latest
           $ErrorActionPreference = "Stop"
-          $psaPath = Get-Module -ListAvailable -Name PSScriptAnalyzer | Sort-Object Version -Descending | Select-Object -First 1 -ExpandProperty Path
-          if ($null -eq $psaPath) {
+          # GitHub-hosted Ubuntu runners ship PSScriptAnalyzer 1.25.0 under
+          # /usr/local/share/powershell/Modules. Use whatever the highest
+          # available version is, but always install the latest into
+          # CurrentUser scope as a fallback. Import by manifest path with
+          # -Global so the cmdlet is visible to the rest of the step.
+          $installed = Get-Module -ListAvailable -Name PSScriptAnalyzer | Sort-Object Version -Descending | Select-Object -First 1
+          if ($null -eq $installed) {
             Install-Module -Name PSScriptAnalyzer -Scope CurrentUser -Force -SkipPublisherCheck -AcceptLicense
-            $psaPath = Get-Module -ListAvailable -Name PSScriptAnalyzer | Sort-Object Version -Descending | Select-Object -First 1 -ExpandProperty Path
+            $installed = Get-Module -ListAvailable -Name PSScriptAnalyzer | Sort-Object Version -Descending | Select-Object -First 1
           }
-          if ($null -eq $psaPath) { Write-Error "PSScriptAnalyzer not found"; exit 1 }
-          Write-Host "Using PSScriptAnalyzer at: $psaPath"
-          Import-Module -Name $psaPath -Force -ErrorAction Stop
+          if ($null -eq $installed) { Write-Error "PSScriptAnalyzer not found"; exit 1 }
+          Write-Host "Using PSScriptAnalyzer $($installed.Version) at $($installed.Path)"
+          Import-Module -Name $installed.Path -Force -Global
+          if (-not (Get-Command -Name Invoke-PSScriptAnalyzer -ErrorAction SilentlyContinue)) {
+            Write-Error "Invoke-PSScriptAnalyzer not exported after Import-Module"
+            exit 1
+          }
           $result = Invoke-PSScriptAnalyzer -Path scripts/agent-git-setup.ps1 tests/agent-git-setup-test.ps1
           if ($null -ne $result) { $result | Format-Table -AutoSize }
           if ($null -ne $result -and $result.Count -gt 0) { exit 1 }
