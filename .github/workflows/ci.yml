@@ -43,19 +43,28 @@ jobs:
       - name: Run shellcheck + shfmt (bash scripts)
         run: make lint-bash
       - name: Install PSScriptAnalyzer + lint PowerShell scripts
+        # The Ubuntu runner ships PSScriptAnalyzer 1.25.0 globally. The
+        # exported cmdlet in 1.25.0 is Invoke-ScriptAnalyzer (older
+        # versions used Invoke-PSScriptAnalyzer). We try the new name
+        # first and fall back to the old name so this works regardless
+        # of which version is on the runner.
         run: |
           pwsh -NoProfile -Command '
-            $ErrorActionPreference = "Continue"
-            Write-Host "=== DEBUG: PSModulePath ==="
-            Write-Host $env:PSModulePath
-            Write-Host "=== DEBUG: Get-Module PSScriptAnalyzer ==="
-            Get-Module -ListAvailable -Name PSScriptAnalyzer | Format-List Name, Version, Path
-            Write-Host "=== DEBUG: /usr/local/share/powershell/Modules ==="
-            Get-ChildItem -Path /usr/local/share/powershell/Modules -Recurse -Filter *.psd1 | Format-List FullName
-            Write-Host "=== DEBUG: explicit Import-Module by path ==="
-            Import-Module -Name /usr/local/share/powershell/Modules/PSScriptAnalyzer/1.25.0/PSScriptAnalyzer.psd1 -Force -Verbose
-            Write-Host "=== DEBUG: Get-Command after Import ==="
-            Get-Command -Name Invoke-PSScriptAnalyzer -ErrorAction SilentlyContinue | Format-List Name, ModuleName, CommandType
-            Write-Host "=== DEBUG: module loaded? ==="
-            Get-Module -Name PSScriptAnalyzer | Format-List Name, Version
+            $ErrorActionPreference = "Stop"
+            $installed = Get-Module -ListAvailable -Name PSScriptAnalyzer | Sort-Object Version -Descending | Select-Object -First 1
+            if ($null -eq $installed) {
+              Install-Module -Name PSScriptAnalyzer -Scope CurrentUser -Force -SkipPublisherCheck -AcceptLicense
+              $installed = Get-Module -ListAvailable -Name PSScriptAnalyzer | Sort-Object Version -Descending | Select-Object -First 1
+            }
+            if ($null -eq $installed) { Write-Error "PSScriptAnalyzer not found"; exit 1 }
+            Write-Host "Using PSScriptAnalyzer $($installed.Version) at $($installed.Path)"
+            Import-Module -Name $installed.Path -Force
+            $invoke = @("Invoke-ScriptAnalyzer", "Invoke-PSScriptAnalyzer") |
+              Where-Object { Get-Command -Name $_ -ErrorAction SilentlyContinue } |
+              Select-Object -First 1
+            if ($null -eq $invoke) { Write-Error "Neither Invoke-ScriptAnalyzer nor Invoke-PSScriptAnalyzer exported"; exit 1 }
+            Write-Host "Using cmdlet: $invoke"
+            $result = & $invoke -Path scripts/agent-git-setup.ps1 tests/agent-git-setup-test.ps1
+            if ($null -ne $result) { $result | Format-Table -AutoSize }
+            if ($null -ne $result -and @($result).Count -gt 0) { exit 1 }
           '
