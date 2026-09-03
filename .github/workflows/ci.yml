@@ -47,10 +47,15 @@ jobs:
         run: |
           Set-StrictMode -Version latest
           $ErrorActionPreference = "Stop"
-          if (-not (Get-Module -ListAvailable -Name PSScriptAnalyzer)) {
-            Install-Module -Name PSScriptAnalyzer -Scope CurrentUser -Force -SkipPublisherCheck
+          $psaRoot = Join-Path -Path ([Environment]::GetFolderPath('LocalApplicationData')) -ChildPath 'PowerShell/Modules/PSScriptAnalyzer'
+          $psaPath = Get-ChildItem -Path $psaRoot -Recurse -Filter 'PSScriptAnalyzer.psd1' -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($null -eq $psaPath) {
+            Install-Module -Name PSScriptAnalyzer -Scope CurrentUser -Force -SkipPublisherCheck -AcceptLicense
+            $psaPath = Get-ChildItem -Path $psaRoot -Recurse -Filter 'PSScriptAnalyzer.psd1' | Select-Object -First 1
           }
-          Import-Module -Name PSScriptAnalyzer -Force -ErrorAction Stop
+          if ($null -eq $psaPath) { Write-Error "PSScriptAnalyzer not found at $psaRoot"; exit 1 }
+          Write-Host "Using PSScriptAnalyzer at: $($psaPath.FullName)"
+          Import-Module -Name $psaPath.FullName -Force -ErrorAction Stop
           $result = Invoke-PSScriptAnalyzer -Path scripts/agent-git-setup.ps1 tests/agent-git-setup-test.ps1
           if ($null -ne $result) { $result | Format-Table -AutoSize }
           if ($null -ne $result -and $result.Count -gt 0) { exit 1 }
