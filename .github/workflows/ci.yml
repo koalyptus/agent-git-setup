@@ -10,18 +10,36 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - name: Verify skill bundle matches source-of-truth scripts
+      - name: Check skill-scripts sync
         run: make sync-check
 
-  test:
+  test-linux:
     needs: sync-check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - name: Run hermetic tests
-        run: bash tests/agent-git-setup-test.sh
-      - name: Run mint-token tests
-        run: bash tests/mint-token-test.sh
+      - name: Run hermetic tests (bash)
+        run: make test
+
+  test-windows:
+    needs: sync-check
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Run hermetic tests (PowerShell)
+        # GitHub Actions 'shell: pwsh' dot-sources the run-script via
+        # '. {0}'. A non-zero exit from the nested 'pwsh tests/...ps1'
+        # sets $LASTEXITCODE but does NOT fail the step by itself, so we
+        # explicitly check it and exit 1 to surface PowerShell test
+        # failures.
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          pwsh tests/agent-git-setup-test.ps1
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "PowerShell test suite exited with code $LASTEXITCODE"
+            exit $LASTEXITCODE
+          }
 
   lint:
     needs: sync-check
@@ -29,10 +47,14 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Install shellcheck + shfmt
-        run: |
-          sudo apt-get update && sudo apt-get install -y shellcheck
-          curl -sS https://webi.sh/shfmt | sh
-      - name: Run shellcheck
-        run: shellcheck scripts/agent-git-setup.sh scripts/mint-token.sh skills/agent-git-setup/scripts/agent-git-setup.sh skills/agent-git-setup/scripts/mint-token.sh tests/agent-git-setup-test.sh tests/mint-token-test.sh
-      - name: Run shfmt
-        run: shfmt -d scripts/agent-git-setup.sh scripts/mint-token.sh skills/agent-git-setup/scripts/agent-git-setup.sh skills/agent-git-setup/scripts/mint-token.sh tests/agent-git-setup-test.sh tests/mint-token-test.sh
+        run: make install
+      - name: Run shellcheck + shfmt (bash scripts)
+        run: make lint-bash
+      - name: Install PSScriptAnalyzer + lint PowerShell scripts
+        # Use the same wrapper the local `make lint` target uses
+        # (scripts/lint-ps1.ps1). This handles the cmdlet rename
+        # (Invoke-PSScriptAnalyzer -> Invoke-ScriptAnalyzer in 1.21+),
+        # the single-path-only -Path in newer versions, and gates the
+        # step on Error severity (Warning/Information findings are
+        # logged but do not fail the build).
+        run: pwsh scripts/lint-ps1.ps1 scripts/agent-git-setup.ps1 tests/agent-git-setup-test.ps1

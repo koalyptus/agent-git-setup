@@ -4,14 +4,16 @@ Give an AI agent a bot identity so its git commits and GitHub actions are clearl
 
 ## Requirements
 
-- **Requires git >= 2.43** on the agent's machine. The script uses git's
-  `includeIf` conditional-include to scope the bot identity to all worktrees of
-  the repo (including ones created later) while keeping your main repo untouched — no
-  `worktreeConfig` extension or harness setup required.
-- **Unix-like shell** (`bash`) and `git`. The script and tests target Linux and
-  macOS. **Windows is not supported as-is** — `bash` + `git` under WSL or Git
-  Bash will work, but native `cmd`/`PowerShell` will not (the script uses POSIX
-  shell features).
+- **git >= 2.43** and **PowerShell 7+** on the agent's machine.
+  `scripts/agent-git-setup.sh` targets Linux/macOS (`bash` + `git`).
+  `scripts/agent-git-setup.ps1` provides native Windows support
+  (`cmd`/`PowerShell`). The test suite runs on both platforms
+  (`tests/agent-git-setup-test.sh` on Linux/macOS,
+  `tests/agent-git-setup-test.ps1` on Windows).
+  `includeIf` conditional-include scopes the bot identity to all
+  worktrees of the repo (including ones created later) while keeping
+  your main repo untouched — no `worktreeConfig` extension or harness
+  setup required.
 - **`gh` (GitHub CLI) is required for the bot GitHub-actor path** (PRs, comments, API commits). Plain local commits need only `git`.
 - `Make install` installs `shellcheck`/`shfmt`, `Python 3` and `cryptography` if needed.
 
@@ -195,11 +197,13 @@ It handles two distinct things:
 
 - **Commit identity is harness-agnostic; the API actor needs the skill.** The bot commit author is plain git config in `.git/`, so it works under any agent or harness with no extra setup. Acting as the bot on GitHub (`GH_TOKEN`) needs the skill installed in that harness, because the mint step lives there — a harness without the skill still commits as the bot but posts to GitHub as you (unless you run `source <(./scripts/mint-token.sh --shell)` yourself).
 - **Token-agnostic in consumption, with a provided minter.** The scripts only *consume* `GH_TOKEN` (for `gh`/API as the bot); they never assume a specific backend. This repo also ships `scripts/mint-token.sh`, which mints `GH_TOKEN` from a GitHub App (RS256 JWT, `python3` + `cryptography`) using the persisted credentials file — so the agent provides its own token without you passing one per session. The credentials file holds only the public App ID + the **path** to the PEM; no token is ever stored on disk.
-- **Not a worktree manager.** The harness owns worktree creation, branching,
+|- **Not a worktree manager.** The harness owns worktree creation, branching,
   hooks, and `core.hooksPath`. This script only writes bot identity into the
   shared repo config (scoped to all worktrees via `includeIf`) — it never creates
-  a worktree, installs hooks, or imposes a path/branch convention.
-- **Not touching your main tree.** The bot identity is written to `.git/agent-bot-identity.config` and conditionally included for worktrees only. Your main repo's `.git` directory is excluded by the glob, so it stays yours; global git config is never modified.
+  a worktree, installs hooks, or imposes a path/branch convention. Both
+  `scripts/agent-git-setup.sh` (bash) and `scripts/agent-git-setup.ps1`
+  (PowerShell) behave identically here.
+|- **Not touching your main tree.** The bot identity is written to `.git/agent-bot-identity.config` and conditionally included for worktrees only. Your main repo's `.git` directory is excluded by the glob, so it stays yours; global git config is never modified.
 
 ## Commit-author isolation (by design)
 
@@ -216,16 +220,18 @@ default stays safe: your main tree is never touched.
 
 ## Tests
 
-The suite is hermetic (temp repos, sandboxed `HOME`/`GIT_CONFIG_GLOBAL`, dummy
-token, no network, auto-cleanup) and needs only `bash` + `git`:
+The suite is hermetic (temp repos, sandboxed `HOME`/`GIT_CONFIG_GLOBAL`,
+dummy token, no network, auto-cleanup). Linux/macOS uses `bash` + `git`;
+Windows uses PowerShell 7 + `git`:
 
 ```bash
-bash agent-git-setup-test.sh
+bash tests/agent-git-setup-test.sh
+pwsh tests/agent-git-setup-test.ps1
 ```
 
-It prints each check (`ok` / `FAIL`) and exits non-zero if any fail. The same
-suite runs automatically in CI (`.github/workflows/test.yml`) on every push and
-pull request, so a regression shows up as a red check before merge.
+Both suites print each check (`ok` / `FAIL`) and exit non-zero if any
+fail. The same suites run automatically in CI (`.github/workflows/ci.yml`)
+on every push and pull request.
 
 ## Make targets
 
@@ -234,10 +240,13 @@ commands:
 
 | Command                   | What it does                                                                          |
 |---------------------------|---------------------------------------------------------------------------------------|
-| `make test`               | Run the hermetic test suite (`agent-git-setup-test.sh`).                              |
-| `make lint`               | Run `shellcheck` + `shfmt -d` on both scripts (needs those tools).                    |
-| `make install`            | Install `shellcheck` + `shfmt` + `python3`/`cryptography` if missing (idempotent).   |
-| `make sync-skill-scripts` | Copy `scripts/*.sh` into `skills/agent-git-setup/scripts/` (skill bundle). Run when you change a script at the repo root. |
+| `make test`               | Run the hermetic test suite (`agent-git-setup-test.sh`).                     |
+| `make lint`               | Run `shellcheck` + `shfmt -d` on bash scripts, `pwsh` + `PSScriptAnalyzer`
+|                           |   on `*.ps1` (needs those tools).                                 |
+| `make install`            | Install `shellcheck` + `shfmt` + `python3`/`cryptography` + PowerShell 7
+|                           |   if missing (idempotent).                                        |
+| `make sync-skill-scripts` | Copy `scripts/*.sh` and `scripts/*.ps1` into `skills/agent-git-setup/scripts/`
+|                           |   (skill bundle). Run when you change a script at the repo root.  |
 | `make sync-check`         | Verify the skill bundle matches `scripts/`. Fails if they have drifted.              |
 | `make ci`                 | Run `sync-check` + `test` + `lint` — exactly what CI runs. Use this before push.    |
 
@@ -261,17 +270,26 @@ merge.
 ## Usage
 
 ```bash
-scripts/agent-git-setup.sh <repo-dir> [worktree-name] [branch]
+scripts/agent-git-setup.ps1 <repo-dir>   # Windows (PowerShell)
+scripts/agent-git-setup.sh <repo-dir>    # Linux/macOS (bash)
+# -> .git/agent-bot-identity.config set to myagent[bot] <bot_id+myagent[bot]@users.noreply.github.com>,
+#    included for every worktree via includeIf
+#    commits in any worktree: myagent[bot] (agent name shows in commit list)
+#    your <repo-dir> main tree: untouched (excluded by the glob)
 ```
 
-### Required environment
+Re-running is **idempotent**: the bot identity is reconfigured, not recreated.
+
+### PowerShell environment (Windows)
 
 | Variable             | Meaning                                                              |
 |----------------------|----------------------------------------------------------------------|
-| `AGENT_GIT_NAME`     | Commit author name, e.g. `myagent[bot]`. Preferred identity source.  |
-| `GIT_USER_NAME`      | GitHub handle (e.g. `my-git-user-name`). LAST-RESORT fallback only: used to attribute commits to you when the bot id cannot be resolved. Prefer `AGENT_GIT_BOT_ID` / a resolvable `AGENT_GIT_NAME` so commits stay bot. |
-| `GH_TOKEN`           | *(Optional)* A GitHub token (e.g. a GitHub App install token) — only for `gh`/API as the bot, and used as a Bearer on the bot-id API lookup for higher rate limits. Not required for the local commit author.       |
-| `GIT_USER_ID`        | *(hidden fallback)* Numeric id for the `GIT_USER_NAME` fallback. Only for hermetic tests / offline use; never in the prompt. |
+| `AGENT_GIT_NAME`     | Commit author name, e.g. `myagent[bot]`. Preferred identity source. |
+| `GIT_USER_NAME`      | GitHub handle (e.g. `my-git-user-name`). LAST-RESORT fallback only. |
+| `GH_TOKEN`           | *(Optional)* A GitHub token for `gh`/API as the bot. Same semantics
+|                       |   as the bash flow.                                                    |
+| `AGENT_GIT_BOT_ID`   | *(hidden fallback)* Numeric id for the bot noreply email. Offline-safe.|
+| `AGENT_GIT_ALLOW_TMP`| *(hidden)* Opt-in to allow running from an ephemeral location.        |
 
 The commit author (`user.name` / `user.email`) is set from the required
 variables above — it is **not** optional.
@@ -279,11 +297,17 @@ variables above — it is **not** optional.
 ### Example
 
 ```bash
+# Linux/macOS (bash)
 export GH_TOKEN="$(scripts/mint-token.sh --print-jwt)"   # this repo's GitHub App minter (uses the persisted credentials file)
 export AGENT_GIT_NAME="myagent[bot]"
 export GIT_USER_NAME="my-git-user-name"           # handle; script/skill resolves to numeric id
-
 scripts/agent-git-setup.sh ~/dev/my-repo   # the repo (or any worktree of it)
+
+# Windows (PowerShell)
+$env:GH_TOKEN = (scripts/mint-token.sh --print-jwt)   # this repo's GitHub App minter
+$env:AGENT_GIT_NAME = "myagent[bot]"
+$env:GIT_USER_NAME = "my-git-user-name"
+scripts/agent-git-setup.ps1 ~/dev/my-repo   # the repo (or any worktree of it)
 # -> .git/agent-bot-identity.config set to myagent[bot] <bot_id+myagent[bot]@users.noreply.github.com>,
 #    included for every worktree via includeIf
 #    commits in any worktree: myagent[bot] (agent name shows in commit list)
