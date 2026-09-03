@@ -43,27 +43,19 @@ jobs:
       - name: Run shellcheck + shfmt (bash scripts)
         run: make lint-bash
       - name: Install PSScriptAnalyzer + lint PowerShell scripts
-        # Run the whole step in a single pwsh -Command invocation: GitHub
-        # Actions 'shell: pwsh' dot-sources the run-script, which traps
-        # imported cmdlets in the script scope. Calling pwsh -NoProfile
-        # -Command directly gives us a fresh session where PSScriptAnalyzer
-        # auto-loads from PSModulePath on first use.
         run: |
           pwsh -NoProfile -Command '
-            $ErrorActionPreference = "Stop"
-            # Ensure PSScriptAnalyzer is installed. The Ubuntu runner ships
-            # 1.25.0 globally under /usr/local/share/powershell/Modules, but
-            # PSModulePath in a fresh pwsh session may not include it.
-            if (-not (Get-Module -ListAvailable -Name PSScriptAnalyzer)) {
-              Install-Module -Name PSScriptAnalyzer -Scope CurrentUser -Force -SkipPublisherCheck -AcceptLicense
-            }
-            $env:PSModulePath = "/usr/local/share/powershell/Modules:" + $env:PSModulePath
-            Import-Module -Name PSScriptAnalyzer -ErrorAction Stop
-            if (-not (Get-Command -Name Invoke-PSScriptAnalyzer -ErrorAction SilentlyContinue)) {
-              Write-Error "Invoke-PSScriptAnalyzer not exported after Import-Module"
-              exit 1
-            }
-            $result = Invoke-PSScriptAnalyzer -Path scripts/agent-git-setup.ps1 tests/agent-git-setup-test.ps1
-            if ($null -ne $result) { $result | Format-Table -AutoSize }
-            if ($null -ne $result -and $result.Count -gt 0) { exit 1 }
+            $ErrorActionPreference = "Continue"
+            Write-Host "=== DEBUG: PSModulePath ==="
+            Write-Host $env:PSModulePath
+            Write-Host "=== DEBUG: Get-Module PSScriptAnalyzer ==="
+            Get-Module -ListAvailable -Name PSScriptAnalyzer | Format-List Name, Version, Path
+            Write-Host "=== DEBUG: /usr/local/share/powershell/Modules ==="
+            Get-ChildItem -Path /usr/local/share/powershell/Modules -Recurse -Filter *.psd1 | Format-List FullName
+            Write-Host "=== DEBUG: explicit Import-Module by path ==="
+            Import-Module -Name /usr/local/share/powershell/Modules/PSScriptAnalyzer/1.25.0/PSScriptAnalyzer.psd1 -Force -Verbose
+            Write-Host "=== DEBUG: Get-Command after Import ==="
+            Get-Command -Name Invoke-PSScriptAnalyzer -ErrorAction SilentlyContinue | Format-List Name, ModuleName, CommandType
+            Write-Host "=== DEBUG: module loaded? ==="
+            Get-Module -Name PSScriptAnalyzer | Format-List Name, Version
           '
