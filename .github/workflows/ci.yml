@@ -47,18 +47,22 @@ jobs:
         # Actions 'shell: pwsh' dot-sources the run-script, which traps
         # imported cmdlets in the script scope. Calling pwsh -NoProfile
         # -Command directly gives us a fresh session where PSScriptAnalyzer
-        # auto-loads from \$env:PSModulePath on first use.
+        # auto-loads from PSModulePath on first use.
         run: |
           pwsh -NoProfile -Command '
             $ErrorActionPreference = "Stop"
-            $installed = Get-Module -ListAvailable -Name PSScriptAnalyzer | Sort-Object Version -Descending | Select-Object -First 1
-            if ($null -eq $installed) {
+            # Ensure PSScriptAnalyzer is installed. The Ubuntu runner ships
+            # 1.25.0 globally under /usr/local/share/powershell/Modules, but
+            # PSModulePath in a fresh pwsh session may not include it.
+            if (-not (Get-Module -ListAvailable -Name PSScriptAnalyzer)) {
               Install-Module -Name PSScriptAnalyzer -Scope CurrentUser -Force -SkipPublisherCheck -AcceptLicense
-              $installed = Get-Module -ListAvailable -Name PSScriptAnalyzer | Sort-Object Version -Descending | Select-Object -First 1
             }
-            if ($null -eq $installed) { Write-Error "PSScriptAnalyzer not found"; exit 1 }
-            Write-Host "Using PSScriptAnalyzer $($installed.Version) at $($installed.Path)"
-            Import-Module -Name $installed.Path -Force
+            $env:PSModulePath = "/usr/local/share/powershell/Modules:" + $env:PSModulePath
+            Import-Module -Name PSScriptAnalyzer -ErrorAction Stop
+            if (-not (Get-Command -Name Invoke-PSScriptAnalyzer -ErrorAction SilentlyContinue)) {
+              Write-Error "Invoke-PSScriptAnalyzer not exported after Import-Module"
+              exit 1
+            }
             $result = Invoke-PSScriptAnalyzer -Path scripts/agent-git-setup.ps1 tests/agent-git-setup-test.ps1
             if ($null -ne $result) { $result | Format-Table -AutoSize }
             if ($null -ne $result -and $result.Count -gt 0) { exit 1 }
