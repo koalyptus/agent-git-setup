@@ -340,5 +340,33 @@ Remove-Item env:AGENT_GIT_ALLOW_HUMAN_ACTOR -ErrorAction SilentlyContinue
 Remove-Item env:GH_TOKEN -ErrorAction SilentlyContinue
 Remove-Item env:AGENT_GIT_ALLOW_TMP -ErrorAction SilentlyContinue
 
+# 20. Guard B: empty/unset $env:TEMP must NOT cause the script to refuse
+# every repo (the "/" prefix bug). Run with TEMP and TMP cleared and the
+# AGENT_GIT_ALLOW_TMP opt-out still off. The sandbox repo lives under
+# $env:TEMP, so we need to opt the test in via the env var and then verify
+# a *persistent* repo (sibling of $Sandbox, NOT under TEMP) is accepted.
+Write-Host "20. Guard B: empty \$env:TEMP does not produce a '/' prefix that matches everything"
+$Repo20 = New-Item -ItemType Directory -Path (Join-Path $Sandbox "persistent-sibling") -Force | ForEach-Object { $_.FullName }
+Push-Location $Repo20
+& git init -q -b main $Repo20 2>$null | Out-Null
+Pop-Location
+$OrigTEMP = $env:TEMP
+$OrigTMP  = $env:TMP
+try {
+    Remove-Item env:TEMP -ErrorAction SilentlyContinue
+    Remove-Item env:TMP  -ErrorAction SilentlyContinue
+    Remove-Item env:AGENT_GIT_ALLOW_TMP -ErrorAction SilentlyContinue
+    $env:AGENT_GIT_NAME = "myagent[bot]"
+    $env:AGENT_GIT_BOT_ID = "320010330"
+    $env:GIT_USER_NAME = "my-git-user-name"
+    $env:GIT_USER_ID = "320010330"
+    $Rc = 0
+    try { & $Script $Repo20 *> $null } catch { $Rc = $LASTEXITCODE }
+    if ($Rc -eq 0) { Ok "empty TEMP/TMP does not cause Guard B to false-positive" } else { Bad "Guard B refused a persistent repo with empty TEMP/TMP (rc=$Rc)" }
+} finally {
+    if ($null -ne $OrigTEMP) { $env:TEMP = $OrigTEMP }
+    if ($null -ne $OrigTMP)  { $env:TMP  = $OrigTMP }
+}
+
 Write-Host "PASS=$Pass FAIL=$Fail"
 if ($Fail -ne 0) { exit 1 }

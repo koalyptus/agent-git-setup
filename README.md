@@ -240,15 +240,15 @@ commands:
 
 | Command                   | What it does                                                                          |
 |---------------------------|---------------------------------------------------------------------------------------|
-|| `make test`               | Run the hermetic test suite (`agent-git-setup-test.sh`).                     |
-|| `make lint`               | Run `shellcheck` + `shfmt -d` on bash scripts, `pwsh` + `PSScriptAnalyzer`
-                             |   on `*.ps1` (needs those tools).                                 |
-|| `make install`            | Install `shellcheck` + `shfmt` + `python3`/`cryptography` + PowerShell 7
-                             |   if missing (idempotent).                                        |
-|| `make sync-skill-scripts` | Copy `scripts/*.sh` and `scripts/*.ps1` into `skills/agent-git-setup/scripts/`
-                             |   (skill bundle). Run when you change a script at the repo root.  |
-|| `make sync-check`         | Verify the skill bundle matches `scripts/`. Fails if they have drifted.              ||
-|| `make ci`                 | Run `sync-check` + `test` + `lint` — exactly what CI runs. Use this before push.    |
+| `make test`               | Run the hermetic test suite (`agent-git-setup-test.sh`).                     |
+| `make lint`               | Run `shellcheck` + `shfmt -d` on bash scripts, `pwsh` + `PSScriptAnalyzer`
+|                           |   on `*.ps1` (needs those tools).                                 |
+| `make install`            | Install `shellcheck` + `shfmt` + `python3`/`cryptography` + PowerShell 7
+|                           |   if missing (idempotent).                                        |
+| `make sync-skill-scripts` | Copy `scripts/*.sh` and `scripts/*.ps1` into `skills/agent-git-setup/scripts/`
+|                           |   (skill bundle). Run when you change a script at the repo root.  |
+| `make sync-check`         | Verify the skill bundle matches `scripts/`. Fails if they have drifted.              |
+| `make ci`                 | Run `sync-check` + `test` + `lint` — exactly what CI runs. Use this before push.    |
 
 ### Skill bundle (why scripts are copied into the skill directory)
 
@@ -282,14 +282,14 @@ Re-running is **idempotent**: the bot identity is reconfigured, not recreated.
 
 ### PowerShell environment (Windows)
 
-|| Variable             | Meaning                                                              |
-||----------------------|----------------------------------------------------------------------|
-|| `AGENT_GIT_NAME`     | Commit author name, e.g. `myagent[bot]`. Preferred identity source. |
-|| `GIT_USER_NAME`      | GitHub handle (e.g. `my-git-user-name`). LAST-RESORT fallback only. |
-|| `GH_TOKEN`           | *(Optional)* A GitHub token for `gh`/API as the bot. Same semantics
-                         |   as the bash flow.                                                    |
-|| `AGENT_GIT_BOT_ID`   | *(hidden fallback)* Numeric id for the bot noreply email. Offline-safe.|
-|| `AGENT_GIT_ALLOW_TMP`| *(hidden)* Opt-in to allow running from an ephemeral location.        |
+| Variable             | Meaning                                                              |
+|----------------------|----------------------------------------------------------------------|
+| `AGENT_GIT_NAME`     | Commit author name, e.g. `myagent[bot]`. Preferred identity source. |
+| `GIT_USER_NAME`      | GitHub handle (e.g. `my-git-user-name`). LAST-RESORT fallback only. |
+| `GH_TOKEN`           | *(Optional)* A GitHub token for `gh`/API as the bot. Same semantics
+|                       |   as the bash flow.                                                    |
+| `AGENT_GIT_BOT_ID`   | *(hidden fallback)* Numeric id for the bot noreply email. Offline-safe.|
+| `AGENT_GIT_ALLOW_TMP`| *(hidden)* Opt-in to allow running from an ephemeral location.        |
 
 The commit author (`user.name` / `user.email`) is set from the required
 variables above — it is **not** optional.

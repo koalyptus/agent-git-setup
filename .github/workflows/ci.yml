@@ -27,11 +27,19 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Run hermetic tests (PowerShell)
+        # GitHub Actions 'shell: pwsh' dot-sources the run-script via
+        # '. {0}'. A non-zero exit from the nested 'pwsh tests/...ps1'
+        # sets $LASTEXITCODE but does NOT fail the step by itself, so we
+        # explicitly check it and exit 1 to surface PowerShell test
+        # failures.
         shell: pwsh
         run: |
-          Set-StrictMode -Version latest
           $ErrorActionPreference = "Stop"
           pwsh tests/agent-git-setup-test.ps1
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "PowerShell test suite exited with code $LASTEXITCODE"
+            exit $LASTEXITCODE
+          }
 
   lint:
     needs: sync-check
@@ -43,39 +51,10 @@ jobs:
       - name: Run shellcheck + shfmt (bash scripts)
         run: make lint-bash
       - name: Install PSScriptAnalyzer + lint PowerShell scripts
-        # The Ubuntu runner ships PSScriptAnalyzer 1.25.0 globally. The
-        # exported cmdlet in 1.25.0 is Invoke-ScriptAnalyzer (older
-        # versions used Invoke-PSScriptAnalyzer). We try the new name
-        # first and fall back to the old name so this works regardless
-        # of which version is on the runner.
-        run: |
-          pwsh -NoProfile -Command '
-            $ErrorActionPreference = "Stop"
-            $installed = Get-Module -ListAvailable -Name PSScriptAnalyzer | Sort-Object Version -Descending | Select-Object -First 1
-            if ($null -eq $installed) {
-              Install-Module -Name PSScriptAnalyzer -Scope CurrentUser -Force -SkipPublisherCheck -AcceptLicense
-              $installed = Get-Module -ListAvailable -Name PSScriptAnalyzer | Sort-Object Version -Descending | Select-Object -First 1
-            }
-            if ($null -eq $installed) { Write-Error "PSScriptAnalyzer not found"; exit 1 }
-            Write-Host "Using PSScriptAnalyzer $($installed.Version) at $($installed.Path)"
-            Import-Module -Name $installed.Path -Force
-            $invoke = @("Invoke-ScriptAnalyzer", "Invoke-PSScriptAnalyzer") |
-              Where-Object { Get-Command -Name $_ -ErrorAction SilentlyContinue } |
-              Select-Object -First 1
-            if ($null -eq $invoke) { Write-Error "Neither Invoke-ScriptAnalyzer nor Invoke-PSScriptAnalyzer exported"; exit 1 }
-            Write-Host "Using cmdlet: $invoke"
-            # -Path accepts a single value in 1.21+; lint each file in its own call.
-            $files = @("scripts/agent-git-setup.ps1", "tests/agent-git-setup-test.ps1")
-            # Only fail on Error severity. Warnings / Information (e.g.
-            # PSAvoidUsingWriteHost on user-facing CLI output) are noted
-            # in the log but do not fail the build.
-            $failed = 0
-            foreach ($f in $files) {
-              Write-Host "--- Linting $f ---"
-              $result = & $invoke -Path $f -Severity Error
-              if ($null -ne $result) { $result | Format-Table -AutoSize }
-              if ($null -ne $result -and @($result).Count -gt 0) { $failed++ }
-            }
-            if ($failed -gt 0) { Write-Error "PSScriptAnalyzer found Error-severity issues in $failed file(s)"; exit 1 }
-            Write-Host "PSScriptAnalyzer: no Error-severity issues found." 
-          '
+        # Use the same wrapper the local `make lint` target uses
+        # (scripts/lint-ps1.ps1). This handles the cmdlet rename
+        # (Invoke-PSScriptAnalyzer -> Invoke-ScriptAnalyzer in 1.21+),
+        # the single-path-only -Path in newer versions, and gates the
+        # step on Error severity (Warning/Information findings are
+        # logged but do not fail the build).
+        run: pwsh scripts/lint-ps1.ps1 scripts/agent-git-setup.ps1 tests/agent-git-setup-test.ps1

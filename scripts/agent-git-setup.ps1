@@ -192,7 +192,7 @@ if ($MODE -eq "preflight") {
 # Setup path (from here down: only runs in setup mode)
 # ---------------------------------------------------------------------------
 
-if (-not (Test-Path "$REPO_PATH/.git") -and -not (Test-Path "$REPO_PATH/.git")) {
+if (-not (Test-Path "$REPO_PATH/.git")) {
     Write-Host "agent-git-setup.ps1: $REPO_PATH is not a git repository" -ForegroundColor Red
     exit 2
 }
@@ -238,13 +238,31 @@ if ($REPO_PATH -eq $SCRIPT_DIR -or $REPO_PATH.StartsWith("$SCRIPT_DIR/")) {
 # ephemeral location, that path is deleted when the session ends, leaving a dangling
 # includeIf in the repo. Refuse in production; the test harness opts in with
 # AGENT_GIT_ALLOW_TMP.
+#
+# $GIT_DIR was already slash-normalized above. We must also slash-normalize every
+# candidate prefix, otherwise $env:TEMP (which on Windows uses backslashes) never
+# matches via StartsWith. We also mirror the bash script's ephemeral set: /tmp,
+# $TMPDIR, /dev/shm, plus the Windows-native TEMP/TMP and C:\Windows\Temp. An
+# empty/unset env var must NOT contribute a "/" prefix that would match every
+# path — we filter out empty entries.
 $ephemeralPrefixes = @(
-    "$env:TEMP/", "$env:TMP/", "C:/Windows/Temp/"
+    'C:/Windows/Temp'
+    'C:/Windows'
+    'C:/Users'
+    '/tmp'
+    '/dev/shm'
 )
+if (-not [string]::IsNullOrEmpty($env:TEMP)) { $ephemeralPrefixes += $env:TEMP }
+if (-not [string]::IsNullOrEmpty($env:TMP))  { $ephemeralPrefixes += $env:TMP  }
+if (-not [string]::IsNullOrEmpty($env:TMPDIR)) { $ephemeralPrefixes += $env:TMPDIR }
+$ephemeralPrefixes = $ephemeralPrefixes |
+    ForEach-Object { $_.Replace('\', '/').TrimEnd('/') } |
+    Where-Object { $_ -ne '' } |
+    Sort-Object -Unique
 foreach ($prefix in $ephemeralPrefixes) {
-    if ($GIT_DIR.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+    if ($GIT_DIR.StartsWith("$prefix/", [System.StringComparison]::OrdinalIgnoreCase)) {
         if ([string]::IsNullOrEmpty($env:AGENT_GIT_ALLOW_TMP)) {
-            Write-Host "agent-git-setup.ps1: ERROR: target repo's .git is in an ephemeral location ($GIT_DIR)." -ForegroundColor Red
+            Write-Host "agent-git-setup.ps1: ERROR: target repo's .git is in an ephemeral location ($GIT_DIR under $prefix/)." -ForegroundColor Red
             Write-Host "agent-git-setup.ps1: configure a persistent repo, not an ephemeral one." -ForegroundColor Red
             exit 2
         }

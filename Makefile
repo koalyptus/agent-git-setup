@@ -22,7 +22,7 @@ test:
 lint:
 	shellcheck $(SCRIPT) $(MINT) $(TEST) $(MINT_TEST)
 	shfmt -d $(SCRIPT) $(MINT) $(TEST) $(MINT_TEST)
-	@if command -v pwsh >/dev/null 2>&1; then pwsh -Command "Invoke-PSScriptAnalyzer -Path $(PSCRIPT) $(PTEST)"; else echo "pwsh not found — skipping PSScriptAnalyzer"; fi
+	@if command -v pwsh >/dev/null 2>&1; then pwsh scripts/lint-ps1.ps1 $(PSCRIPT) $(PTEST); else echo "pwsh not found — skipping PSScriptAnalyzer"; fi
 
 lint-bash:
 	shellcheck $(SCRIPT) $(MINT) $(TEST) $(MINT_TEST)
