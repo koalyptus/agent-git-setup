@@ -47,7 +47,10 @@ jobs:
         run: |
           Set-StrictMode -Version latest
           $ErrorActionPreference = "Stop"
-          Install-Module -Name PSScriptAnalyzer -Scope CurrentUser -Force -ErrorAction SilentlyContinue
-          $result = Invoke-PSScriptAnalyzer -Path scripts/agent-git-setup.ps1 tests/agent-git-setup-test.ps1 -ErrorAction SilentlyContinue
+          if (-not (Get-Module -ListAvailable -Name PSScriptAnalyzer)) {
+            Install-Module -Name PSScriptAnalyzer -Scope CurrentUser -Force -SkipPublisherCheck
+          }
+          Import-Module -Name PSScriptAnalyzer -Force -ErrorAction Stop
+          $result = Invoke-PSScriptAnalyzer -Path scripts/agent-git-setup.ps1 tests/agent-git-setup-test.ps1
           if ($null -ne $result) { $result | Format-Table -AutoSize }
           if ($null -ne $result -and $result.Count -gt 0) { exit 1 }
