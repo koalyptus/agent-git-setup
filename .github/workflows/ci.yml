@@ -64,7 +64,14 @@ jobs:
               Select-Object -First 1
             if ($null -eq $invoke) { Write-Error "Neither Invoke-ScriptAnalyzer nor Invoke-PSScriptAnalyzer exported"; exit 1 }
             Write-Host "Using cmdlet: $invoke"
-            $result = & $invoke -Path scripts/agent-git-setup.ps1 tests/agent-git-setup-test.ps1
-            if ($null -ne $result) { $result | Format-Table -AutoSize }
-            if ($null -ne $result -and @($result).Count -gt 0) { exit 1 }
+            # -Path accepts a single value in 1.21+; lint each file in its own call.
+            $files = @("scripts/agent-git-setup.ps1", "tests/agent-git-setup-test.ps1")
+            $failed = 0
+            foreach ($f in $files) {
+              Write-Host "--- Linting $f ---"
+              $result = & $invoke -Path $f
+              if ($null -ne $result) { $result | Format-Table -AutoSize }
+              if ($null -ne $result -and @($result).Count -gt 0) { $failed++ }
+            }
+            if ($failed -gt 0) { Write-Error "PSScriptAnalyzer found issues in $failed file(s)"; exit 1 }
           '
