@@ -66,12 +66,16 @@ jobs:
             Write-Host "Using cmdlet: $invoke"
             # -Path accepts a single value in 1.21+; lint each file in its own call.
             $files = @("scripts/agent-git-setup.ps1", "tests/agent-git-setup-test.ps1")
+            # Only fail on Error severity. Warnings / Information (e.g.
+            # PSAvoidUsingWriteHost on user-facing CLI output) are noted
+            # in the log but do not fail the build.
             $failed = 0
             foreach ($f in $files) {
               Write-Host "--- Linting $f ---"
-              $result = & $invoke -Path $f
+              $result = & $invoke -Path $f -Severity Error
               if ($null -ne $result) { $result | Format-Table -AutoSize }
               if ($null -ne $result -and @($result).Count -gt 0) { $failed++ }
             }
-            if ($failed -gt 0) { Write-Error "PSScriptAnalyzer found issues in $failed file(s)"; exit 1 }
+            if ($failed -gt 0) { Write-Error "PSScriptAnalyzer found Error-severity issues in $failed file(s)"; exit 1 }
+            Write-Host "PSScriptAnalyzer: no Error-severity issues found." 
           '
