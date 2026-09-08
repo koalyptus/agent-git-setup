@@ -174,8 +174,28 @@ The token is short-lived (~1h); re-run step 2 for a fresh one in long sessions.
   `GH_TOKEN`/`AGENT_GIT_BOT_ID` env vars apply as on bash.
 
 ## Steps
-1. **If you need `gh`/API as the bot (PRs, issues, comments), this step is MANDATORY.** Mint and export `GH_TOKEN` — automatically from the one-time credentials file (see Happy path step 1): `source <(./scripts/mint-token.sh --shell)`. With the credentials file in place this needs **no env vars and no args**; `GH_TOKEN` is exported in-session. (If `GITHUB_APP_ID`/`GITHUB_APP_PEM` are already set in the environment, or passed as `--app-id`/`--pem`, those take precedence.) *Before* any `gh`/API call — without `GH_TOKEN`, `gh` silently falls back to the human's `gh auth` login and every comment/PR/issue is attributed to the human, not the bot. This is the single most common failure: the agent does git-commit work as the bot but posts to GitHub as the human because `GH_TOKEN` was never exported. Not needed for the local commit author alone. Then resolve `GIT_USER_NAME` to a numeric id via the public GitHub API (`GET /users/<handle>` — unauthenticated; add `Authorization: Bearer ${GH_TOKEN}` only when a token is set):
-   `curl -s https://api.github.com/users/$GIT_USER_NAME | jq .id` (unauthenticated, public; add `Authorization: Bearer ${GH_TOKEN}` only when a `GH_TOKEN` is needed for `gh`/API).
+1. **Token provisioning is the standard first action.** Before any `gh`/API call,
+   the agent (or harness) sources the token so it is present in the session:
+   ```bash
+   source <(scripts/mint-token.sh --shell)
+   ```
+   With the credentials file in place (one-time setup per App, Happy path step 1)
+   this needs **no env vars and no args** — the token is minted and exported
+   in-session. (If `GITHUB_APP_ID`/`GITHUB_APP_PEM` are already set in the
+   environment, or passed as `--app-id`/`--pem`, those take precedence.)
+   Without a token in the environment, `gh` falls back to the ambient `gh auth`
+   login — the agent's shell inherits the human's `gh` config by default when
+   `GH_TOKEN` is absent. The practical mitigation (no env-level hack, no wrapper)
+   is: token present by default via auto-provisioning, and `--preflight` as a
+   pre-work gate (step 4). What the tool cannot do: detect and block a mid-session
+   token expiry that the agent does not handle — the agent must detect an auth
+   failure, re-mint, and retry. Not needed for the local commit author alone.
+   Then resolve `GIT_USER_NAME` to a numeric id via the public GitHub API
+   (`GET /users/<handle>` — unauthenticated; add `Authorization: Bearer ***`
+   only when a token is set):
+   `curl -s https://api.github.com/users/$GIT_USER_NAME | jq .id`
+   (unauthenticated, public; add `Authorization: Bearer ***` only when a
+   `GH_TOKEN` is needed for `gh`/API).
 2. Export `AGENT_GIT_NAME` / `GIT_USER_NAME`.
 3. Run `scripts/agent-git-setup.sh <repo-dir>` once per repo — `<repo-dir>` is
    any worktree or the main repo (or omit it to use cwd). In practice,
@@ -206,9 +226,24 @@ export GIT_USER_NAME="my-git-user-name"   # handle; resolved to numeric id via A
 - **No origin is fine.** If the repo has no `origin`, the script still sets the bot commit author; only the (optional) push remote is absent. Plain `git push` uses the human account owner's push credential by default — the PR/API actor is the bot via `GH_TOKEN`, not `git push`.
 - **No worktreeConfig needed.** The script uses git's `includeIf` conditional include, which works on git 2.43+ without any extension or harness setup. The main repo's own `.git` directory is excluded by the glob, so it stays human. `GH_TOKEN` in env drives `gh`/API as the bot — **not** rewriting `origin`.
 - **Token expiry.** `GH_TOKEN` is typically short-lived (~1h). If a token expires while a sub-agent is still working, commits using that token will fail. The agent should detect the failure, re-run `scripts/mint-token.sh` (or its configured token minter) for a fresh `GH_TOKEN`, and retry the work.
-- **Silent human fallback (the #1 gotcha).** If `GH_TOKEN` is NOT in the environment when the agent makes a `gh`/API call (comment, PR, issue), `gh` silently uses the human's `gh auth` login — so the post lands under the human, not the bot. There is no error. The only fix is to mint+export `GH_TOKEN` (skill step 2) *before* any `gh`/API call. If you provided a GitHub App prompt and still see human-attributed comments, suspect a missing `GH_TOKEN` first.
+- **Token provisioning is the standard first action.** Before any `gh`/API call, the agent (or harness) sources the token into the session:
+  ```bash
+  source <(scripts/mint-token.sh --shell)
+  # GH_TOKEN is now exported; agent can make gh/API calls as the bot
+  ```
+  With the credentials file in place (one-time setup per App), this needs **no env
+  vars and no args** — the token is minted and exported in-session. This is the
+  expected, primary token source for the GitHub App flow; the agent's first action
+  (or the harness's session-start hook) should be to source the mint, so the bot
+  token is present by default. Without a token in the environment, `gh` falls back
+  to the ambient `gh auth` login — the agent's shell inherits the human's `gh`
+  config by default when `GH_TOKEN` is absent, and `gh` uses it silently. The
+  practical mitigation (no env-level hack, no wrapper) is: token present by default
+  via auto-provisioning, and `--preflight` as a pre-work gate (below). What the tool
+  cannot do from here: detect and block a mid-session token expiry that the agent
+  does not handle — the agent must detect an auth failure, re-mint, and retry.
 - **`cryptography` required for minting.** `scripts/mint-token.sh` needs `python3 -c "import cryptography"`. `scripts/agent-git-setup.sh` does NOT need it.
-- **Push/PR as the bot.** The agent opens PRs as the bot via `gh` + `GH_TOKEN`. The script only sets commit AUTHOR identity and never rewrites `origin`; the bot PR actor comes from `GH_TOKEN`. Run `scripts/agent-git-setup.sh --preflight .` on Linux/macOS or `scripts/agent-git-setup.ps1 --preflight .` on Windows before any git/gh work — it fails closed when the bot commit identity is not in effect (you are not in a linked worktree of the target repo, so commits would be attributed to the account owner) or when `GH_TOKEN` is missing. The check is effect-based, not path-based: it verifies `git` resolves `user.name` to `AGENT_GIT_NAME`, so any harness that creates a proper `git worktree` of the repo satisfies it regardless of where that worktree lives on disk.
+- **Push/PR as the bot.** The agent opens PRs as the bot via `gh` + `GH_TOKEN`. The script only sets commit AUTHOR identity and never rewrites `origin`; the bot PR actor comes from `GH_TOKEN`. Run `scripts/agent-git-setup.sh --preflight .` on Linux/macOS or `scripts/agent-git-setup.ps1 --preflight .` on Windows before any git/gh work — it fails closed when the bot commit identity is not in effect (you are not in a linked worktree of the target repo, so commits would be attributed to the account owner) or when `GH_TOKEN` is missing. The check is **effect-based, not path-based**: it verifies `git` resolves `user.name` to `AGENT_GIT_NAME`, so any harness that creates a proper `git worktree` of the repo satisfies it regardless of where that worktree lives on disk. It is a pre-work gate, not continuous enforcement: it verifies the token is present and resolves to a Bot actor *before* work starts; it does not watch for mid-session token expiry. With token auto-provisioning as the standard first action (step 1) the most common trigger (agent forgot to mint) is handled; the agent must still detect an auth failure mid-session, re-mint, and retry.
 
 ## Windows / PowerShell native support
 
