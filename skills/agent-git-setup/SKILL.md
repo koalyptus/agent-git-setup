@@ -127,7 +127,23 @@ harnesses can fetch the support files).
    plain `git push` uses the human's credential. The agent must not touch the
    main tree's `user.name`/`user.email` or global git config.
 
-The token is short-lived (~1h); re-run step 2 for a fresh one in long sessions.
+   **Per-session: token provisioning.** The commit-author identity (step 4) is
+   set once per repo and persists — every future worktree inherits it. The
+   `GH_TOKEN` (step 2) does **not** persist: it is short-lived (~1h), env-only,
+   and must be re-minted every new session. At the start of every new session, the
+   harness (or the agent as its very first action before any `gh`/API call) should
+   source `mint-token.sh --shell` to export `GH_TOKEN` into the agent's
+   environment:
+   ```bash
+   source <(scripts/mint-token.sh --shell)
+   # GH_TOKEN is now exported; agent can make gh/API calls as the bot
+   ```
+   Without this, every `gh`/API call falls back to the human's `gh auth` silently
+   (the agent's shell inherits the human's `gh` config when `GH_TOKEN` is absent).
+   There is no reliable harness-agnostic mechanism to *guarantee* this happens each
+   session — the skill can only state the expectation. Run
+   `scripts/agent-git-setup.sh --preflight` before any `gh`/API work to detect
+   when it was skipped (fail-closed if token missing or resolves to the human).
 
 ## Key concepts
 - **Commit author = bot name + bot noreply email; PR/API actor = bot via `GH_TOKEN`; plain `git push` = your credential.** The included file gets `user.name` (bot name) + `user.email` (bot noreply). `GH_TOKEN` in the environment drives `gh`/API (PRs, issues, comments) as the bot — the agent opens PRs as the bot. Plain `git push` uses the human account owner's credential by default (the script never rewrites `origin`, because worktrees share remotes and rewriting would touch the main tree). `GH_TOKEN` is mandatory in the agent flow; run `--preflight` before any git/gh work.
@@ -210,8 +226,8 @@ The token is short-lived (~1h); re-run step 2 for a fresh one in long sessions.
 ```bash
 # if needed, fetch the helper (agent clones deterministically; see Happy path step 4)
 git clone --depth 1 https://github.com/koalyptus/agent-git-setup.git /tmp/agent-git-setup 2>/dev/null || true
-source <(/tmp/agent-git-setup/scripts/mint-token.sh --app-id 4646191 --pem /path/to/myagent.pem --shell)
-export AGENT_GIT_NAME="myagent[bot]"
+source <(/tmp/agent-git-setup/scripts/mint-token.sh --app-id [APP_ID] --pem [/path/to/app-private-key.pem] --shell)
+export AGENT_GIT_NAME="[bot-name][bot]"
 export GIT_USER_NAME="my-git-user-name"   # handle; resolved to numeric id via API
 
 /tmp/agent-git-setup/scripts/agent-git-setup.sh .   # cwd = the agent's worktree (harness-made, Linux/macOS)

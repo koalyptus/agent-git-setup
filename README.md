@@ -101,7 +101,7 @@ Use the agent-git-setup skill. Set up a bot git identity for current repo.
 
 AGENT_GIT_NAME=[myagent[bot]]
 GIT_USER_NAME=[my-git-user-name]
-GITHUB_APP_ID=[4646191]
+GITHUB_APP_ID=[1234567]
 GITHUB_APP_PEM=[/path/to/myagent.pem]
 ```
 
