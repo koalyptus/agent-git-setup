@@ -9,60 +9,31 @@ platforms: [linux, macos, windows]
 
 # Agent Git Setup
 
-Give an AI agent its own bot identity so its git commits are attributed to
-`<name>[bot]` instead of the human's account.
+Give an AI agent its own bot identity so commits are attributed to `<name>[bot]`, not the human's account.
 
 ## When to use
-- An agent is about to do git work (commits, PRs) and you want it
-  attributed to a bot identity `<name>[bot]` rather than the human's account.
-- You want that bot identity **scoped to the agent's worktree** so the human's
-  main checkout and global git config are never touched.
-- Triggers: "commit as a bot", "agent should commit as <bot>", "separate bot
-  identity for the agent", "give the agent its own git identity".
 
-Do NOT use this for a human's normal interactive git login — that is a personal
-PAT/SSH concern. This is for automation/bot attribution.
+- Agent does git work (commits, PRs) and should appear as `<name>[bot]`.
+- Bot identity scoped to the agent's worktree; human's main checkout + global git config untouched.
+- Triggers: "commit as a bot", "agent should commit as <bot>", "separate bot identity for the agent".
 
-## Scope (important)
+Do NOT use for a human's normal git login — that is personal PAT/SSH. This is for automation/bot attribution.
 
-This skill is **identity-only**. It does NOT create worktrees, does NOT install
-hooks, does NOT rewrite remotes, and does NOT impose a path or branch
-convention. Those are the **harness's** responsibility. The harness places the
-agent in a worktree; this skill only writes the bot commit identity into that
-worktree's OWN config. This keeps it from interfering with any harness's own
-worktree/hook/branch management.
+## Scope (read first)
 
-## Design
+- **Identity-only.** Does NOT create worktrees, install hooks, rewrite remotes, or impose path/branch conventions. Those are the **harness's** job.
+- Harness places agent in a worktree; this skill writes bot commit identity into that worktree.
+- Keeps harness's own worktree/hook/branch management untouched.
 
-**Local commits** use the **bot noreply email** so the agent name appears in the
-GitHub commit list. No SSH signing by default — the "verified" badge is
-not worth the key management complexity for ephemeral agent environments
-(matches industry standard: Codex, Claude Code, Cursor, Copilot).
+## What persists vs what doesn't
 
-**Git-only flow:** bot noreply, no signing → agent name shows, no badge.
-**GitHub App flow:** bot noreply for local commits + `gh` with `GH_TOKEN` for
-API commits (GitHub signs server-side → agent name + Verified badge).
+- **Commit author identity (step 4):** set ONCE per repo via `includeIf`. Persists. Every future worktree inherits it automatically. No per-session action.
+- **GH_TOKEN (step 2):** does NOT persist. Short-lived (~1h), env-only. Must be re-minted every new session. Without it, every `gh`/API call falls back to the human's `gh auth` silently.
 
-## Happy path (end-to-end, self-contained)
+## Happy path
 
-This skill is meant to be used standalone: the agent installs the bot identity
-without needing any other tooling. Everything lives in this repo
-(`scripts/agent-git-setup.sh`, `scripts/mint-token.sh`,
-`scripts/agent-git-setup.ps1`, `skills/agent-git-setup/SKILL.md`,
-and the bundled copies in `skills/agent-git-setup/scripts/` so skill-install
-harnesses can fetch the support files).
+1. **One-time: write credentials file.** Agent writes from `GITHUB_APP_ID` + `GITHUB_APP_PEM` (path) in the user's prompt. One file per App, under `credentials.d/` keyed by App ID.
 
-> **Skill bundle:** `skills/agent-git-setup/scripts/*` is a bundled copy of
-> `scripts/*` so a skill-install harness can fetch the support files. The
-> repo root is the source of truth. If you edit a root script, run
-> `make sync-skill-scripts` and commit the bundle copy in the same commit.
-
-1. **The agent writes the one-time credentials file** from the `GITHUB_APP_ID` /
-   `GITHUB_APP_PEM` values in the user's prompt. These come from a GitHub App
-   created beforehand (one-time, outside this flow) and its downloaded PEM; the
-   user pastes the App ID and the PEM *path* into the prompt. The agent writes
-   the file itself, once, under `credentials.d/` keyed by App ID (so each App /
-   repo identity is independent):
    ```bash
    CRED_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/agent-git-setup"
    mkdir -p "$CRED_DIR/credentials.d"
@@ -71,229 +42,133 @@ harnesses can fetch the support files).
    GITHUB_APP_PEM=${GITHUB_APP_PEM}
    AGENT_GIT_BOT_ID=${AGENT_GIT_BOT_ID}
    EOF
-   # NOTE: the agent does NOT set file permissions. The user must chmod 600
-   # this file (and the PEM) — see the File-permissions pitfall.
+   # User must chmod 600 this file + the PEM. Agent never sets permissions.
    ```
-   `AGENT_GIT_BOT_ID` is the App's **single, static bot user id** (the numeric
-   id of the `<app-slug>[bot]` account — find it once on the App's bot account
-   page, or via `gh api users/<app-slug>[bot]`). It is the commit-email prefix
-   that makes commits attribute to the **bot account**, not the human. If it is
-   absent, `agent-git-setup.sh` falls back to the human's noreply (bot name
-   still shows, but the commit is filed under the human account). `mint-token.sh
-   --shell` re-emits `AGENT_GIT_BOT_ID` from this file so the value stays in the
-   agent's environment across sessions.
-   `mint-token.sh` resolves creds in this order: explicit `--credentials`/`AGENT_GIT_CREDENTIALS` → `credentials.d/credentials-<APP_ID>.env` (auto-picked from the App ID in the prompt, no name→app-id mapping needed) → global `credentials.env` (single-identity default). So one bot per repo is first-class: give a distinct App ID per repo, and the right creds file is found automatically. The file holds only the public App ID, the **path** to the PEM, and the static bot id — never the PEM bytes or a live token. The user's handle `GIT_USER_NAME` (e.g. `my-git-user-name`) is also given in the prompt; the skill/script resolves it to the numeric id via the GitHub API — no `curl | jq` by the user.
-2. **Mint a token (arg-free, automatic from the credentials file):** every
-   session the agent runs — no env vars, no `--app-id`/`--pem` needed:
-   ```bash
-   source <(./scripts/mint-token.sh --shell)
-   # GH_TOKEN is now exported in the agent's shell
-   ```
-   If `GITHUB_APP_ID`/`GITHUB_APP_PEM` are already in the environment or passed
-   as args, those win; otherwise the credentials file is sourced. This is why the
-   agent is a GitHub actor **without you passing a token each session** — but the
-   token itself is per-session (GitHub issues ~1h tokens; the script re-mints on
-   demand). See the split note below.
-3. **Set the bot identity (human gives the handle, agent resolves the id):**
-   ```bash
-   export AGENT_GIT_NAME="myagent[bot]"
-   export GIT_USER_NAME="my-git-user-name"   # handle; the skill/script resolves it to the numeric id
-   ```
-4. **Run the setup once per repo.** The script writes the bot identity to the
-   shared repo config (via git's `includeIf` conditional-include) so that **every
-   worktree** of the repo — including ones created later — commits as the bot,
-   while the main repo stays human. Run it from any worktree or the main repo:
-   ```bash
-   git clone --depth 1 https://github.com/koalyptus/agent-git-setup.git /tmp/agent-git-setup 2>/dev/null || true
-   /tmp/agent-git-setup/scripts/agent-git-setup.sh .          # cwd = the repo (Linux/macOS)
-   /tmp/agent-git-setup/scripts/agent-git-setup.ps1 .        # cwd = the repo (Windows)
-   # or: /tmp/agent-git-setup/scripts/agent-git-setup.sh /path/to/repo
-   ```
-   It does NOT create worktrees, does NOT create branches, and does NOT touch
-   your main checkout. After writing, it prints `isolation verified — main
-   tree untouched, all worktrees bot`. Future worktrees inherit the bot
-   identity automatically — no re-run needed.
 
-   **No worktreeConfig needed:** the script uses git's `includeIf` conditional
-   include (`gitdir/i:**/.git/worktrees/**`), which works without
-   `extensions.worktreeConfig` and needs no harness setup. The main repo's own
-   `.git` directory does not match the glob, so it stays human.
-5. **Work inside any worktree** the harness created. Every worktree already
-   commits as `<name>[bot]`; `gh`/API calls use the bot; your main tree is
-   untouched. **Agent must not** rewrite `origin` or set `remote.origin.url` in
-   the worktree (or anywhere else) — that would leak the bot push credential
-   into the main tree. The bot actor for `gh`/API (PRs, issues, comments) comes
-   from `GH_TOKEN` in the agent's environment, **not** from a rewritten origin;
-   plain `git push` uses the human's credential. The agent must not touch the
-   main tree's `user.name`/`user.email` or global git config.
+   `AGENT_GIT_BOT_ID` = numeric id of `<app-slug>[bot]` (the account GitHub created for the App). It is the email prefix that makes commits file under the **bot account**, not the human. Resolve once via `gh api users/<app-slug>[bot]` or set directly. If absent, setup falls back to human noreply (bot name shows, but commit filed under human — silent, no error). `mint-token.sh --shell` re-emits it so it survives across sessions.
 
-   **Per-session: token provisioning.** The commit-author identity (step 4) is
-   set once per repo and persists — every future worktree inherits it. The
-   `GH_TOKEN` (step 2) does **not** persist: it is short-lived (~1h), env-only,
-   and must be re-minted every new session. At the start of every new session, the
-   harness (or the agent as its very first action before any `gh`/API call) should
-   source `mint-token.sh --shell` to export `GH_TOKEN` into the agent's
-   environment:
+   Credentials file holds: public App ID + PEM **path** + bot id. Never the PEM bytes or a live token.
+
+   `mint-token.sh` resolves creds: explicit `--credentials`/`AGENT_GIT_CREDENTIALS` → `credentials.d/credentials-<APP_ID>.env` → global `credentials.env`. One bot per repo = first-class.
+
+2. **Every session: mint + export GH_TOKEN.** Before any `gh`/API call. No env vars, no args needed (credentials file has them).
+
    ```bash
    source <(scripts/mint-token.sh --shell)
-   # GH_TOKEN is now exported; agent can make gh/API calls as the bot
+   # GH_TOKEN exported in agent's shell
    ```
-   Without this, every `gh`/API call falls back to the human's `gh auth` silently
-   (the agent's shell inherits the human's `gh` config when `GH_TOKEN` is absent).
-   There is no reliable harness-agnostic mechanism to *guarantee* this happens each
-   session — the skill can only state the expectation. Run
-   `scripts/agent-git-setup.sh --preflight` before any `gh`/API work to detect
-   when it was skipped (fail-closed if token missing or resolves to the human).
 
-## Key concepts
-- **Commit author = bot name + bot noreply email; PR/API actor = bot via `GH_TOKEN`; plain `git push` = your credential.** The included file gets `user.name` (bot name) + `user.email` (bot noreply). `GH_TOKEN` in the environment drives `gh`/API (PRs, issues, comments) as the bot — the agent opens PRs as the bot. Plain `git push` uses the human account owner's credential by default (the script never rewrites `origin`, because worktrees share remotes and rewriting would touch the main tree). `GH_TOKEN` is mandatory in the agent flow; run `--preflight` before any git/gh work.
-- **Worktree isolation.** All bot config is scoped to the worktree's own config file. The human's main tree stays theirs. No collision, no `git config` discipline required.
-- **Identity only — no worktree management.** The harness owns worktree creation, branching, hooks, and `core.hooksPath`. This skill only writes commit-author identity. It will not install guard hooks or push the branch; committing is the agent's job, pushing/opening PRs is the human's.
-- **Token minting is fundamental.** The happy path requires a token, and this repo provides `scripts/mint-token.sh` to mint one from a GitHub App (RS256 JWT, needs only `python3` + `cryptography`). It is the expected, primary token source — not an optional extra. `scripts/agent-git-setup.sh` itself stays token-agnostic (it only *consumes* `GH_TOKEN`), which means other backends may supply a token their own way too, but for this repo's standalone flow `scripts/mint-token.sh` is what the agent uses.
-- **Backend-neutral.** Works under any agent/harness. Both
-  `scripts/agent-git-setup.sh` (bash) and `scripts/agent-git-setup.ps1`
-  (PowerShell) provide the same identity-only semantics.
+   If `GITHUB_APP_ID`/`GITHUB_APP_PEM` already in env or passed as `--app-id`/`--pem`, those win.
+
+   **At the start of every new session**, the harness (or the agent as its very first action before any `gh`/API call) should do this. Without it, `gh` falls back to the human's `gh auth` silently (agent's shell inherits human's `gh` config when `GH_TOKEN` absent).
+
+   No reliable harness-agnostic mechanism guarantees this happens each session — the skill can only state the expectation. Run `--preflight` before any `gh`/API work to detect a skipped session (fail-closed).
+
+3. **Export bot identity vars.**
+
+   ```bash
+   export AGENT_GIT_NAME="myagent[bot]"   # replace with your bot's name (GitHub creates it as <app>[bot])
+   export GIT_USER_NAME="my-git-user-name"         # HUMAN's handle — last-resort fallback only
+   ```
+
+   `AGENT_GIT_NAME`: bot's display name. Bot's numeric id resolved from it via `gh api users/<slug>[bot]` (public, no auth) — OR set `AGENT_GIT_BOT_ID` directly (offline-safe). The resolved id is persisted into the credentials file.
+
+   `GIT_USER_NAME`: the **human account owner's** handle. Used ONLY as last-resort fallback when bot id cannot be resolved. Prefer `AGENT_GIT_BOT_ID`/`AGENT_GIT_NAME` so commits stay bot. Never treat as the agent's handle.
+
+4. **Run setup once per repo.** Writes bot identity via `includeIf` into shared repo config. Every worktree (present + future) inherits. Main repo stays human.
+
+   ```bash
+   git clone --depth 1 https://github.com/koalyptus/agent-git-setup.git /tmp/agent-git-setup 2>/dev/null || true
+   /tmp/agent-git-setup/scripts/agent-git-setup.sh .    # Linux/macOS
+   /tmp/agent-git-setup/scripts/agent-git-setup.ps1 .   # Windows
+   ```
+
+   Does NOT create worktrees, branches, or touch main checkout. Prints isolation check. No `worktreeConfig` extension needed (`includeIf` works on git 2.43+).
+
+5. **Agent works inside the harness's worktree.** Commits there = `<name>[bot]`. Main tree untouched.
+
+   - Agent must NOT rewrite `origin` or set `remote.origin.url` (leaks bot push credential into main tree — worktrees share remotes).
+   - Bot actor for `gh`/API (PRs, issues, comments) = `GH_TOKEN` in env, NOT rewritten origin.
+   - Plain `git push` = human's credential (by design).
+   - Agent must NOT touch main tree's `user.name`/`user.email` or global git config.
 
 ## Prerequisites
-- A git repository the agent should work in (any git >= 2.43). The harness may
-  place the agent in a worktree; the script scopes bot identity to **all**
-  worktrees via `includeIf` and needs no `worktreeConfig` extension.
-- **`gh` (GitHub CLI) is required for the bot GitHub-actor path.** Local
-  commits need only `git` (no token, no `gh`). But if the agent opens PRs,
-  comments, or otherwise acts on GitHub as the bot, it does so via `gh` +
-  `GH_TOKEN` — so `gh` must be installed **and** a `GH_TOKEN` minted. The
-  script does not rewrite `origin` or push directly. `--preflight` fails
-  closed when `GH_TOKEN` is missing (so `gh` cannot silently fall back to your
-  human `gh auth` login) and when the bot commit identity is not actually in
-  effect for the repo you are in (e.g. a main checkout, detached checkout, or
-  a separate clone — not a linked worktree of the target repo). It goes
-  further than "is a token set": it verifies the EFFECTIVE `gh` actor via
-  `gh api user`. If the token resolves to a **human** (User) account instead of
-  a **Bot**, `--preflight` refuses. The agent must stop and ask the account owner
-  for explicit approval; only on that approval does the agent set
-  `AGENT_GIT_ALLOW_HUMAN_ACTOR=1` (for the session) and re-run preflight. There is
-  no default and no silent fallback. An account-owner PAT in `GH_TOKEN` is the
-  classic bug (every `gh`/API call lands under the account owner); this check
-  catches it. When `gh`/network is unavailable it degrades to a WARNING (cannot
-  verify identity) rather than a hard block, so hermetic/offline runs still
-  proceed — but the agent must still mint the bot token as the documented happy
-  path in that case.
-- The bot identity:
-  - `AGENT_GIT_NAME` — e.g. `myagent[bot]`. The bot's own numeric id is resolved from this name via `gh api users/<slug>[bot]` (your `gh` auth — the App JWT / install token minted by `mint-token.sh` cannot resolve it). `AGENT_GIT_BOT_ID` can override it with the numeric id directly (offline-safe, no API call). The agent persists the resolved id into the credentials file as `AGENT_GIT_BOT_ID`.
-  - `GIT_USER_NAME` — the **account owner's** GitHub handle (e.g. `my-git-user-name`), not the agent's. Used **only as a last-resort fallback** when the bot id cannot be resolved, so the setup still succeeds attributed to the account owner rather than failing. Prefer `AGENT_GIT_NAME`/`AGENT_GIT_BOT_ID` so commits stay bot. The script resolves it to a numeric id via the GitHub API only on that fallback path.
-  - `GH_TOKEN` — **required in the agent flow** (the agent opens PRs / acts on GitHub as the bot). The agent mints and exports it before any `gh`/API call and before `--preflight`. Not needed for the local commit author alone. `--preflight` verifies the token resolves to a **Bot** actor (`gh api user`); if it resolves to the account owner, the agent re-mints the bot token (preferred) or, only on the account owner's explicit approval, sets `AGENT_GIT_ALLOW_HUMAN_ACTOR=1` and proceeds as the account owner for that session.
-  - `AGENT_GIT_ALLOW_HUMAN_ACTOR` — *(default unset)* the agent sets this to `1` ONLY after the account owner explicitly approves acting as them (last resort when bot-token mint fails). It is the agent's record of that approval; the account owner never sets it by hand. There is no default: an account-owner PAT passed as `GH_TOKEN` makes `--preflight` fail closed until the agent sets this on approval. Never use it as a workaround for a missing bot token — mint the bot token instead (`source <(scripts/mint-token.sh --shell)`).
-- `python3` with the `cryptography` package if you use `scripts/mint-token.sh` (GitHub App path). Not needed for Git-only commit author.
-- A GitHub App (App ID + PEM) — only if you use `scripts/mint-token.sh` for `gh`/API as the bot (see README §2). Not needed for Git-only.
-- **PowerShell 7+** (Windows only). `scripts/agent-git-setup.ps1` requires
-  PowerShell 7+ Core and `git`. The same `AGENT_GIT_NAME`/`GIT_USER_NAME`/
-  `GH_TOKEN`/`AGENT_GIT_BOT_ID` env vars apply as on bash.
 
-## Steps
-1. **Token provisioning is the standard first action.** Before any `gh`/API call,
-   the agent (or harness) sources the token so it is present in the session:
-   ```bash
-   source <(scripts/mint-token.sh --shell)
-   ```
-   With the credentials file in place (one-time setup per App, Happy path step 1)
-   this needs **no env vars and no args** — the token is minted and exported
-   in-session. (If `GITHUB_APP_ID`/`GITHUB_APP_PEM` are already set in the
-   environment, or passed as `--app-id`/`--pem`, those take precedence.)
-   Without a token in the environment, `gh` falls back to the ambient `gh auth`
-   login — the agent's shell inherits the human's `gh` config by default when
-   `GH_TOKEN` is absent. The practical mitigation (no env-level hack, no wrapper)
-   is: token present by default via auto-provisioning, and `--preflight` as a
-   pre-work gate (step 4). What the tool cannot do: detect and block a mid-session
-   token expiry that the agent does not handle — the agent must detect an auth
-   failure, re-mint, and retry. Not needed for the local commit author alone.
-   Then resolve `GIT_USER_NAME` to a numeric id via the public GitHub API
-   (`GET /users/<handle>` — unauthenticated; add `Authorization: Bearer ***`
-   only when a token is set):
-   `curl -s https://api.github.com/users/$GIT_USER_NAME | jq .id`
-   (unauthenticated, public; add `Authorization: Bearer ***` only when a
-   `GH_TOKEN` is needed for `gh`/API).
-2. Export `AGENT_GIT_NAME` / `GIT_USER_NAME`.
-3. Run `scripts/agent-git-setup.sh <repo-dir>` once per repo — `<repo-dir>` is
-   any worktree or the main repo (or omit it to use cwd). In practice,
-   clone once to `/tmp` and run from there:
-   ```bash
-   git clone --depth 1 https://github.com/koalyptus/agent-git-setup.git /tmp/agent-git-setup 2>/dev/null || true
-   /tmp/agent-git-setup/scripts/agent-git-setup.sh .
-   ```
-4. Direct the agent to do its git work **inside the worktree the harness created**. Commits there are `<name>[bot]`; the human's main tree is untouched.
+- Git repo the agent works in (git >= 2.43). Harness places agent in worktree; `includeIf` scopes to all worktrees, no `worktreeConfig` needed.
+- `gh` (GitHub CLI) required for bot GitHub-actor path (PRs, comments, API commits). Local commits need only `git`.
+- `python3` + `cryptography` if using `mint-token.sh` (GitHub App path). Not needed for Git-only commit author.
+- GitHub App (App ID + PEM) only if using `mint-token.sh` for gh/API as bot. Not needed for Git-only.
+- PowerShell 7+ for `agent-git-setup.ps1` (Windows). Same env vars as bash.
+
+## Before any git/gh work: --preflight
+
+```bash
+scripts/agent-git-setup.sh --preflight .   # Linux/macOS
+scripts/agent-git-setup.ps1 --preflight .  # Windows
+```
+
+- Fails closed if: bot commit identity not in effect (not in a linked worktree of target repo, main checkout, detached checkout, separate clone) OR `GH_TOKEN` missing OR `GH_TOKEN` resolves to human (not bot).
+- Verifies EFFECT (not path): `git config user.name` resolves to `AGENT_GIT_NAME`, so any proper worktree of the repo passes regardless of where it lives on disk.
+- Verifies effective `gh` actor via `gh api user`: 403 = bot install token (pass), 200 type=User = human PAT (fail unless `AGENT_GIT_ALLOW_HUMAN_ACTOR=1`), anything else = cannot verify (warn, not block).
+- Pre-work gate, NOT continuous enforcement. Does not watch for mid-session token expiry. Agent must detect auth failure mid-session, re-mint, retry.
+- When `gh`/network unavailable: degrades to WARNING, not hard block (hermetic/offline runs still proceed — agent must still mint bot token as happy path).
+
+## Consent to act as human (last resort only)
+
+- `AGENT_GIT_ALLOW_HUMAN_ACTOR=1` — agent sets ONLY after account owner explicitly approves (out of band, e.g. chat). Account owner never types it by hand.
+- Default unset. Human PAT in `GH_TOKEN` → `--preflight` fails closed until agent sets this on approval.
+- Never use as workaround for missing bot token — mint bot token instead.
 
 ## Example
+
 ```bash
-# if needed, fetch the helper (agent clones deterministically; see Happy path step 4)
 git clone --depth 1 https://github.com/koalyptus/agent-git-setup.git /tmp/agent-git-setup 2>/dev/null || true
 source <(/tmp/agent-git-setup/scripts/mint-token.sh --app-id [APP_ID] --pem [/path/to/app-private-key.pem] --shell)
-export AGENT_GIT_NAME="[bot-name][bot]"
-export GIT_USER_NAME="my-git-user-name"   # handle; resolved to numeric id via API
+export AGENT_GIT_NAME="[bot-name]"
+export GIT_USER_NAME="my-git-user-name"
 
-/tmp/agent-git-setup/scripts/agent-git-setup.sh .   # cwd = the agent's worktree (harness-made, Linux/macOS)
-/tmp/agent-git-setup/scripts/agent-git-setup.ps1 . # cwd = the agent's worktree (harness-made, Windows)
-# agent commits as myagent[bot]; it opens PRs as myagent[bot] via gh + GH_TOKEN
+/tmp/agent-git-setup/scripts/agent-git-setup.sh .    # Linux/macOS
+/tmp/agent-git-setup/scripts/agent-git-setup.ps1 .   # Windows
+# agent commits as myagent[bot]; opens PRs as myagent[bot] via gh + GH_TOKEN
 ```
 
 ## Pitfalls
-- **Bot id comes from the bot name, not the human's handle.** The bot's numeric id is resolved from `AGENT_GIT_NAME` via `gh api users/<slug>[bot]` (your `gh` auth — the App JWT / install token cannot resolve it) — or set directly via `AGENT_GIT_BOT_ID`. The agent persists the resolved id into the credentials file. That is the primary identity. `GIT_USER_NAME` is the **human account owner's** handle, used **only as a last-resort fallback**: if the bot id cannot be resolved, commits are attributed to the human so setup still succeeds. The agent must not treat `GIT_USER_NAME` as its own handle — it belongs to the person who owns the repo. The commit/commit-email is `<id>+<AGENT_GIT_NAME>@users.noreply.github.com` — agent name appears in the commit list. `GIT_USER_ID` can still be set directly for hermetic tests or offline use, but it is never asked for in the prompt.
-- **File permissions are the user's responsibility.** The credentials file holds only the public App ID + the **path** to the PEM (not the PEM bytes, not a token). The user `chmod 600` both the credentials file and the PEM they downloaded. The agent never sets or relaxes file permissions. If either file is world-readable, anyone who can read it can mint bot tokens as the app.
-- **Re-running is safe (idempotent).** The repo-wide bot identity is rewritten, not recreated; future worktrees keep inheriting it.
-- **No origin is fine.** If the repo has no `origin`, the script still sets the bot commit author; only the (optional) push remote is absent. Plain `git push` uses the human account owner's push credential by default — the PR/API actor is the bot via `GH_TOKEN`, not `git push`.
-- **No worktreeConfig needed.** The script uses git's `includeIf` conditional include, which works on git 2.43+ without any extension or harness setup. The main repo's own `.git` directory is excluded by the glob, so it stays human. `GH_TOKEN` in env drives `gh`/API as the bot — **not** rewriting `origin`.
-- **Token expiry.** `GH_TOKEN` is typically short-lived (~1h). If a token expires while a sub-agent is still working, commits using that token will fail. The agent should detect the failure, re-run `scripts/mint-token.sh` (or its configured token minter) for a fresh `GH_TOKEN`, and retry the work.
-- **Token provisioning is the standard first action.** Before any `gh`/API call, the agent (or harness) sources the token into the session:
-  ```bash
-  source <(scripts/mint-token.sh --shell)
-  # GH_TOKEN is now exported; agent can make gh/API calls as the bot
-  ```
-  With the credentials file in place (one-time setup per App), this needs **no env
-  vars and no args** — the token is minted and exported in-session. This is the
-  expected, primary token source for the GitHub App flow; the agent's first action
-  (or the harness's session-start hook) should be to source the mint, so the bot
-  token is present by default. Without a token in the environment, `gh` falls back
-  to the ambient `gh auth` login — the agent's shell inherits the human's `gh`
-  config by default when `GH_TOKEN` is absent, and `gh` uses it silently. The
-  practical mitigation (no env-level hack, no wrapper) is: token present by default
-  via auto-provisioning, and `--preflight` as a pre-work gate (below). What the tool
-  cannot do from here: detect and block a mid-session token expiry that the agent
-  does not handle — the agent must detect an auth failure, re-mint, and retry.
-- **`cryptography` required for minting.** `scripts/mint-token.sh` needs `python3 -c "import cryptography"`. `scripts/agent-git-setup.sh` does NOT need it.
-- **Push/PR as the bot.** The agent opens PRs as the bot via `gh` + `GH_TOKEN`. The script only sets commit AUTHOR identity and never rewrites `origin`; the bot PR actor comes from `GH_TOKEN`. Run `scripts/agent-git-setup.sh --preflight .` on Linux/macOS or `scripts/agent-git-setup.ps1 --preflight .` on Windows before any git/gh work — it fails closed when the bot commit identity is not in effect (you are not in a linked worktree of the target repo, so commits would be attributed to the account owner) or when `GH_TOKEN` is missing. The check is **effect-based, not path-based**: it verifies `git` resolves `user.name` to `AGENT_GIT_NAME`, so any harness that creates a proper `git worktree` of the repo satisfies it regardless of where that worktree lives on disk. It is a pre-work gate, not continuous enforcement: it verifies the token is present and resolves to a Bot actor *before* work starts; it does not watch for mid-session token expiry. With token auto-provisioning as the standard first action (step 1) the most common trigger (agent forgot to mint) is handled; the agent must still detect an auth failure mid-session, re-mint, and retry.
 
-## Windows / PowerShell native support
+- **Bot id = bot account, not human.** `AGENT_GIT_BOT_ID` (or resolved from `AGENT_GIT_NAME`) is what makes commits file under the **bot account**. Without it, commit filed under human (silent — no error, bot name shows but account is human). `GIT_USER_NAME` is human's handle, last-resort fallback only.
+- **App install token cannot resolve bot id via API.** `GET /users/<app>[bot]` with an App install token fails (install tokens can't read arbitrary users). Use **unauthenticated** curl for bot id resolution. See `references/app-token-bot-id-limitation.md`.
+- **File permissions = user's responsibility.** User `chmod 600` credentials file + PEM. Agent never sets/relaxes permissions. World-readable = anyone can mint bot tokens as the app.
+- **Re-running is safe (idempotent).** Bot identity rewritten, not recreated. Future worktrees keep inheriting.
+- **No origin is fine.** Script still sets bot commit author. `git push` uses human credential (by design). PR/API actor = bot via `GH_TOKEN`.
+- **No worktreeConfig needed.** `includeIf` works on git 2.43+. Main repo's `.git` excluded by glob → stays human.
+- **Token expiry.** ~1h. If expires mid-session, `gh`/API calls fail. Agent detects failure, re-runs `mint-token.sh` (or configured minter), retries.
+- **gh/api calls need GH_TOKEN every session.** Without it, silent fallback to human's `gh auth`. No harness-agnostic guarantee — skill states expectation, `--preflight` detects misses.
 
-`scripts/agent-git-setup.ps1` provides native Windows support
-(`cmd`/`PowerShell`), mirroring the bash script's identity-only
-semantics (commit-author isolation via `includeIf`, no origin rewrite,
-no hooks, no worktree management). Both scripts share the same
-environment variables and behavior.
+## Push / PR as the bot
 
-### PowerShell environment variables
+- Agent opens PRs as bot via `gh` + `GH_TOKEN`.
+- Script only sets commit AUTHOR identity; never rewrites `origin`.
+- Bot PR actor = `GH_TOKEN`. `git push` = human credential (by design).
+- Run `--preflight` before any git/gh work.
 
-| Variable             | Meaning                                                              |
-|----------------------|----------------------------------------------------------------------|
-| `AGENT_GIT_NAME`     | Commit author name, e.g. `myagent[bot]`. Preferred identity source. |
-| `GIT_USER_NAME`      | GitHub handle (e.g. `my-git-user-name`). LAST-RESORT fallback only. |
-| `GH_TOKEN`           | *(Optional)* A GitHub token for `gh`/API as the bot. Same semantics as the bash flow. |
-| `AGENT_GIT_BOT_ID`   | *(hidden fallback)* Numeric id for the bot noreply email. Offline-safe. |
-| `AGENT_GIT_ALLOW_TMP`| *(hidden)* Opt-in to allow running from an ephemeral location.        |
+## Windows / PowerShell
 
-### Usage
+`scripts/agent-git-setup.ps1` — native Windows, same identity-only semantics (commit-author isolation via `includeIf`, no origin rewrite, no hooks, no worktree management). Same env vars as bash.
+
+| Variable | Meaning |
+|---|---|
+|| `AGENT_GIT_NAME` | Commit author name, e.g. `myagent[bot]` (replace `myagent` with your bot's name). Preferred identity source. |
+| `GIT_USER_NAME` | Human's GitHub handle. LAST-RESORT fallback only. |
+| `GH_TOKEN` | GitHub token for gh/API as bot. Same semantics as bash. |
+| `AGENT_GIT_BOT_ID` | Numeric bot id for noreply email. Offline-safe. |
+| `AGENT_GIT_ALLOW_TMP` | Opt-in for ephemeral location. |
 
 ```powershell
 $env:GH_TOKEN = (scripts/mint-token.sh --print-jwt)
-$env:AGENT_GIT_NAME = "myagent[bot]"
+$env:AGENT_GIT_NAME = "myagent[bot]"   # replace with your bot's name (GitHub creates it as <app>[bot])
 $env:GIT_USER_NAME = "my-git-user-name"
 scripts/agent-git-setup.ps1 <repo-dir>
 ```
 
-### Testing
-
-```powershell
-pwsh tests/agent-git-setup-test.ps1
-```
-
 ## References
 
-- `references/windows-support.md` — Windows support details: PowerShell port design, test parity, CI integration, and known differences from the bash script.
+- `references/windows-support.md` — PowerShell port design, test parity, CI, known differences from bash.

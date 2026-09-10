@@ -88,7 +88,7 @@ Fill in the `[...]` and paste the prompt below to the agent.
 ```text
 Use the agent-git-setup skill. Set up a bot git identity for current repo.
 
-AGENT_GIT_NAME=[myagent[bot]]
+AGENT_GIT_NAME=myagent[bot]   # replace with your bot's name (e.g. myagent → myagent[bot])
 GIT_USER_NAME=[my-git-user-name]
 ```
 
@@ -99,7 +99,7 @@ Fill in the `[...]` and paste the prompt below to the agent.
 ```text
 Use the agent-git-setup skill. Set up a bot git identity for current repo.
 
-AGENT_GIT_NAME=[myagent[bot]]
+AGENT_GIT_NAME=myagent[bot]   # replace with your bot's name (e.g. myagent → myagent[bot])
 GIT_USER_NAME=[my-git-user-name]
 GITHUB_APP_ID=[1234567]
 GITHUB_APP_PEM=[/path/to/myagent.pem]
