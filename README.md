@@ -4,13 +4,9 @@ Give an AI agent a bot identity so its git commits and GitHub actions are clearl
 
 ## Requirements
 
-- **git >= 2.43** and the matching script for the platform:
-  - Linux/macOS: `scripts/agent-git-setup.sh` (bash + git)
-  - Windows: `scripts/agent-git-setup.ps1` (PowerShell 7+)
-  `includeIf` scopes bot identity to all worktrees (present + future); main repo stays human. No `worktreeConfig` extension needed.
-- **`gh` (GitHub CLI)** required for bot GitHub-actor path (PRs, comments, API commits). Plain local commits need only `git`.
-- **Python 3 + `cryptography` package** required if using `mint-token.sh` (GitHub App path). Not needed for Git-only commit author.
-- **GitHub App (App ID + PEM)** only if using `mint-token.sh` for gh/API as bot. Not needed for Git-only.
+- `git >= 2.43`
+- `gh` (GitHub CLI) — required only if agent opens PRs / comments / API commits; plain local commits need only `git`
+- `python3` + `cryptography` — required only if using `scripts/mint-token.sh` (GitHub App path); not needed for Git-only commit author
 
 ## Install
 
