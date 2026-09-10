@@ -4,18 +4,13 @@ Give an AI agent a bot identity so its git commits and GitHub actions are clearl
 
 ## Requirements
 
-- **git >= 2.43** and **PowerShell 7+** on the agent's machine.
-  `scripts/agent-git-setup.sh` targets Linux/macOS (`bash` + `git`).
-  `scripts/agent-git-setup.ps1` provides native Windows support
-  (`cmd`/`PowerShell`). The test suite runs on both platforms
-  (`tests/agent-git-setup-test.sh` on Linux/macOS,
-  `tests/agent-git-setup-test.ps1` on Windows).
-  `includeIf` conditional-include scopes the bot identity to all
-  worktrees of the repo (including ones created later) while keeping
-  your main repo untouched — no `worktreeConfig` extension or harness
-  setup required.
-- **`gh` (GitHub CLI) is required for the bot GitHub-actor path** (PRs, comments, API commits). Plain local commits need only `git`.
-- `Make install` installs `shellcheck`/`shfmt`, `Python 3` and `cryptography` if needed.
+- **git >= 2.43** and the matching script for the platform:
+  - Linux/macOS: `scripts/agent-git-setup.sh` (bash + git)
+  - Windows: `scripts/agent-git-setup.ps1` (PowerShell 7+)
+  `includeIf` scopes bot identity to all worktrees (present + future); main repo stays human. No `worktreeConfig` extension needed.
+- **`gh` (GitHub CLI)** required for bot GitHub-actor path (PRs, comments, API commits). Plain local commits need only `git`.
+- **Python 3 + `cryptography` package** required if using `mint-token.sh` (GitHub App path). Not needed for Git-only commit author.
+- **GitHub App (App ID + PEM)** only if using `mint-token.sh` for gh/API as bot. Not needed for Git-only.
 
 ## Install
 
