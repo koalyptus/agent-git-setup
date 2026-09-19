@@ -4,18 +4,9 @@ Give an AI agent a bot identity so its git commits and GitHub actions are clearl
 
 ## Requirements
 
-- **git >= 2.43** and **PowerShell 7+** on the agent's machine.
-  `scripts/agent-git-setup.sh` targets Linux/macOS (`bash` + `git`).
-  `scripts/agent-git-setup.ps1` provides native Windows support
-  (`cmd`/`PowerShell`). The test suite runs on both platforms
-  (`tests/agent-git-setup-test.sh` on Linux/macOS,
-  `tests/agent-git-setup-test.ps1` on Windows).
-  `includeIf` conditional-include scopes the bot identity to all
-  worktrees of the repo (including ones created later) while keeping
-  your main repo untouched — no `worktreeConfig` extension or harness
-  setup required.
-- **`gh` (GitHub CLI) is required for the bot GitHub-actor path** (PRs, comments, API commits). Plain local commits need only `git`.
-- `Make install` installs `shellcheck`/`shfmt`, `Python 3` and `cryptography` if needed.
+- `git >= 2.43`
+- `gh` (GitHub CLI) — required only if agent opens PRs / comments / API commits; plain local commits need only `git`
+- `python3` + `cryptography` — required only if using `scripts/mint-token.sh` (GitHub App path); not needed for Git-only commit author
 
 ## Install
 
@@ -88,7 +79,7 @@ Fill in the `[...]` and paste the prompt below to the agent.
 ```text
 Use the agent-git-setup skill. Set up a bot git identity for current repo.
 
-AGENT_GIT_NAME=[myagent[bot]]
+AGENT_GIT_NAME=myagent[bot]   # replace with your bot's name (e.g. myagent → myagent[bot])
 GIT_USER_NAME=[my-git-user-name]
 ```
 
@@ -99,9 +90,9 @@ Fill in the `[...]` and paste the prompt below to the agent.
 ```text
 Use the agent-git-setup skill. Set up a bot git identity for current repo.
 
-AGENT_GIT_NAME=[myagent[bot]]
+AGENT_GIT_NAME=myagent[bot]   # replace with your bot's name (e.g. myagent → myagent[bot])
 GIT_USER_NAME=[my-git-user-name]
-GITHUB_APP_ID=[4646191]
+GITHUB_APP_ID=[1234567]
 GITHUB_APP_PEM=[/path/to/myagent.pem]
 ```
 
