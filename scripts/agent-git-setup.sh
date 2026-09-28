@@ -35,50 +35,29 @@
 #   GitHub App flow: bot noreply for local commits + `gh` with `GH_TOKEN` for
 #   API commits (GitHub signs server-side → agent name + Verified badge).
 #
-# The agent opens PRs / acts on GitHub AS THE BOT via `gh` + `GH_TOKEN` in its
-# environment (PRs, issues, comments, API commits for the Verified badge). So
-# `GH_TOKEN` is mandatory in the agent flow. `--preflight` (below) fails closed
-# if it is missing — rather than silently falling back to the account owner's `gh auth`.
+# GitHub operations as the bot require `GH_TOKEN`; local commits do not.
 #
-# PREFLOW GUARDRAIL:
-#   Run `agent-git-setup.sh --preflight` BEFORE any git/gh work. It fails
-#   non-zero (fail-closed) if the agent is in the MAIN repo (commits there would
-#   be attributed to the account owner — the includeIf glob excludes the main
-#   tree's .git, so a main-tree commit is attributed to the account owner) or if `GH_TOKEN` is missing (no
-#   bot PR/API actor). This converts the most common mis-attribution failure —
-#   an agent committing from the main tree as the account owner — from documentation
-#   into a hard mechanism, without the script ever creating or demanding a
-#   worktree. `--preflight` reads state only; it does not manage worktrees or
-#   hooks.
+# PREFLIGHT GUARDRAIL:
+#   Run `--preflight --mode git-only` before local commits, or `--mode github`
+#   before GitHub operations. Both require an actual linked worktree; GitHub mode
+#   additionally checks trusted token-provider actor metadata and repository access. A harness lifecycle hook is needed
+#   to guarantee preflight runs at the start of every session.
 #
 # Required environment variables:
 #   AGENT_GIT_NAME    Commit author name, e.g. myagent[bot].
-#   GIT_USER_NAME     GitHub handle (e.g. my-git-user-name). LAST-RESORT fallback
-#                     only: if the bot id cannot be resolved, commits are attributed
-#                     to this account-owner handle (id via GIT_USER_ID or the API). Prefer
-#                     AGENT_GIT_BOT_ID / AGENT_GIT_NAME so commits stay bot.
-#   GIT_USER_ID       Numeric GitHub user id (alternative to GIT_USER_NAME).
-#                     If set, used directly as the fallback noreply prefix.
-#                     Otherwise the script fetches the id via the public API.
-#
-# Mandatory environment variables (agent flow):
-#   GH_TOKEN              A GitHub token (e.g. an App install token) for
-#                         `gh`/API operations AS THE BOT (PRs, issues,
-#                         comments, and API commits for Verified badge). The
-#                         agent opens PRs as the bot, so this is required in the
-#                         agent flow. `--preflight` fails closed if it is missing.
+#   AGENT_GIT_BOT_ID  Numeric id of the bot account (optional online, required offline).
+#   GH_TOKEN          Required only for GitHub-mode preflight and `gh`/API as the bot.
+#   AGENT_GIT_TOKEN_ACTOR  Trusted actor login attested by the token provider; required in GitHub mode.
 #
 # Optional environment variables:
 #   AGENT_GIT_SIGNINGKEY  DEPRECATED — SSH signing does not verify for bot
 #                         noreply emails. Kept for backward compatibility
 #                         but has no effect on bot identity commits.
-#   AGENT_GIT_BOT_ID      Hidden override: the numeric bot id for the noreply
-#                         email. Used for hermetic tests / offline use (no
-#                         network). If unset, the bot id is resolved via the
-#                         public GitHub API (uses GH_TOKEN as Bearer if set).
+#   AGENT_GIT_BOT_ID      Numeric bot id for the noreply email. If unset, the
+#                         bot id is resolved via the public GitHub API.
 #
 # Usage:
-#   agent-git-setup.sh --preflight [<repo-dir>]
+#   agent-git-setup.sh --preflight --mode git-only|github [<repo-dir>]
 #   agent-git-setup.sh <repo-dir>      # any worktree or the main repo of the repo
 #   agent-git-setup.sh                 # operates on the cwd's repo
 
@@ -89,9 +68,20 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 
 MODE="setup"
+PREFLIGHT_MODE=""
 if [ "${1:-}" = "--preflight" ]; then
 	MODE="preflight"
 	shift || true
+fi
+
+if [ "${1:-}" = "--mode" ]; then
+	PREFLIGHT_MODE="${2:-}"
+	shift 2
+fi
+
+if [ "$MODE" = "preflight" ] && [[ "$PREFLIGHT_MODE" != "git-only" && "$PREFLIGHT_MODE" != "github" ]]; then
+	echo "agent-git-setup.sh: --preflight requires --mode git-only or --mode github" >&2
+	exit 2
 fi
 
 # Operate on the repo the agent is in. A worktree or the main repo both resolve
@@ -110,112 +100,45 @@ fi
 preflight() {
 	local ok=0
 
-	# (1) Is the bot commit identity actually IN EFFECT here? This is the real
-	# guard, and it is deliberately location-agnostic: we do NOT check where the
-	# worktree lives on disk. We check the EFFECT — that git resolves the commit
-	# author identity to AGENT_GIT_NAME for this repo. The bot identity is applied
-	# by the includeIf the setup script wrote into the target repo's .git/config
-	# (gitdir/i:**/.git/worktrees/**), which fires for any LINKED WORKTREE of that
-	# repo regardless of where the harness placed it. A main-repo checkout, a
-	# detached checkout, or a separate clone (even under ~/.agent-git-setup) will
-	# NOT resolve to AGENT_GIT_NAME, so this fails closed instead of silently
-	# committing as the account owner.
+	# (1) Require a linked worktree, then validate effective author and
+	# committer identities (including environment overrides), not just user.name.
 	if [ -z "${AGENT_GIT_NAME:-}" ]; then
-		echo "agent-git-setup.sh: PREFLOW FAIL: AGENT_GIT_NAME is unset." >&2
-		echo "  The bot commit identity cannot be verified without it. Export AGENT_GIT_NAME (e.g. myagent[bot])." >&2
+		echo "agent-git-setup.sh: PREFLIGHT FAIL: AGENT_GIT_NAME is unset." >&2
+		echo "  Export AGENT_GIT_NAME (e.g. myagent[bot])." >&2
 		ok=1
 	else
-		local resolved
-		resolved="$(git -C "$REPO_PATH" config user.name 2>/dev/null || true)"
-		if [ "$resolved" != "$AGENT_GIT_NAME" ]; then
-			echo "agent-git-setup.sh: PREFLOW FAIL: bot identity not in effect at $REPO_PATH." >&2
-			echo "  Resolved user.name='${resolved:-<empty>}' but expected '$AGENT_GIT_NAME'." >&2
-			echo "  You are not in a linked worktree of the target repo where the bot identity" >&2
-			echo "  applies (main checkout, detached checkout, or a separate clone all fail this)." >&2
-			echo "  Run 'scripts/agent-git-setup.sh <repo-dir>' from a proper 'git worktree' of the" >&2
-			echo "  target repo, then re-run. Location is irrelevant — only that the bot identity resolves." >&2
+		local git_dir common_dir resolved_name resolved_email author_ident committer_ident email_suffix
+		git_dir="$(git -C "$REPO_PATH" rev-parse --absolute-git-dir 2>/dev/null || true)"
+		common_dir="$(git -C "$REPO_PATH" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+		resolved_name="$(git -C "$REPO_PATH" config user.name 2>/dev/null || true)"
+		resolved_email="$(git -C "$REPO_PATH" config user.email 2>/dev/null || true)"
+		author_ident="$(git -C "$REPO_PATH" var GIT_AUTHOR_IDENT 2>/dev/null || true)"
+		committer_ident="$(git -C "$REPO_PATH" var GIT_COMMITTER_IDENT 2>/dev/null || true)"
+		email_suffix="${resolved_email#*+}"
+		if [ -z "$git_dir" ] || [ -z "$common_dir" ] || [ "$git_dir" = "$common_dir" ]; then
+			echo "agent-git-setup.sh: PREFLIGHT FAIL: target is not a linked worktree of the configured repo." >&2
+			ok=1
+		elif [ "$resolved_name" != "$AGENT_GIT_NAME" ] || [[ ! "$resolved_email" =~ ^[1-9][0-9]*\+ ]] || [ "$email_suffix" != "${AGENT_GIT_NAME}@users.noreply.github.com" ] || [[ "$author_ident" != "$AGENT_GIT_NAME <$resolved_email> "* ]] || [[ "$committer_ident" != "$AGENT_GIT_NAME <$resolved_email> "* ]]; then
+			echo "agent-git-setup.sh: PREFLIGHT FAIL: bot author/committer identity is not effective at $REPO_PATH." >&2
+			echo "  Expected $AGENT_GIT_NAME with its numeric GitHub noreply email; check local, worktree, and environment overrides." >&2
 			ok=1
 		fi
 	fi
 
-	# (2) GH_TOKEN mandatory in the agent flow, AND it must be the BOT actor.
-	# Presence is not enough: a token minted from the account owner's own PAT
-	# (the ambient `gh auth` login) passes the "is it set?" test yet makes every
-	# `gh`/API call land under the ACCOUNT OWNER (the exact bug this guard exists
-	# to stop). So we verify the EFFECTIVE actor, not just that a token exists.
-	if [ -z "${GH_TOKEN:-}" ]; then
-		echo "agent-git-setup.sh: PREFLOW FAIL: GH_TOKEN is unset." >&2
-		echo "  The agent opens PRs / acts on GitHub AS THE BOT, so a token is required." >&2
-		echo "  Mint one (scripts/mint-token.sh) and export GH_TOKEN before any git/gh work." >&2
-		ok=1
-	else
-		# Probe the effective GitHub actor via `gh api user`. This needs `gh`
-		# and network; if either is unavailable we CANNOT verify identity, so we
-		# degrade to a warning (not a hard fail) — hermetic/offline environments
-		# (e.g. the test suite, air-gapped hosts) legitimately have no `gh`. The
-		# trade-off is documented: when `gh`/network is absent we cannot stop a
-		# your-PAT fallback, so the agent MUST still mint the bot token from
-		# the credentials file as the documented happy path.
-		local actor_type gh_rc
-		if command -v gh >/dev/null 2>&1; then
-			# The account owner's PAT can read `gh api user` (200, type "User").
-			# A GitHub App INSTALLATION token cannot (it returns 403 —
-			# installation tokens are not user-authenticated). That 403 IS the
-			# bot signal. `gh api /app` is unusable here (it needs the App JWT,
-			# not the install token). So:
-			#   - `gh api user` -> type "User"  => ACCOUNT OWNER (fail unless consented)
-			#   - `gh api user` -> non-zero (403) => BOT install token (pass)
-			#   - anything else (network down)    => cannot verify (warn)
-			local who
-			# NOTE: under `set -e`, a failed command substitution aborts the
-			# script. A bot install token makes `gh api user` exit 1 (403), so we
-			# MUST guard it: append `|| true` and read the real exit code from the
-			# assignment (not from the substitution directly).
-			who="$(gh api user --jq '{type: .type, login: .login}' 2>/dev/null || true)"
-			gh_rc=$?
-			if [ "$gh_rc" -eq 0 ]; then
-				actor_type="$(printf '%s' "$who" | sed -n 's/.*"type":"\([^"]*\)".*/\1/p')"
-			fi
-		fi
-		if [ "${actor_type:-}" = "User" ]; then
-			# Token resolves to the ACCOUNT OWNER (User) account, not the bot.
-			# This is the fail-closed case. The agent MUST NOT proceed and MUST
-			# NOT silently fall back to the account owner. Instead it stops and
-			# asks the account owner for explicit consent (out of band — e.g. in
-			# the chat). On that explicit "yes", the AGENT sets
-			# AGENT_GIT_ALLOW_HUMAN_ACTOR=1 for that session and re-runs
-			# preflight; the account owner never types the flag by hand. There is
-			# NO default and no silent fallback. Running as the account owner is
-			# only ever the agent's record of the account owner's approved consent.
-			if [ "${AGENT_GIT_ALLOW_HUMAN_ACTOR:-}" = "1" ]; then
-				echo "agent-git-setup.sh: PREFLOW WARN: proceeding as the account owner — approved explicitly; gh/API calls attributed to the account owner, not the bot." >&2
-			else
-				echo "agent-git-setup.sh: PREFLOW FAIL: GH_TOKEN is the account owner's, not the bot." >&2
-				echo "  (to the agent) gh/API calls would be attributed to the account owner, not the bot." >&2
-				echo "  (to the agent) Fix: re-mint the bot token and export it before any gh/API work:" >&2
-				echo "    source <(scripts/mint-token.sh --shell)" >&2
-				echo "  (to the agent) If that fails, STOP and ask the account owner to approve acting as them;" >&2
-				echo "  only on explicit approval set AGENT_GIT_ALLOW_HUMAN_ACTOR=1 and re-run preflight for this session." >&2
+	if [ "$PREFLIGHT_MODE" = "github" ]; then
+		if [ -z "${GH_TOKEN:-}" ] || [ -z "${AGENT_GIT_TOKEN_ACTOR:-}" ] || ! command -v gh >/dev/null 2>&1; then
+			echo "agent-git-setup.sh: PREFLIGHT FAIL: github mode requires GH_TOKEN, AGENT_GIT_TOKEN_ACTOR, gh, and network access." >&2
+			ok=1
+		elif [[ "${AGENT_GIT_TOKEN_ACTOR,,}" != "${AGENT_GIT_NAME,,}" ]]; then
+			echo "agent-git-setup.sh: PREFLIGHT FAIL: token provider actor '$AGENT_GIT_TOKEN_ACTOR' does not match '$AGENT_GIT_NAME'." >&2
+			ok=1
+		else
+			local accessible_repo
+			accessible_repo="$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || true)"
+			if [ -z "$accessible_repo" ]; then
+				echo "agent-git-setup.sh: PREFLIGHT FAIL: GitHub token cannot access the current repository." >&2
 				ok=1
 			fi
-		elif [ -z "${actor_type:-}" ]; then
-			# `gh api user` failed for any other reason (403 = bot install token,
-			# or network/gh unavailable). 403 from a real App install token is the
-			# EXPECTED bot case; we cannot distinguish it from "no network" here,
-			# so we treat the absence of a confirmed account owner as pass (do not
-			# block a valid bot token). If gh is genuinely absent, we warn instead.
-			if command -v gh >/dev/null 2>&1; then
-				: # bot install token (403) or unreadable — do not block
-			else
-				echo "agent-git-setup.sh: PREFLOW WARN: could not verify GH_TOKEN actor (gh not installed / network unavailable)." >&2
-				echo "  (to the agent) Cannot confirm the token is the App bot — if it is the account owner's PAT, gh/API" >&2
-				echo "  calls will be attributed to the account owner. Re-mint the bot token (scripts/mint-token.sh" >&2
-				echo "  --shell) and ensure gh + network before any gh/API work." >&2
-			fi
-		else
-			# Resolved to something other than "User" (e.g. "Bot" for a true
-			# user-account bot) — not your PAT, allow.
-			: # not the account-owner actor — pass
 		fi
 	fi
 
@@ -223,7 +146,7 @@ preflight() {
 		echo "agent-git-setup.sh: preflight aborted (fail-closed). Fix the above and re-run." >&2
 		exit 1
 	fi
-	echo "agent-git-setup.sh: preflight OK — bot identity in effect, GH_TOKEN present."
+	echo "agent-git-setup.sh: preflight OK — linked worktree identity verified ($PREFLIGHT_MODE mode)."
 	exit 0
 }
 
@@ -301,32 +224,13 @@ INCLUDE_KEY="includeIf.gitdir/i:**/.git/worktrees/**.path"
 
 : "${AGENT_GIT_NAME:?set AGENT_GIT_NAME, e.g. myagent[bot]}"
 
-# GIT_USER_NAME (the account-owner's GitHub handle) is validated for shape and, ONLY
-# as a LAST-RESORT fallback when the bot id cannot be resolved, used to attribute
-# commits to the account owner. The primary bot identity always comes from the bot's own
-# numeric id; the account-owner handle is never preferred over it.
-_VALIDATE_HANDLE() {
-	case "$1" in
-	*[!A-Za-z0-9-]*) return 1 ;;
-	*) return 0 ;;
-	esac
-}
-if [ -n "${GIT_USER_NAME:-}" ] && ! _VALIDATE_HANDLE "$GIT_USER_NAME"; then
-	echo "agent-git-setup.sh: GIT_USER_NAME must be a GitHub handle ([A-Za-z0-9-] only), got: $GIT_USER_NAME" >&2
-	exit 2
-fi
-
 # _RESOLVE_ID <handle>: print the numeric GitHub id for a handle, or empty.
-# Uses the public API; sends GH_TOKEN as Bearer when set (higher rate limit /
-# private visibility). Network or rate-limit failures yield empty -> caller falls back.
-# Written set -e-safe: a failed lookup must never abort the script (we fall back).
+# Uses the public API without GH_TOKEN; installation tokens cannot read arbitrary users.
+# Written set -e-safe: a failed lookup is reported as unresolved and setup fails.
 _RESOLVE_ID() {
-	local _enc _id _auth=()
+	local _enc _id
 	_enc="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "$1" 2>/dev/null || true)"
-	if [ -n "${GH_TOKEN:-}" ]; then
-		_auth=(-H "Authorization: Bearer ${GH_TOKEN}")
-	fi
-	_id="$(curl -sf "${_auth[@]}" -H "Accept: application/vnd.github.v3+json" "https://api.github.com/users/${_enc}" 2>/dev/null |
+	_id="$(curl -sf -H "Accept: application/vnd.github+json" "https://api.github.com/users/${_enc}" 2>/dev/null |
 		python3 -c 'import sys,json; print(json.load(sys.stdin).get("id",""))' 2>/dev/null || true)"
 	if [ -n "${_id:-}" ] && [ "${_id}" != "None" ]; then
 		printf '%s' "$_id"
@@ -334,13 +238,12 @@ _RESOLVE_ID() {
 	return 0
 }
 
-# Commit email: prefer the BOT's own noreply identity so commits show as the agent.
-# Resolution order (bot-first, account-owner-fallback-last; fail only if nothing resolves):
-#   1. AGENT_GIT_BOT_ID   -> <id>+<AGENT_GIT_NAME>@users.noreply.github.com   (offline-safe)
-#   2. AGENT_GIT_NAME     -> API-resolved bot id (uses GH_TOKEN as Bearer if set)
-#   3. GIT_USER_NAME      -> account-owner-attributed fallback (a setup that succeeds as
-#                            the account owner beats a failed setup). id = GIT_USER_ID, or the
-#                            API-resolved id of the handle.
+# Commit email must resolve to the bot account. Never silently substitute the human identity.
+# The bot id is numeric and determines GitHub's noreply account association.
+if [ -n "${AGENT_GIT_BOT_ID:-}" ] && [[ ! "$AGENT_GIT_BOT_ID" =~ ^[1-9][0-9]*$ ]]; then
+	echo "agent-git-setup.sh: AGENT_GIT_BOT_ID must be a positive integer without leading zeroes." >&2
+	exit 2
+fi
 _COMMIT_EMAIL=""
 if [ -n "${AGENT_GIT_BOT_ID:-}" ]; then
 	_COMMIT_EMAIL="${AGENT_GIT_BOT_ID}+${AGENT_GIT_NAME}@users.noreply.github.com"
@@ -351,20 +254,8 @@ else
 	fi
 fi
 
-# Last resort: account-owner-attributed identity (only when the bot id could not be resolved).
-if [ -z "${_COMMIT_EMAIL:-}" ] && [ -n "${GIT_USER_NAME:-}" ]; then
-	if [ -n "${GIT_USER_ID:-}" ]; then
-		_COMMIT_EMAIL="${GIT_USER_ID}+${GIT_USER_NAME}@users.noreply.github.com"
-	else
-		_UID="$(_RESOLVE_ID "$GIT_USER_NAME")"
-		if [ -n "${_UID:-}" ]; then
-			_COMMIT_EMAIL="${_UID}+${GIT_USER_NAME}@users.noreply.github.com"
-		fi
-	fi
-fi
-
 if [ -z "${_COMMIT_EMAIL:-}" ]; then
-	echo "agent-git-setup.sh: could not resolve any commit identity. Provide AGENT_GIT_BOT_ID, a resolvable AGENT_GIT_NAME, or GIT_USER_NAME (+ GIT_USER_ID / network)." >&2
+	echo "agent-git-setup.sh: could not resolve the bot account id. Provide numeric AGENT_GIT_BOT_ID or network access to the public GitHub user API." >&2
 	exit 1
 fi
 COMMIT_EMAIL="$_COMMIT_EMAIL"

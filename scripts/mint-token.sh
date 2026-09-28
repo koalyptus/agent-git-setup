@@ -168,6 +168,11 @@ def api(path, method="GET", data=None):
     with urllib.request.urlopen(req, timeout=30) as r:
         return json.load(r)
 
+app = api("/app")
+if str(app.get("id")) != str(app_id):
+	sys.stderr.write("mint-token.sh: authenticated App ID did not match the requested ID\n")
+	sys.exit(1)
+
 installs = api("/app/installations")
 if install_id:
     inst = next((i for i in installs if str(i["id"]) == str(install_id)), None)
@@ -178,14 +183,20 @@ if inst is None:
     sys.exit(1)
 
 tok = api("/app/installations/%d/access_tokens" % inst["id"], method="POST", data=b"")
-print(tok["token"])
+print(json.dumps({"token": tok["token"], "app_slug": app["slug"]}))
 PY
 }
 
-TOKEN="$(mint_token)"
+MINT_RESULT="$(mint_token)"
+TOKEN="$(printf '%s' "$MINT_RESULT" | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')"
+APP_SLUG="$(printf '%s' "$MINT_RESULT" | python3 -c 'import json,sys; print(json.load(sys.stdin)["app_slug"])')"
+TOKEN_ACTOR="${APP_SLUG}[bot]"
 
 if [ "$SHELL_OUT" -eq 1 ]; then
 	echo "export GH_TOKEN=$TOKEN"
+	# This slug came from GET /app authenticated by the App JWT; the installation
+	# token itself cannot introspect its App identity.
+	echo "export AGENT_GIT_TOKEN_ACTOR=$TOKEN_ACTOR"
 	# Emit the App's bot id (if known) so the agent can persist it into the
 	# credentials file / env. AGENT_GIT_BOT_ID is static per App; when present,
 	# agent-git-setup.sh uses it as the commit-email prefix so commits are
