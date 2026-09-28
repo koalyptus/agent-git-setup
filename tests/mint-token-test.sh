@@ -75,7 +75,10 @@ sys.exit(0)
 PY
 }
 
-cleanup() { rm -f "$PEM_FOR_TEST" "$PUB_FOR_TEST" "${PUB2:-}" "${CRED_FILE:-}"; rm -rf "$TEST_HOME"; }
+cleanup() {
+	rm -f "$PEM_FOR_TEST" "$PUB_FOR_TEST" "${PUB2:-}" "${CRED_FILE:-}"
+	rm -rf "$TEST_HOME"
+}
 trap cleanup EXIT
 
 # --- 1. Missing --app-id (arg path) ----------------------------------------

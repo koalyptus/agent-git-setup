@@ -13,7 +13,7 @@ set -uo pipefail
 # leak into the worktree-commit assertions below).
 for name in $(compgen -e); do
 	case "$name" in
-		GIT_*) unset "$name" ;;
+	GIT_*) unset "$name" ;;
 	esac
 done
 unset GH_TOKEN GH_ENTERPRISE_TOKEN GITHUB_TOKEN GITHUB_APP_ID GITHUB_APP_PEM GITHUB_APP_INSTALL_ID GH_HOST GH_REPO
@@ -256,7 +256,7 @@ export AGENT_GIT_NAME="fixture-bot[bot]" AGENT_GIT_BOT_ID=123456789
 "$SCRIPT" "$REPO17" >/dev/null 2>&1
 
 make_fake_gh_identity() {
-	local kind="$1" login="${2:-}"
+	local kind="$1"
 	mkdir -p "$SANDBOX/bin"
 	cat >"$SANDBOX/bin/gh" <<EOF
 #!/usr/bin/env bash
@@ -282,13 +282,13 @@ else
 	if [ "$rc" -ne 0 ]; then ok "preflight exits non-zero without GH_TOKEN"; else bad "exit code wrong"; fi
 fi
 export GH_TOKEN=dummy
-make_fake_gh_identity app fixture-bot
+make_fake_gh_identity app
 if "$SCRIPT" --preflight --mode github "$WT17" >/dev/null 2>&1; then
 	ok "preflight passes in linked worktree with bot identity + bot GH_TOKEN"
 else
 	bad "preflight should pass in linked worktree with bot identity + bot GH_TOKEN"
 fi
-make_fake_gh_identity app other-app
+make_fake_gh_identity app
 export AGENT_GIT_TOKEN_ACTOR="other-app[bot]"
 if "$SCRIPT" --preflight --mode github "$WT17" >/dev/null 2>&1; then bad "mismatched App identity must fail"; else ok "rejects mismatched App identity"; fi
 export AGENT_GIT_TOKEN_ACTOR="fixture-bot[bot]"
@@ -321,7 +321,7 @@ export AGENT_GIT_NAME="fixture-bot[bot]" AGENT_GIT_BOT_ID=123456789 GH_TOKEN=dum
 "$SCRIPT" "$REPO19" >/dev/null 2>&1
 
 # 19a. Bot identity must match exactly.
-make_fake_gh_identity bot-user "fixture-bot[bot]"
+make_fake_gh_identity bot-user
 if "$SCRIPT" --preflight --mode github "$WT19" >/dev/null 2>&1; then
 	ok "GitHub preflight passes for matching bot account"
 else
@@ -329,7 +329,7 @@ else
 fi
 
 # 19b. Human token (gh api user -> User), no consent -> preflight FAILS closed.
-make_fake_gh_identity human fixture-human
+make_fake_gh_identity human
 export AGENT_GIT_TOKEN_ACTOR="fixture-human[bot]"
 unset AGENT_GIT_ALLOW_HUMAN_ACTOR
 if "$SCRIPT" --preflight --mode github "$WT19" >/dev/null 2>&1; then
