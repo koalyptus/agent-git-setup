@@ -252,7 +252,7 @@ $Rc = RunSetup $Repo15
 if ($Rc -ne 0) { Ok "exits non-zero when nothing resolves" } else { Bad "should exit non-zero when nothing resolves" }
 if (-not (Test-Path (Join-Path $Repo15 ".git" "agent-bot-identity.config"))) { Ok "no bot config written when nothing resolves" } else { Bad "bot config written despite no resolvable identity" }
 
-# --preflight tests. We use a fake `gh` on a local PATH to avoid calling the real gh.
+# --preflight tests use the fake global `gh` function above; the real CLI is never invoked.
 function RunPreflight($Repo, $GhBin, $Mode = "github") {
     & $Script --preflight --mode $Mode $Repo *> $null
     return $global:LASTEXITCODE
@@ -291,7 +291,6 @@ $Repo17 = MakeRepo "with-origin"
 $WtDir = MakeWorktree $Repo17
 $env:AGENT_GIT_NAME = "fixture-bot[bot]"
 $env:AGENT_GIT_BOT_ID = "123456789"
-$env:AGENT_GIT_TOKEN_ACTOR = "fixture-bot[bot]"
 $env:AGENT_GIT_TOKEN_ACTOR = "fixture-bot[bot]"
 # Apply the bot identity to the repo (writes includeIf into the shared .git).
 $Rc = RunSetup $Repo17
