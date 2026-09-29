@@ -112,6 +112,9 @@ function MakeFakeGh($Kind, $Login = "") {
 }
 
 function global:gh {
+    if (-not [string]::IsNullOrEmpty($env:AGENT_GIT_SETUP_TEST_GH_LOG)) {
+        Add-Content -LiteralPath $env:AGENT_GIT_SETUP_TEST_GH_LOG -Value ($args -join " ")
+    }
     if ($args[0] -eq "repo" -and $args[1] -eq "view") {
         if ($global:FakeGhKind -eq "repo-denied") {
             $global:LASTEXITCODE = 1
@@ -312,6 +315,12 @@ Remove-Item env:GIT_COMMITTER_EMAIL -ErrorAction SilentlyContinue
 Write-Host "17. --preflight requires GH_TOKEN; passes when bot identity resolves"
 $Repo17 = MakeRepo "with-origin"
 $WtDir = MakeWorktree $Repo17
+$CallerRepo = Join-Path $Sandbox "caller-repo"
+New-Item -ItemType Directory -Path $CallerRepo -Force | Out-Null
+& git init -q -b main $CallerRepo
+& git -C $CallerRepo remote add origin "https://github.com/caller/repo.git"
+& git -C $Repo17 remote set-url origin "git@github.com:target/repo.git"
+$env:AGENT_GIT_SETUP_TEST_GH_LOG = Join-Path $Sandbox "gh-arguments.log"
 $env:AGENT_GIT_NAME = "fixture-bot[bot]"
 $env:AGENT_GIT_BOT_ID = "123456789"
 $env:AGENT_GIT_TOKEN_ACTOR = "fixture-bot[bot]"
@@ -324,8 +333,13 @@ $Rc = RunPreflight $WtDir $GhBin
 if ($Rc -ne 0) { Ok "preflight exits non-zero without GH_TOKEN" } else { Bad "exit code wrong" }
 # 17b: with GH_TOKEN + bot gh -> pass.
 SetFixtureToken "dummy"
+$env:GH_REPO = "caller/repo"
+Push-Location $CallerRepo
 $Rc = RunPreflight $WtDir $GhBin
+Pop-Location
 if ($Rc -eq 0) { Ok "preflight passes in linked worktree with bot identity + bot GH_TOKEN" } else { Bad "preflight should pass in linked worktree with bot identity + bot GH_TOKEN" }
+if (Select-String -Path $env:AGENT_GIT_SETUP_TEST_GH_LOG -SimpleMatch "repo view --repo target/repo" -Quiet) { Ok "GitHub access check targets explicit worktree origin, not caller repo" } else { Bad "GitHub access check did not target explicit worktree origin" }
+Remove-Item env:GH_REPO -ErrorAction SilentlyContinue
 $env:AGENT_GIT_TOKEN_ACTOR = "other-app[bot]"
 $Rc = RunPreflight $WtDir $GhBin
 if ($Rc -ne 0) { Ok "rejects mismatched App identity" } else { Bad "mismatched App identity must fail" }

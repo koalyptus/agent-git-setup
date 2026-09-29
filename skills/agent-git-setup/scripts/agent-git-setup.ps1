@@ -107,6 +107,28 @@ $REPO_PATH = $REPO_PATH.Replace('\', '/')
 # Preflight: fail-closed state checks (read-only, no worktree management)
 # ---------------------------------------------------------------------------
 
+function Get-GhRepoForPath {
+    $remoteUrl = & git -C $REPO_PATH remote get-url origin 2>$null
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrEmpty($remoteUrl)) { return "" }
+
+    if ($remoteUrl -match '^[a-zA-Z][a-zA-Z0-9+.-]*://') {
+        try { $remoteUri = [System.Uri]$remoteUrl } catch { return "" }
+        $hostName = $remoteUri.Host
+        $remotePath = $remoteUri.AbsolutePath.Trim('/')
+    } elseif ($remoteUrl -match '^(?:[^@/]+@)?(?<host>[^:/]+):(?<path>.+)$') {
+        $hostName = $Matches.host
+        $remotePath = $Matches.path.Trim('/')
+    } else {
+        return ""
+    }
+
+    $remotePath = $remotePath -replace '\.git$', ''
+    $segments = @($remotePath.Split('/'))
+    if ([string]::IsNullOrEmpty($hostName) -or $segments.Count -ne 2 -or [string]::IsNullOrEmpty($segments[0]) -or [string]::IsNullOrEmpty($segments[1])) { return "" }
+    if ($hostName -ieq "github.com") { return "$($segments[0])/$($segments[1])" }
+    return "$hostName/$($segments[0])/$($segments[1])"
+}
+
 function Preflight {
     $ok = 0
 
@@ -175,7 +197,11 @@ function Preflight {
                 Write-Host "agent-git-setup.ps1: PREFLIGHT FAIL: token provider actor '$($env:AGENT_GIT_TOKEN_ACTOR)' does not match '$($env:AGENT_GIT_NAME)'." -ForegroundColor Red
                 $ok = 1
                 } else {
-                    $accessibleRepo = & gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>$null
+                    $ghRepo = Get-GhRepoForPath
+                    $accessibleRepo = ""
+                    if (-not [string]::IsNullOrEmpty($ghRepo)) {
+                        $accessibleRepo = & gh repo view --repo $ghRepo --json nameWithOwner --jq '.nameWithOwner' 2>$null
+                    }
                     if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrEmpty($accessibleRepo)) {
                         Write-Host "agent-git-setup.ps1: PREFLIGHT FAIL: GitHub token cannot access the current repository." -ForegroundColor Red
                         $ok = 1

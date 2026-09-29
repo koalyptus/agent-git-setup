@@ -278,6 +278,12 @@ echo "17. --preflight requires GH_TOKEN; passes when bot identity resolves"
 REPO17="$(make_repo with-origin)"
 make_worktree "$REPO17"
 WT17="$WT_DIR"
+git -C "$REPO17" remote set-url origin git@github.com:target/repo.git
+CALLER_REPO="$SANDBOX/caller-repo"
+mkdir -p "$CALLER_REPO"
+git init -q -b main "$CALLER_REPO"
+git -C "$CALLER_REPO" remote add origin https://github.com/caller/repo.git
+export AGENT_GIT_SETUP_TEST_GH_LOG="$SANDBOX/gh-arguments.log"
 export AGENT_GIT_NAME="fixture-bot[bot]" AGENT_GIT_BOT_ID=123456789
 # Apply the bot identity to the repo (writes includeIf into the shared .git).
 "$SCRIPT" "$REPO17" >/dev/null 2>&1
@@ -287,6 +293,9 @@ make_fake_gh_identity() {
 	mkdir -p "$SANDBOX/bin"
 	cat >"$SANDBOX/bin/gh" <<EOF
 #!/usr/bin/env bash
+if [ -n "\${AGENT_GIT_SETUP_TEST_GH_LOG:-}" ]; then
+	printf '%s\n' "\$*" >>"\$AGENT_GIT_SETUP_TEST_GH_LOG"
+fi
 if [ "\$1" = "repo" ] && [ "\$2" = "view" ]; then
 	[ "$kind" = "repo-denied" ] && exit 1
 	echo "example/repo"
@@ -310,10 +319,15 @@ else
 fi
 set_fixture_token dummy "fixture-bot[bot]"
 make_fake_gh_identity app
-if "$SCRIPT" --preflight --mode github "$WT17" >/dev/null 2>&1; then
+if (cd "$CALLER_REPO" && GH_REPO=caller/repo "$SCRIPT" --preflight --mode github "$WT17") >/dev/null 2>&1; then
 	ok "preflight passes in linked worktree with bot identity + bot GH_TOKEN"
 else
 	bad "preflight should pass in linked worktree with bot identity + bot GH_TOKEN"
+fi
+if grep -Fq -- "repo view --repo target/repo" "$AGENT_GIT_SETUP_TEST_GH_LOG"; then
+	ok "GitHub access check targets explicit worktree origin, not caller repo"
+else
+	bad "GitHub access check did not target explicit worktree origin"
 fi
 make_fake_gh_identity app
 export AGENT_GIT_TOKEN_ACTOR="other-app[bot]"

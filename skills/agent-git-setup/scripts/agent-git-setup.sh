@@ -137,6 +137,39 @@ except Exception:
 PY
 }
 
+_GH_REPO_FOR_PATH() {
+	local remote_url host remote_path owner repo
+	remote_url="$(git -C "$REPO_PATH" remote get-url origin 2>/dev/null || true)"
+	case "$remote_url" in
+	*://*)
+		host="${remote_url#*://}"
+		host="${host%%/*}"
+		host="${host##*@}"
+		remote_path="${remote_url#*://}"
+		remote_path="${remote_path#*/}"
+		;;
+	*@*:*)
+		host="${remote_url%%:*}"
+		host="${host##*@}"
+		remote_path="${remote_url#*:}"
+		;;
+	*) return 1 ;;
+	esac
+	remote_path="${remote_path%.git}"
+	remote_path="${remote_path%/}"
+	case "$remote_path" in */*) ;; *) return 1 ;; esac
+	owner="${remote_path%%/*}"
+	repo="${remote_path#*/}"
+	if [ -z "$host" ] || [ -z "$owner" ] || [ -z "$repo" ] || [[ "$repo" == */* ]]; then
+		return 1
+	fi
+	if [ "$host" = "github.com" ]; then
+		printf '%s/%s' "$owner" "$repo"
+	else
+		printf '%s/%s/%s' "$host" "$owner" "$repo"
+	fi
+}
+
 preflight() {
 	local ok=0
 
@@ -184,12 +217,15 @@ preflight() {
 			echo "agent-git-setup.sh: PREFLIGHT FAIL: token provider actor '$AGENT_GIT_TOKEN_ACTOR' does not match '$AGENT_GIT_NAME'." >&2
 			ok=1
 		else
-			local accessible_repo
+			local accessible_repo="" gh_repo
 			if gh api user --jq '.login' >/dev/null 2>&1; then
 				echo "agent-git-setup.sh: PREFLIGHT FAIL: GH_TOKEN authenticates as a user, not a GitHub App installation." >&2
 				ok=1
 			else
-				accessible_repo="$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || true)"
+				gh_repo="$(_GH_REPO_FOR_PATH || true)"
+				if [ -n "$gh_repo" ]; then
+					accessible_repo="$(gh repo view --repo "$gh_repo" --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || true)"
+				fi
 			fi
 			if [ "$ok" -eq 0 ] && [ -z "$accessible_repo" ]; then
 				echo "agent-git-setup.sh: PREFLIGHT FAIL: GitHub token cannot access the current repository." >&2
