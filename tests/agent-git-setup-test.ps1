@@ -17,7 +17,7 @@ $ErrorActionPreference = "Continue"
 # leak into the worktree-commit assertions below).
 Get-ChildItem Env: | Where-Object { $_.Name -like "GIT_*" } | ForEach-Object { Remove-Item "Env:$($_.Name)" -ErrorAction SilentlyContinue }
 Remove-Item env:GH_TOKEN, env:GH_ENTERPRISE_TOKEN, env:GITHUB_TOKEN, env:GITHUB_APP_ID, env:GITHUB_APP_PEM, env:GITHUB_APP_INSTALL_ID, env:GH_HOST, env:GH_REPO -ErrorAction SilentlyContinue
-Remove-Item env:AGENT_GIT_NAME, env:AGENT_GIT_BOT_ID, env:AGENT_GIT_TOKEN_ACTOR, env:GIT_USER_NAME, env:GIT_USER_ID, env:AGENT_GIT_ALLOW_HUMAN_ACTOR -ErrorAction SilentlyContinue
+Remove-Item env:AGENT_GIT_NAME, env:AGENT_GIT_BOT_ID, env:AGENT_GIT_TOKEN_ACTOR, env:AGENT_GIT_TOKEN_SHA256, env:AGENT_GIT_TOKEN_ATTESTATION, env:AGENT_GIT_TOKEN_APP_ID, env:AGENT_GIT_TOKEN_APP_PEM_PATH, env:GIT_USER_NAME, env:GIT_USER_ID, env:AGENT_GIT_ALLOW_HUMAN_ACTOR -ErrorAction SilentlyContinue
 
 $ScriptDir = Split-Path -Parent (Resolve-Path $MyInvocation.MyCommand.Path)
 $RepoRoot = Split-Path -Parent $ScriptDir
@@ -30,6 +30,9 @@ $env:GIT_CONFIG_NOSYSTEM = "1"
 $env:GH_CONFIG_DIR = Join-Path $Sandbox "gh-config"
 $env:GIT_TERMINAL_PROMPT = "0"
 function Invoke-RestMethod { throw "Network access is disabled in the hermetic test suite." }
+$script:FixtureRsa = [System.Security.Cryptography.RSA]::Create(2048)
+$script:FixturePemPath = Join-Path $Sandbox "fixture-app.pem"
+[System.IO.File]::WriteAllText($script:FixturePemPath, $script:FixtureRsa.ExportPkcs8PrivateKeyPem())
 # Repos are intentionally throwaway (under $env:TEMP); opt the hardening guard in.
 $env:AGENT_GIT_ALLOW_TMP = "1"
 
@@ -43,6 +46,7 @@ function AssertEq($Actual, $Expected, $Name) {
 function Cleanup {
     Remove-Item $Sandbox -Recurse -Force -ErrorAction SilentlyContinue
     if ($script:Repo20) { Remove-Item $script:Repo20 -Recurse -Force -ErrorAction SilentlyContinue }
+    if ($script:FixtureRsa) { $script:FixtureRsa.Dispose() }
 }
 
 # make_repo [with-origin]: a main repo with an initial commit (account-owner identity).
@@ -84,6 +88,23 @@ function RunSetup($Repo, $SetupScript = $Script) {
     return $exitCode
 }
 
+function SetFixtureToken($Token = "fixture-token") {
+    $env:GH_TOKEN = $Token
+    if ([string]::IsNullOrEmpty($env:AGENT_GIT_TOKEN_ACTOR)) { $env:AGENT_GIT_TOKEN_ACTOR = $env:AGENT_GIT_NAME }
+    $env:AGENT_GIT_TOKEN_APP_ID = "1234567"
+    $env:AGENT_GIT_TOKEN_APP_PEM_PATH = $script:FixturePemPath
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes($Token)
+        $env:AGENT_GIT_TOKEN_SHA256 = [Convert]::ToHexString($sha.ComputeHash($bytes)).ToLowerInvariant()
+    } finally {
+        $sha.Dispose()
+    }
+    $statement = "agent-git-setup-token-v1`n$($env:AGENT_GIT_TOKEN_APP_ID)`n$($env:AGENT_GIT_TOKEN_ACTOR)`n$($env:AGENT_GIT_TOKEN_SHA256)"
+    $signature = $script:FixtureRsa.SignData([System.Text.Encoding]::UTF8.GetBytes($statement), [System.Security.Cryptography.HashAlgorithmName]::SHA256, [System.Security.Cryptography.RSASignaturePadding]::Pkcs1)
+    $env:AGENT_GIT_TOKEN_ATTESTATION = [Convert]::ToBase64String($signature).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+}
+
 # make_fake_gh <kind> [login]: configure a PowerShell function mock; never invoke real gh.
 function MakeFakeGh($Kind, $Login = "") {
     $global:FakeGhKind = $Kind
@@ -108,7 +129,7 @@ Write-Host "1. Happy path: one-off setup scopes all worktrees, main untouched"
 $Repo = MakeRepo "with-origin"
 $env:AGENT_GIT_NAME = "fixture-bot[bot]"
 $env:AGENT_GIT_BOT_ID = "123456789"
-$env:GH_TOKEN = "dummy"
+SetFixtureToken "dummy"
 $WtDir = MakeWorktree $Repo
 $Rc = RunSetup $Repo
 if ($Rc -eq 0) { Ok "script exits 0" } else { Bad "script should exit 0 (exit $Rc)" }
@@ -302,13 +323,17 @@ $GhBin = MakeFakeGh "app" "fixture-bot"
 $Rc = RunPreflight $WtDir $GhBin
 if ($Rc -ne 0) { Ok "preflight exits non-zero without GH_TOKEN" } else { Bad "exit code wrong" }
 # 17b: with GH_TOKEN + bot gh -> pass.
-$env:GH_TOKEN = "dummy"
+SetFixtureToken "dummy"
 $Rc = RunPreflight $WtDir $GhBin
 if ($Rc -eq 0) { Ok "preflight passes in linked worktree with bot identity + bot GH_TOKEN" } else { Bad "preflight should pass in linked worktree with bot identity + bot GH_TOKEN" }
 $env:AGENT_GIT_TOKEN_ACTOR = "other-app[bot]"
 $Rc = RunPreflight $WtDir $GhBin
 if ($Rc -ne 0) { Ok "rejects mismatched App identity" } else { Bad "mismatched App identity must fail" }
 $env:AGENT_GIT_TOKEN_ACTOR = "fixture-bot[bot]"
+$env:GH_TOKEN = "fixture-human-pat"
+$Rc = RunPreflight $WtDir $GhBin
+if ($Rc -ne 0) { Ok "rejects human token with stale bot attestation" } else { Bad "stale bot attestation must not accept a changed token" }
+SetFixtureToken "dummy"
 $GhBin = MakeFakeGh "repo-denied"
 $Rc = RunPreflight $WtDir $GhBin
 if ($Rc -ne 0) { Ok "rejects token without current-repository access" } else { Bad "inaccessible repository must fail" }
@@ -321,7 +346,7 @@ New-Item -ItemType Directory -Path $Clone18 -Force | Out-Null
 $env:AGENT_GIT_NAME = "fixture-bot[bot]"
 $env:AGENT_GIT_BOT_ID = "123456789"
 $env:AGENT_GIT_TOKEN_ACTOR = "fixture-bot[bot]"
-$env:GH_TOKEN = "dummy"
+SetFixtureToken "dummy"
 $Rc = RunPreflight $Clone18 $null "git-only"
 if ($Rc -ne 0) { Ok "preflight fails closed in a separate clone (effect-based, not path-based)" } else { Bad "preflight must fail in a separate clone" }
 Remove-Item $Clone18 -Recurse -Force -ErrorAction SilentlyContinue
@@ -331,7 +356,7 @@ $Repo19 = MakeRepo "with-origin"
 $WtDir = MakeWorktree $Repo19
 $env:AGENT_GIT_NAME = "fixture-bot[bot]"
 $env:AGENT_GIT_BOT_ID = "123456789"
-$env:GH_TOKEN = "dummy"
+SetFixtureToken "dummy"
 $Rc = RunSetup $Repo19
 if ($Rc -ne 0) { Bad "setup before actor preflight failed (exit $Rc)" }
 $env:AGENT_GIT_TOKEN_ACTOR = "fixture-bot[bot]"

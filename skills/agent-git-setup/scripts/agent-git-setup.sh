@@ -48,6 +48,11 @@
 #   AGENT_GIT_BOT_ID  Numeric id of the bot account (optional online, required offline).
 #   GH_TOKEN          Required only for GitHub-mode preflight and `gh`/API as the bot.
 #   AGENT_GIT_TOKEN_ACTOR  Trusted actor login attested by the token provider; required in GitHub mode.
+#   AGENT_GIT_TOKEN_SHA256 SHA-256 of GH_TOKEN emitted by that provider; binds actor metadata to token.
+#   AGENT_GIT_TOKEN_ATTESTATION RSA signature over App ID, actor, and token hash.
+#   AGENT_GIT_TOKEN_APP_ID App ID that signed the token attestation.
+#   AGENT_GIT_TOKEN_APP_PEM_PATH PEM path used to verify the App signature.
+#                         Bash GitHub mode requires python3 + cryptography to verify this signature.
 #
 # Optional environment variables:
 #   AGENT_GIT_SIGNINGKEY  DEPRECATED — SSH signing does not verify for bot
@@ -97,6 +102,41 @@ fi
 # Preflight: fail-closed state checks (read-only, no worktree management)
 # ---------------------------------------------------------------------------
 
+_TOKEN_SHA256() {
+	local _value="$1" _result
+	if command -v sha256sum >/dev/null 2>&1; then
+		_result="$(printf '%s' "$_value" | sha256sum)"
+		printf '%s' "${_result%% *}"
+	elif command -v shasum >/dev/null 2>&1; then
+		_result="$(printf '%s' "$_value" | shasum -a 256)"
+		printf '%s' "${_result%% *}"
+	elif command -v openssl >/dev/null 2>&1; then
+		_result="$(printf '%s' "$_value" | openssl dgst -sha256 2>/dev/null)"
+		printf '%s' "${_result##* }"
+	else
+		return 1
+	fi
+}
+
+_VERIFY_TOKEN_ATTESTATION() {
+	python3 - "$AGENT_GIT_TOKEN_APP_PEM_PATH" "$AGENT_GIT_TOKEN_APP_ID" "$AGENT_GIT_TOKEN_ACTOR" "$1" "$AGENT_GIT_TOKEN_ATTESTATION" <<'PY'
+import base64
+import sys
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding
+
+pem_path, app_id, actor, token_hash, encoded_signature = sys.argv[1:]
+with open(pem_path, "rb") as pem_file:
+	key = serialization.load_pem_private_key(pem_file.read(), password=None)
+signature = base64.urlsafe_b64decode(encoded_signature + "=" * (-len(encoded_signature) % 4))
+statement = ("agent-git-setup-token-v1\n%s\n%s\n%s" % (app_id, actor, token_hash)).encode()
+try:
+	key.public_key().verify(signature, statement, padding.PKCS1v15(), hashes.SHA256())
+except Exception:
+	sys.exit(1)
+PY
+}
+
 preflight() {
 	local ok=0
 
@@ -126,16 +166,32 @@ preflight() {
 	fi
 
 	if [ "$PREFLIGHT_MODE" = "github" ]; then
-		if [ -z "${GH_TOKEN:-}" ] || [ -z "${AGENT_GIT_TOKEN_ACTOR:-}" ] || ! command -v gh >/dev/null 2>&1; then
-			echo "agent-git-setup.sh: PREFLIGHT FAIL: github mode requires GH_TOKEN, AGENT_GIT_TOKEN_ACTOR, gh, and network access." >&2
+		local token_hash actor_lower name_lower expected_hash_lower
+		token_hash="$(if [ -n "${GH_TOKEN:-}" ]; then _TOKEN_SHA256 "$GH_TOKEN" 2>/dev/null || true; fi)"
+		actor_lower="$(printf '%s' "${AGENT_GIT_TOKEN_ACTOR:-}" | tr '[:upper:]' '[:lower:]')"
+		name_lower="$(printf '%s' "${AGENT_GIT_NAME:-}" | tr '[:upper:]' '[:lower:]')"
+		expected_hash_lower="$(printf '%s' "${AGENT_GIT_TOKEN_SHA256:-}" | tr '[:upper:]' '[:lower:]')"
+		if [ -z "${GH_TOKEN:-}" ] || [ -z "${AGENT_GIT_TOKEN_ACTOR:-}" ] || [ -z "${AGENT_GIT_TOKEN_SHA256:-}" ] || [ -z "${AGENT_GIT_TOKEN_ATTESTATION:-}" ] || [ -z "${AGENT_GIT_TOKEN_APP_ID:-}" ] || [ -z "${AGENT_GIT_TOKEN_APP_PEM_PATH:-}" ] || ! command -v gh >/dev/null 2>&1; then
+			echo "agent-git-setup.sh: PREFLIGHT FAIL: github mode requires a signed token attestation, GH_TOKEN, gh, and network access." >&2
 			ok=1
-		elif [[ "${AGENT_GIT_TOKEN_ACTOR,,}" != "${AGENT_GIT_NAME,,}" ]]; then
+		elif [ -z "$token_hash" ] || [ "$token_hash" != "$expected_hash_lower" ]; then
+			echo "agent-git-setup.sh: PREFLIGHT FAIL: token fingerprint does not match GH_TOKEN." >&2
+			ok=1
+		elif ! _VERIFY_TOKEN_ATTESTATION "$token_hash" >/dev/null 2>&1; then
+			echo "agent-git-setup.sh: PREFLIGHT FAIL: token actor attestation signature is invalid." >&2
+			ok=1
+		elif [ "$actor_lower" != "$name_lower" ]; then
 			echo "agent-git-setup.sh: PREFLIGHT FAIL: token provider actor '$AGENT_GIT_TOKEN_ACTOR' does not match '$AGENT_GIT_NAME'." >&2
 			ok=1
 		else
 			local accessible_repo
-			accessible_repo="$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || true)"
-			if [ -z "$accessible_repo" ]; then
+			if gh api user --jq '.login' >/dev/null 2>&1; then
+				echo "agent-git-setup.sh: PREFLIGHT FAIL: GH_TOKEN authenticates as a user, not a GitHub App installation." >&2
+				ok=1
+			else
+				accessible_repo="$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || true)"
+			fi
+			if [ "$ok" -eq 0 ] && [ -z "$accessible_repo" ]; then
 				echo "agent-git-setup.sh: PREFLIGHT FAIL: GitHub token cannot access the current repository." >&2
 				ok=1
 			fi

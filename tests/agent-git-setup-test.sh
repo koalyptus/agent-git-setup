@@ -17,7 +17,7 @@ for name in $(compgen -e); do
 	esac
 done
 unset GH_TOKEN GH_ENTERPRISE_TOKEN GITHUB_TOKEN GITHUB_APP_ID GITHUB_APP_PEM GITHUB_APP_INSTALL_ID GH_HOST GH_REPO
-unset AGENT_GIT_NAME AGENT_GIT_BOT_ID AGENT_GIT_TOKEN_ACTOR GIT_USER_NAME GIT_USER_ID AGENT_GIT_ALLOW_HUMAN_ACTOR
+unset AGENT_GIT_NAME AGENT_GIT_BOT_ID AGENT_GIT_TOKEN_ACTOR AGENT_GIT_TOKEN_SHA256 AGENT_GIT_TOKEN_ATTESTATION AGENT_GIT_TOKEN_APP_ID AGENT_GIT_TOKEN_APP_PEM_PATH GIT_USER_NAME GIT_USER_ID AGENT_GIT_ALLOW_HUMAN_ACTOR
 
 SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/scripts/agent-git-setup.sh"
 SANDBOX="$(mktemp -d)"
@@ -27,6 +27,9 @@ export GIT_CONFIG_NOSYSTEM=1
 export GH_CONFIG_DIR="$SANDBOX/gh-config"
 # Repos are intentionally throwaway (under $SANDBOX=/tmp); opt the hardening guard in.
 export AGENT_GIT_ALLOW_TMP=1
+TEST_APP_PEM="$SANDBOX/fixture-app.pem"
+openssl genrsa -out "$TEST_APP_PEM" 2048 >/dev/null 2>&1
+export AGENT_GIT_TOKEN_APP_ID=1234567 AGENT_GIT_TOKEN_APP_PEM_PATH="$TEST_APP_PEM"
 mkdir -p "$SANDBOX/bin"
 cat >"$SANDBOX/bin/curl" <<'EOF'
 #!/usr/bin/env bash
@@ -46,6 +49,30 @@ bad() {
 	echo "  FAIL - $1"
 }
 assert_eq() { if [ "$1" = "$2" ]; then ok "$3"; else bad "$3 (got '$1' expected '$2')"; fi; }
+fixture_token_sha256() {
+	python3 -c 'import hashlib,sys; print(hashlib.sha256(sys.argv[1].encode()).hexdigest())' "$1"
+}
+set_fixture_token() {
+	local _token="$1" _actor="${2:-${AGENT_GIT_NAME}}"
+	export GH_TOKEN="$_token" AGENT_GIT_TOKEN_ACTOR="$_actor"
+	AGENT_GIT_TOKEN_SHA256="$(fixture_token_sha256 "$_token")"
+	export AGENT_GIT_TOKEN_SHA256
+	AGENT_GIT_TOKEN_ATTESTATION="$(
+		python3 - "$TEST_APP_PEM" "$AGENT_GIT_TOKEN_APP_ID" "$_actor" "$AGENT_GIT_TOKEN_SHA256" <<'PY'
+import base64, sys
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding
+
+path, app_id, actor, token_hash = sys.argv[1:]
+with open(path, "rb") as pem_file:
+    key = serialization.load_pem_private_key(pem_file.read(), password=None)
+statement = ("agent-git-setup-token-v1\n%s\n%s\n%s" % (app_id, actor, token_hash)).encode()
+signature = key.sign(statement, padding.PKCS1v15(), hashes.SHA256())
+print(base64.urlsafe_b64encode(signature).rstrip(b"=").decode())
+PY
+	)"
+	export AGENT_GIT_TOKEN_ATTESTATION
+}
 cleanup() { rm -rf "$SANDBOX"; }
 trap cleanup EXIT
 
@@ -281,7 +308,7 @@ else
 	rc=$?
 	if [ "$rc" -ne 0 ]; then ok "preflight exits non-zero without GH_TOKEN"; else bad "exit code wrong"; fi
 fi
-export GH_TOKEN=dummy
+set_fixture_token dummy "fixture-bot[bot]"
 make_fake_gh_identity app
 if "$SCRIPT" --preflight --mode github "$WT17" >/dev/null 2>&1; then
 	ok "preflight passes in linked worktree with bot identity + bot GH_TOKEN"
@@ -292,6 +319,9 @@ make_fake_gh_identity app
 export AGENT_GIT_TOKEN_ACTOR="other-app[bot]"
 if "$SCRIPT" --preflight --mode github "$WT17" >/dev/null 2>&1; then bad "mismatched App identity must fail"; else ok "rejects mismatched App identity"; fi
 export AGENT_GIT_TOKEN_ACTOR="fixture-bot[bot]"
+export GH_TOKEN="fixture-human-pat"
+if "$SCRIPT" --preflight --mode github "$WT17" >/dev/null 2>&1; then bad "changed token must not reuse bot attestation"; else ok "rejects human token with stale bot fingerprint"; fi
+export GH_TOKEN=dummy
 make_fake_gh_identity repo-denied
 if "$SCRIPT" --preflight --mode github "$WT17" >/dev/null 2>&1; then bad "inaccessible repository must fail"; else ok "rejects token without current-repository access"; fi
 
@@ -303,8 +333,8 @@ echo "18. --preflight fails in a separate clone (bot identity never resolves)"
 REPO18c="$(make_repo with-origin)"
 CLONE18="$(mktemp -d "${SANDBOX}/clone18.XXXXXX")"
 git clone --quiet "$REPO18c" "$CLONE18"
-export AGENT_GIT_NAME="fixture-bot[bot]" AGENT_GIT_BOT_ID=123456789 GH_TOKEN=dummy
-export AGENT_GIT_TOKEN_ACTOR="fixture-bot[bot]"
+export AGENT_GIT_NAME="fixture-bot[bot]" AGENT_GIT_BOT_ID=123456789
+set_fixture_token dummy "fixture-bot[bot]"
 if "$SCRIPT" --preflight --mode git-only "$CLONE18" >/dev/null 2>&1; then
 	bad "preflight must fail in a separate clone (no bot identity)"
 else
@@ -316,7 +346,8 @@ echo "19. --preflight verifies the GH_TOKEN actor is the BOT (not the account ow
 REPO19="$(make_repo with-origin)"
 make_worktree "$REPO19"
 WT19="$WT_DIR"
-export AGENT_GIT_NAME="fixture-bot[bot]" AGENT_GIT_BOT_ID=123456789 GH_TOKEN=dummy
+export AGENT_GIT_NAME="fixture-bot[bot]" AGENT_GIT_BOT_ID=123456789
+set_fixture_token dummy "fixture-bot[bot]"
 # The bot commit identity must be IN EFFECT (check 1) before preflight can pass.
 "$SCRIPT" "$REPO19" >/dev/null 2>&1
 
@@ -339,7 +370,7 @@ else
 	if [ "$rc" -ne 0 ]; then ok "preflight fails closed when GH_TOKEN actor is the account owner"; else bad "exit code wrong"; fi
 fi
 OUT19b="$("$SCRIPT" --preflight --mode github "$WT19" 2>&1)" || true
-if echo "$OUT19b" | grep -qi "token provider actor"; then
+if echo "$OUT19b" | grep -qi "token actor attestation signature is invalid"; then
 	ok "unverified actor failure is explicit"
 else
 	bad "unverified actor failure did not name the cause"

@@ -141,7 +141,7 @@ fi
 # Mint the installation token (network). Prints the token on stdout.
 mint_token() {
 	python3 - "$APP_ID" "$PEM" "$INSTALL_ID" <<'PY'
-import sys, json, urllib.request, time, base64
+import sys, json, urllib.request, time, base64, hashlib
 from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.asymmetric import padding
 
@@ -183,7 +183,12 @@ if inst is None:
     sys.exit(1)
 
 tok = api("/app/installations/%d/access_tokens" % inst["id"], method="POST", data=b"")
-print(json.dumps({"token": tok["token"], "app_slug": app["slug"]}))
+token_sha256 = hashlib.sha256(tok["token"].encode()).hexdigest()
+actor = app["slug"] + "[bot]"
+statement = ("agent-git-setup-token-v1\n%s\n%s\n%s" % (app_id, actor, token_sha256)).encode()
+attestation = b64u(key.sign(statement, padding.PKCS1v15(), hashes.SHA256())).decode()
+print(json.dumps({"token": tok["token"], "app_slug": app["slug"],
+				  "token_sha256": token_sha256, "attestation": attestation}))
 PY
 }
 
@@ -191,12 +196,24 @@ MINT_RESULT="$(mint_token)"
 TOKEN="$(printf '%s' "$MINT_RESULT" | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')"
 APP_SLUG="$(printf '%s' "$MINT_RESULT" | python3 -c 'import json,sys; print(json.load(sys.stdin)["app_slug"])')"
 TOKEN_ACTOR="${APP_SLUG}[bot]"
+TOKEN_SHA256="$(printf '%s' "$MINT_RESULT" | python3 -c 'import json,sys; print(json.load(sys.stdin)["token_sha256"])')"
+TOKEN_ATTESTATION="$(printf '%s' "$MINT_RESULT" | python3 -c 'import json,sys; print(json.load(sys.stdin)["attestation"])')"
 
 if [ "$SHELL_OUT" -eq 1 ]; then
 	echo "export GH_TOKEN=$TOKEN"
 	# This slug came from GET /app authenticated by the App JWT; the installation
 	# token itself cannot introspect its App identity.
 	echo "export AGENT_GIT_TOKEN_ACTOR=$TOKEN_ACTOR"
+	echo "export AGENT_GIT_TOKEN_SHA256=$TOKEN_SHA256"
+	echo "export AGENT_GIT_TOKEN_ATTESTATION=$TOKEN_ATTESTATION"
+	echo "export AGENT_GIT_TOKEN_APP_ID=$APP_ID"
+	PEM_VERIFY_PATH="$PEM"
+	if command -v wslpath >/dev/null 2>&1; then
+		PEM_VERIFY_PATH="$(wslpath -w "$PEM")"
+	elif command -v cygpath >/dev/null 2>&1; then
+		PEM_VERIFY_PATH="$(cygpath -w "$PEM")"
+	fi
+	printf 'export AGENT_GIT_TOKEN_APP_PEM_PATH=%q\n' "$PEM_VERIFY_PATH"
 	# Emit the App's bot id (if known) so the agent can persist it into the
 	# credentials file / env. AGENT_GIT_BOT_ID is static per App; when present,
 	# agent-git-setup.sh uses it as the commit-email prefix so commits are

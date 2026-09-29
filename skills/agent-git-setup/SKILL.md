@@ -55,12 +55,12 @@ Do NOT use for a human's normal git login — that is personal PAT/SSH. This is 
 
    ```bash
    source <(scripts/mint-token.sh --shell)
-   # GH_TOKEN and AGENT_GIT_TOKEN_ACTOR exported in the agent's shell
+   # GH_TOKEN and signed AGENT_GIT_TOKEN_* attestation exported in the agent's shell
    ```
 
    If `GITHUB_APP_ID`/`GITHUB_APP_PEM` already in env or passed as `--app-id`/`--pem`, those win.
 
-   Minting does not happen for Git-only sessions. `--shell` derives the App slug from the App-JWT-authenticated `GET /app` response and exports `<app-slug>[bot]` as `AGENT_GIT_TOKEN_ACTOR` with `GH_TOKEN`. GitHub installation tokens do not expose their App slug to an introspection endpoint.
+   Minting does not happen for Git-only sessions. `--shell` derives the App slug from the App-JWT-authenticated `GET /app` response, hashes the minted token, and signs the App ID, actor, and token hash with the App private key. It exports that attestation with `GH_TOKEN`; installation tokens do not expose their App slug to an introspection endpoint.
 
 3. **Export bot identity vars.**
 
@@ -93,7 +93,7 @@ Do NOT use for a human's normal git login — that is personal PAT/SSH. This is 
 
 - Git repo the agent works in (git >= 2.43). Harness places agent in worktree; `includeIf` scopes to all worktrees, no `worktreeConfig` needed.
 - `gh` (GitHub CLI) required for bot GitHub-actor path (PRs, comments, API commits). Local commits need only `git`.
-- `python3` + `cryptography` if using `mint-token.sh` (GitHub App path). Not needed for Git-only commit author.
+- `python3` + `cryptography` for Bash GitHub-mode attestation verification and `mint-token.sh`. Git-only use does not need it. PowerShell verifies RSA signatures with .NET.
 - GitHub App (App ID + PEM) only if using `mint-token.sh` for gh/API as bot. Not needed for Git-only.
 - PowerShell 7+ for `agent-git-setup.ps1` (Windows). Same env vars as bash.
 
@@ -108,7 +108,7 @@ scripts/agent-git-setup.ps1 --preflight --mode github .
 
 - Both modes require a linked worktree and verify effective author/committer name and numeric bot noreply email, including environment overrides.
 - `git-only` does not require `GH_TOKEN`, `gh`, or network access.
-- `github` requires `GH_TOKEN`, `AGENT_GIT_TOKEN_ACTOR`, `gh`, and network access. It compares the trusted token-provider actor to `AGENT_GIT_NAME` and uses `gh repo view` to confirm the token can access the current repository. The bundled App minter attests its actor using the App-JWT-authenticated slug; other providers must supply equivalent trusted metadata. `gh` consumes `GH_TOKEN` automatically; other API clients must pass it explicitly.
+- `github` requires `GH_TOKEN`, the signed `AGENT_GIT_TOKEN_*` fields, `gh`, the App PEM path, and network access. Preflight recomputes the token SHA-256, verifies the App-key signature over App ID/actor/hash, compares actor with `AGENT_GIT_NAME`, then uses `gh repo view` to confirm current-repo access. A standalone actor string is not trusted. `gh` consumes `GH_TOKEN` automatically; other API clients must pass it explicitly.
 - Preflight is point-in-time, not continuous enforcement. Re-run after identity/token changes and after authentication failures.
 - A skill is instructions, not a universal session hook. Guaranteed execution before each session requires the harness to call preflight as a lifecycle step.
 
@@ -153,13 +153,13 @@ scripts/agent-git-setup.sh --preflight --mode github <worktree-path>
 | `AGENT_GIT_NAME` | Bot login used for commit attribution and actor verification. |
 | `AGENT_GIT_BOT_ID` | Numeric bot ID for noreply email; required for offline setup. |
 | `GH_TOKEN` | Required for GitHub-mode preflight and `gh`/API operations as the bot. |
-| `AGENT_GIT_TOKEN_ACTOR` | Trusted actor login supplied by the token provider; required in GitHub mode. |
+| `AGENT_GIT_TOKEN_ACTOR`, `AGENT_GIT_TOKEN_SHA256`, `AGENT_GIT_TOKEN_ATTESTATION`, `AGENT_GIT_TOKEN_APP_ID`, `AGENT_GIT_TOKEN_APP_PEM_PATH` | App actor and token hash signed by the App key; all required in GitHub mode. |
 | `AGENT_GIT_ALLOW_TMP` | Opt-in for ephemeral location. |
 
 ```powershell
 $env:AGENT_GIT_NAME = "myagent[bot]"   # replace with your bot's name (GitHub creates it as <app>[bot])
 $env:AGENT_GIT_BOT_ID = "123456789"
-# Set GH_TOKEN and AGENT_GIT_TOKEN_ACTOR from a trusted provider for GitHub mode.
+# Set GH_TOKEN and the complete signed AGENT_GIT_TOKEN_* attestation from a trusted provider for GitHub mode.
 scripts/agent-git-setup.ps1 <repo-dir>
 ```
 

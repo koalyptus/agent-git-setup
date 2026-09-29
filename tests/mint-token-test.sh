@@ -124,6 +124,91 @@ case "$SHELL_LINE" in
 *) bad "--shell output unexpected: $SHELL_LINE" ;;
 esac
 
+# --- 5b. Local API fixture: App attestation, token binding, and shell output --
+echo "local API fixture: app attestation and shell metadata"
+FAKE_API_DIR="$TEST_HOME/fake-api"
+mkdir -p "$FAKE_API_DIR"
+cat >"$FAKE_API_DIR/sitecustomize.py" <<'PY'
+import base64
+import json
+import os
+import urllib.request
+
+
+class FakeResponse:
+	def __init__(self, payload):
+		self.body = json.dumps(payload).encode()
+
+	def read(self, *args):
+		return self.body
+
+	def __enter__(self):
+		return self
+
+	def __exit__(self, *args):
+		return False
+
+
+def fake_urlopen(request, *args, **kwargs):
+	authorization = request.get_header("Authorization") or ""
+	if not authorization.startswith("Bearer "):
+		raise RuntimeError("expected App JWT authorization")
+
+	jwt = authorization[len("Bearer "):].split(".")
+	claims = json.loads(base64.urlsafe_b64decode(jwt[1] + "=" * (-len(jwt[1]) % 4)))
+	requested_id = str(claims["iss"])
+	response_id = os.environ.get("AGENT_GIT_SETUP_TEST_APP_RESPONSE_ID", requested_id)
+	url = request.full_url
+
+	if url.endswith("/app"):
+		return FakeResponse({"id": int(response_id), "slug": "fixture-app"})
+	if url.endswith("/app/installations"):
+		return FakeResponse([{"id": 42}])
+	if url.endswith("/app/installations/42/access_tokens"):
+		return FakeResponse({"token": "ghs.synthetic-installation-token"})
+	raise RuntimeError("unexpected API path: " + url)
+
+
+urllib.request.urlopen = fake_urlopen
+PY
+SHELL_METADATA="$(PYTHONPATH="$FAKE_API_DIR" AGENT_GIT_SETUP_TEST_APP_RESPONSE_ID=1234567 \
+	"$SCRIPT" --app-id 1234567 --pem "$PEM_FOR_TEST" --shell 2>/dev/null)"
+SHELL_TOKEN="$(printf '%s\n' "$SHELL_METADATA" | sed -n 's/^export GH_TOKEN=//p')"
+SHELL_ACTOR="$(printf '%s\n' "$SHELL_METADATA" | sed -n 's/^export AGENT_GIT_TOKEN_ACTOR=//p')"
+SHELL_SHA="$(printf '%s\n' "$SHELL_METADATA" | sed -n 's/^export AGENT_GIT_TOKEN_SHA256=//p')"
+SHELL_ATTESTATION="$(printf '%s\n' "$SHELL_METADATA" | sed -n 's/^export AGENT_GIT_TOKEN_ATTESTATION=//p')"
+SHELL_APP_ID="$(printf '%s\n' "$SHELL_METADATA" | sed -n 's/^export AGENT_GIT_TOKEN_APP_ID=//p')"
+SHELL_PEM_PATH="$(printf '%s\n' "$SHELL_METADATA" | sed -n 's/^export AGENT_GIT_TOKEN_APP_PEM_PATH=//p')"
+EXPECTED_SHA="$(python3 -c 'import hashlib,sys; print(hashlib.sha256(sys.argv[1].encode()).hexdigest())' "$SHELL_TOKEN")"
+if [ "$SHELL_TOKEN" != "ghs.synthetic-installation-token" ] || [ "$SHELL_ACTOR" != "fixture-app[bot]" ] || [ "$SHELL_SHA" != "$EXPECTED_SHA" ] || [ "$SHELL_APP_ID" != "1234567" ] || [ -z "$SHELL_PEM_PATH" ]; then
+	bad "--shell metadata mismatch (token=$([ "$SHELL_TOKEN" = "ghs.synthetic-installation-token" ] && echo yes || echo no) actor=$([ "$SHELL_ACTOR" = "fixture-app[bot]" ] && echo yes || echo no) hash=$([ "$SHELL_SHA" = "$EXPECTED_SHA" ] && echo yes || echo no) app-id=$([ "$SHELL_APP_ID" = "1234567" ] && echo yes || echo no) pem-path=$([ -n "$SHELL_PEM_PATH" ] && echo yes || echo no))"
+elif python3 - "$PUB_FOR_TEST" "$SHELL_APP_ID" "$SHELL_ACTOR" "$SHELL_SHA" "$SHELL_ATTESTATION" <<'PY'; then
+import base64, sys
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding
+
+public_path, app_id, actor, token_hash, encoded_signature = sys.argv[1:]
+with open(public_path, "rb") as public_file:
+    public_key = serialization.load_pem_public_key(public_file.read())
+signature = base64.urlsafe_b64decode(encoded_signature + "=" * (-len(encoded_signature) % 4))
+statement = ("agent-git-setup-token-v1\n%s\n%s\n%s" % (app_id, actor, token_hash)).encode()
+try:
+    public_key.verify(signature, statement, padding.PKCS1v15(), hashes.SHA256())
+except Exception:
+    sys.exit(1)
+PY
+	ok "App actor attestation signature binds the exact minted token"
+else
+	bad "App actor attestation signature was invalid"
+fi
+
+if PYTHONPATH="$FAKE_API_DIR" AGENT_GIT_SETUP_TEST_APP_RESPONSE_ID=7654321 \
+	"$SCRIPT" --app-id 1234567 --pem "$PEM_FOR_TEST" --shell >/dev/null 2>&1; then
+	bad "should reject App ID mismatch in authenticated /app response"
+else
+	ok "rejects mismatched App ID from authenticated /app response"
+fi
+
 # --- 6. Env-var resolution (no args) ---------------------------------------
 echo "env-var resolution (no args)"
 ENV_JWT="$(GITHUB_APP_ID=1234567 GITHUB_APP_PEM="$PEM_FOR_TEST" "$SCRIPT" --print-jwt 2>/dev/null)"

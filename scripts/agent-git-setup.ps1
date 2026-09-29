@@ -43,6 +43,10 @@
 #   AGENT_GIT_BOT_ID  Numeric id of the bot account (optional online, required offline).
 #   GH_TOKEN          Required only for GitHub-mode preflight and `gh`/API as the bot.
 #   AGENT_GIT_TOKEN_ACTOR  Trusted actor login attested by the token provider; required in GitHub mode.
+#   AGENT_GIT_TOKEN_SHA256  SHA-256 of GH_TOKEN, signed with the App key.
+#   AGENT_GIT_TOKEN_ATTESTATION  App-key signature binding App ID, actor, and token hash.
+#   AGENT_GIT_TOKEN_APP_ID  App ID for signature verification.
+#   AGENT_GIT_TOKEN_APP_PEM_PATH  App PEM path used to verify the signature.
 #
 # Optional environment variables:
 #   AGENT_GIT_SIGNINGKEY  DEPRECATED — SSH signing does not verify for bot
@@ -132,17 +136,49 @@ function Preflight {
     }
 
     if ($PREFLIGHT_MODE -eq "github") {
-        if ([string]::IsNullOrEmpty($env:GH_TOKEN) -or [string]::IsNullOrEmpty($env:AGENT_GIT_TOKEN_ACTOR) -or -not (Get-Command gh -ErrorAction SilentlyContinue)) {
-            Write-Host "agent-git-setup.ps1: PREFLIGHT FAIL: github mode requires GH_TOKEN, AGENT_GIT_TOKEN_ACTOR, gh, and network access." -ForegroundColor Red
-            $ok = 1
-        } elseif ($env:AGENT_GIT_TOKEN_ACTOR -ine $env:AGENT_GIT_NAME) {
-            Write-Host "agent-git-setup.ps1: PREFLIGHT FAIL: token provider actor '$($env:AGENT_GIT_TOKEN_ACTOR)' does not match '$($env:AGENT_GIT_NAME)'." -ForegroundColor Red
+        if ([string]::IsNullOrEmpty($env:GH_TOKEN) -or [string]::IsNullOrEmpty($env:AGENT_GIT_TOKEN_ACTOR) -or [string]::IsNullOrEmpty($env:AGENT_GIT_TOKEN_SHA256) -or [string]::IsNullOrEmpty($env:AGENT_GIT_TOKEN_ATTESTATION) -or [string]::IsNullOrEmpty($env:AGENT_GIT_TOKEN_APP_ID) -or [string]::IsNullOrEmpty($env:AGENT_GIT_TOKEN_APP_PEM_PATH) -or -not (Get-Command gh -ErrorAction SilentlyContinue)) {
+            Write-Host "agent-git-setup.ps1: PREFLIGHT FAIL: github mode requires GH_TOKEN, signed actor metadata, gh, and network access." -ForegroundColor Red
             $ok = 1
         } else {
-            $accessibleRepo = & gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>$null
-            if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrEmpty($accessibleRepo)) {
-                Write-Host "agent-git-setup.ps1: PREFLIGHT FAIL: GitHub token cannot access the current repository." -ForegroundColor Red
+            $sha256 = [System.Security.Cryptography.SHA256]::Create()
+            try {
+                $tokenBytes = [System.Text.Encoding]::UTF8.GetBytes($env:GH_TOKEN)
+                $actualTokenHash = [Convert]::ToHexString($sha256.ComputeHash($tokenBytes)).ToLowerInvariant()
+            } finally {
+                $sha256.Dispose()
+            }
+            if ($actualTokenHash -cne $env:AGENT_GIT_TOKEN_SHA256.ToLowerInvariant()) {
+                Write-Host "agent-git-setup.ps1: PREFLIGHT FAIL: token fingerprint does not match GH_TOKEN." -ForegroundColor Red
                 $ok = 1
+            } else {
+                $signatureValid = $false
+                $rsa = [System.Security.Cryptography.RSA]::Create()
+                try {
+                    $pemText = [System.IO.File]::ReadAllText($env:AGENT_GIT_TOKEN_APP_PEM_PATH)
+                    $rsa.ImportFromPem($pemText)
+                    $encodedSignature = $env:AGENT_GIT_TOKEN_ATTESTATION.Replace('-', '+').Replace('_', '/')
+                    $encodedSignature += '=' * ((4 - ($encodedSignature.Length % 4)) % 4)
+                    $signature = [Convert]::FromBase64String($encodedSignature)
+                    $statement = "agent-git-setup-token-v1`n$($env:AGENT_GIT_TOKEN_APP_ID)`n$($env:AGENT_GIT_TOKEN_ACTOR)`n$actualTokenHash"
+                    $signatureValid = $rsa.VerifyData([System.Text.Encoding]::UTF8.GetBytes($statement), $signature, [System.Security.Cryptography.HashAlgorithmName]::SHA256, [System.Security.Cryptography.RSASignaturePadding]::Pkcs1)
+                } catch {
+                    $signatureValid = $false
+                } finally {
+                    $rsa.Dispose()
+                }
+                if (-not $signatureValid) {
+                    Write-Host "agent-git-setup.ps1: PREFLIGHT FAIL: token actor attestation signature is invalid." -ForegroundColor Red
+                    $ok = 1
+                } elseif ($env:AGENT_GIT_TOKEN_ACTOR -ine $env:AGENT_GIT_NAME) {
+                Write-Host "agent-git-setup.ps1: PREFLIGHT FAIL: token provider actor '$($env:AGENT_GIT_TOKEN_ACTOR)' does not match '$($env:AGENT_GIT_NAME)'." -ForegroundColor Red
+                $ok = 1
+                } else {
+                    $accessibleRepo = & gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>$null
+                    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrEmpty($accessibleRepo)) {
+                        Write-Host "agent-git-setup.ps1: PREFLIGHT FAIL: GitHub token cannot access the current repository." -ForegroundColor Red
+                        $ok = 1
+                    }
+                }
             }
         }
     }
