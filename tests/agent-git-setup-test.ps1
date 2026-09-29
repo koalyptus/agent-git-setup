@@ -78,8 +78,10 @@ function MakeWorktree($Repo) {
 }
 
 function RunSetup($Repo, $SetupScript = $Script) {
-    & $SetupScript $Repo *> $null
-    return $global:LASTEXITCODE
+    $output = & $SetupScript $Repo 2>&1 | Out-String
+    $exitCode = $global:LASTEXITCODE
+    if ($exitCode -ne 0) { Write-Host $output }
+    return $exitCode
 }
 
 # make_fake_gh <kind> [login]: configure a PowerShell function mock; never invoke real gh.

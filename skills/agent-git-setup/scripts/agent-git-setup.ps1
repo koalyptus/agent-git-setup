@@ -348,7 +348,9 @@ if ((Split-Path (Split-Path $currentGitDir -Parent) -Leaf) -eq "worktrees") {
     foreach ($line in $wtLines) {
         if ($line.StartsWith("worktree ")) {
             $path = $line.Substring("worktree ".Length).Replace('\', '/')
-            if ($path -ne $REPO_PATH) {
+            $candidateGitDir = & git -C $path rev-parse --absolute-git-dir 2>$null
+            $candidateCommonDir = & git -C $path rev-parse --path-format=absolute --git-common-dir 2>$null
+            if ($LASTEXITCODE -eq 0 -and $candidateGitDir -ne $candidateCommonDir) {
                 $wtTest = $path
                 break
             }
