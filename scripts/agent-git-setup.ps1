@@ -30,59 +30,39 @@
 #   GitHub App flow: bot noreply for local commits + `gh` with `GH_TOKEN` for
 #   API commits (GitHub signs server-side → agent name + Verified badge).
 #
-# The agent opens PRs / acts on GitHub AS THE BOT via `gh` + `GH_TOKEN` in its
-# environment (PRs, issues, comments, API commits for the Verified badge). So
-# `GH_TOKEN` is mandatory in the agent flow. `--preflight` (below) fails closed
-# if it is missing — rather than silently falling back to the account owner's
-# `gh auth`.
+# GitHub operations as the bot require `GH_TOKEN`; local commits do not.
 #
-# PREFLOW GUARDRAIL:
-#   Run `agent-git-setup.ps1 --preflight` BEFORE any git/gh work. It fails
-#   non-zero (fail-closed) if the agent is in the MAIN repo (commits there would
-#   be attributed to the account owner — the includeIf glob excludes the main
-#   tree's .git, so a main-tree commit is attributed to the account owner) or if
-#   `GH_TOKEN` is missing (no bot PR/API actor). This converts the most common
-#   mis-attribution failure — an agent committing from the main tree as the
-#   account owner — from documentation into a hard mechanism, without the script
-#   ever creating or demanding a worktree. `--preflight` reads state only; it does
-#   not manage worktrees or hooks.
+# PREFLIGHT GUARDRAIL:
+#   Run `--preflight --mode git-only` before local commits, or `--mode github`
+#   before GitHub operations. Both require an actual linked worktree; GitHub mode
+#   additionally checks trusted token-provider actor metadata and repository access. A harness lifecycle hook is needed
+#   to guarantee preflight runs at the start of every session.
 #
 # Required environment variables:
 #   AGENT_GIT_NAME    Commit author name, e.g. myagent[bot].
-#   GIT_USER_NAME     GitHub handle (e.g. my-git-user-name). LAST-RESORT
-#                     fallback only: if the bot id cannot be resolved, commits
-#                     are attributed to this account-owner handle. Prefer
-#                     AGENT_GIT_BOT_ID / AGENT_GIT_NAME so commits stay bot.
-#   GIT_USER_ID       Numeric GitHub user id (alternative to GIT_USER_NAME).
-#                     If set, used directly as the fallback noreply prefix.
-#
-# Mandatory environment variables (agent flow):
-#   GH_TOKEN              A GitHub token (e.g. an App install token) for
-#                         `gh`/API operations AS THE BOT (PRs, issues,
-#                         comments, and API commits for Verified badge). The
-#                         agent opens PRs as the bot, so this is required in the
-#                         agent flow. `--preflight` fails closed if it is missing.
+#   AGENT_GIT_BOT_ID  Numeric id of the bot account (optional online, required offline).
+#   GH_TOKEN          Required only for GitHub-mode preflight and `gh`/API as the bot.
+#   AGENT_GIT_TOKEN_ACTOR  Trusted actor login attested by the token provider; required in GitHub mode.
+#   AGENT_GIT_TOKEN_SHA256  SHA-256 of GH_TOKEN, signed with the App key.
+#   AGENT_GIT_TOKEN_ATTESTATION  App-key signature binding App ID, actor, and token hash.
+#   AGENT_GIT_TOKEN_APP_ID  App ID for signature verification.
+#   AGENT_GIT_TOKEN_APP_PEM_PATH  App PEM path used to verify the signature.
 #
 # Optional environment variables:
 #   AGENT_GIT_SIGNINGKEY  DEPRECATED — SSH signing does not verify for bot
 #                         noreply emails. Kept for backward compatibility
 #                         but has no effect on bot identity commits.
-#   AGENT_GIT_BOT_ID      Hidden override: the numeric bot id for the noreply
-#                         email. Used for hermetic tests / offline use (no
-#                         network). If unset, the bot id is resolved via the
-#                         public GitHub API (uses GH_TOKEN as Bearer if set).
-#   AGENT_GIT_ALLOW_HUMAN_ACTOR  *(default unset)* the agent sets this to
-#                         `1` ONLY after the account owner explicitly approves
-#                         acting as them (last resort when bot-token mint fails).
+#   AGENT_GIT_BOT_ID      Numeric bot id for the noreply email. If unset, the
+#                         bot id is resolved via the public GitHub API.
 #   AGENT_GIT_ALLOW_TMP   *(default unset)* opt-in to allow running from
 #                         an ephemeral location (for test harnesses).
 #
 # Usage:
-#   agent-git-setup.ps1 --preflight [<repo-dir>]
+#   agent-git-setup.ps1 --preflight --mode git-only|github [<repo-dir>]
 #   agent-git-setup.ps1 <repo-dir>      # any worktree or the main repo of the repo
 #
-# Requires: git, gh (for `--preflight` actor verification and bot-id
-# resolution), PowerShell 7+ (Core).
+# Requires: git and PowerShell 7+ (Core). `gh` is additionally required for
+# GitHub-mode preflight; setup resolves bot IDs through PowerShell's web API.
 
 $ErrorActionPreference = "Continue"
 
@@ -91,13 +71,23 @@ $ErrorActionPreference = "Continue"
 # ---------------------------------------------------------------------------
 
 $MODE = "setup"
+$PREFLIGHT_MODE = ""
 $REPO_ARGS = @()
 foreach ($arg in $args) {
     if ($arg -eq "--preflight") {
         $MODE = "preflight"
+    } elseif ($arg -eq "--mode") {
+        $PREFLIGHT_MODE = "__NEXT__"
+    } elseif ($PREFLIGHT_MODE -eq "__NEXT__") {
+        $PREFLIGHT_MODE = $arg
     } else {
         $REPO_ARGS += $arg
     }
+}
+
+if ($MODE -eq "preflight" -and $PREFLIGHT_MODE -notin @("git-only", "github")) {
+    Write-Error "agent-git-setup.ps1: --preflight requires --mode git-only or --mode github"
+    exit 2
 }
 
 if ($REPO_ARGS.Count -gt 0) {
@@ -117,61 +107,106 @@ $REPO_PATH = $REPO_PATH.Replace('\', '/')
 # Preflight: fail-closed state checks (read-only, no worktree management)
 # ---------------------------------------------------------------------------
 
+function Get-GhRepoForPath {
+    $remoteUrl = & git -C $REPO_PATH remote get-url origin 2>$null
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrEmpty($remoteUrl)) { return "" }
+
+    if ($remoteUrl -match '^[a-zA-Z][a-zA-Z0-9+.-]*://') {
+        try { $remoteUri = [System.Uri]$remoteUrl } catch { return "" }
+        $hostName = $remoteUri.Host
+        $remotePath = $remoteUri.AbsolutePath.Trim('/')
+    } elseif ($remoteUrl -match '^(?:[^@/]+@)?(?<host>[^:/]+):(?<path>.+)$') {
+        $hostName = $Matches.host
+        $remotePath = $Matches.path.Trim('/')
+    } else {
+        return ""
+    }
+
+    $remotePath = $remotePath -replace '\.git$', ''
+    $segments = @($remotePath.Split('/'))
+    if ([string]::IsNullOrEmpty($hostName) -or $segments.Count -ne 2 -or [string]::IsNullOrEmpty($segments[0]) -or [string]::IsNullOrEmpty($segments[1])) { return "" }
+    if ($hostName -ieq "github.com") { return "$($segments[0])/$($segments[1])" }
+    return "$hostName/$($segments[0])/$($segments[1])"
+}
+
 function Preflight {
     $ok = 0
 
     if ([string]::IsNullOrEmpty($env:AGENT_GIT_NAME)) {
-        Write-Host "agent-git-setup.ps1: PREFLOW FAIL: AGENT_GIT_NAME is unset." -ForegroundColor Red
-        Write-Host "  The bot commit identity cannot be verified without it. Export AGENT_GIT_NAME (e.g. myagent[bot])."
+        Write-Host "agent-git-setup.ps1: PREFLIGHT FAIL: AGENT_GIT_NAME is unset." -ForegroundColor Red
+        Write-Host "  Export AGENT_GIT_NAME (e.g. myagent[bot])."
         $ok = 1
     } else {
-        $resolved = & git -C $REPO_PATH config user.name 2>$null
-        if ($LASTEXITCODE -ne 0) { $resolved = "" }
-        if ($resolved -ne $env:AGENT_GIT_NAME) {
-            Write-Host "agent-git-setup.ps1: PREFLOW FAIL: bot identity not in effect at $REPO_PATH." -ForegroundColor Red
-            Write-Host "  Resolved user.name='$($resolved)' but expected '$($env:AGENT_GIT_NAME)'."
-            Write-Host "  You are not in a linked worktree of the target repo where the bot identity"
-            Write-Host "  applies (main checkout, detached checkout, or a separate clone all fail this)."
-            Write-Host "  Run 'agent-git-setup.ps1 <repo-dir>' from a proper git worktree of the"
-            Write-Host "  target repo, then re-run. Location is irrelevant — only that the bot identity resolves."
+        $gitDir = (& git -C $REPO_PATH rev-parse --absolute-git-dir 2>$null).Replace('\', '/')
+        $commonDir = (& git -C $REPO_PATH rev-parse --path-format=absolute --git-common-dir 2>$null).Replace('\', '/')
+        $resolvedName = & git -C $REPO_PATH config user.name 2>$null
+        $resolvedEmail = & git -C $REPO_PATH config user.email 2>$null
+        if ($null -eq $resolvedEmail) { $resolvedEmail = "" }
+        $authorIdent = & git -C $REPO_PATH var GIT_AUTHOR_IDENT 2>$null
+        $committerIdent = & git -C $REPO_PATH var GIT_COMMITTER_IDENT 2>$null
+        $escapedName = [regex]::Escape($env:AGENT_GIT_NAME)
+        $emailPattern = '^[1-9][0-9]*\+' + $escapedName + '@users\.noreply\.github\.com$'
+        $identityPattern = '^' + $escapedName + ' <' + [regex]::Escape($resolvedEmail) + '> '
+        if ([string]::IsNullOrEmpty($gitDir) -or [string]::IsNullOrEmpty($commonDir) -or $gitDir -eq $commonDir) {
+            Write-Host "agent-git-setup.ps1: PREFLIGHT FAIL: target is not a linked worktree of the configured repo." -ForegroundColor Red
+            $ok = 1
+        } elseif ($resolvedName -ne $env:AGENT_GIT_NAME -or $resolvedEmail -notmatch $emailPattern -or $authorIdent -notmatch $identityPattern -or $committerIdent -notmatch $identityPattern) {
+            Write-Host "agent-git-setup.ps1: PREFLIGHT FAIL: bot author/committer identity is not effective at $REPO_PATH." -ForegroundColor Red
+            Write-Host "  Expected $($env:AGENT_GIT_NAME) with its numeric GitHub noreply email; check local, worktree, and environment overrides."
             $ok = 1
         }
     }
 
-    if ([string]::IsNullOrEmpty($env:GH_TOKEN)) {
-        Write-Host "agent-git-setup.ps1: PREFLOW FAIL: GH_TOKEN is unset." -ForegroundColor Red
-        Write-Host "  The agent opens PRs / acts on GitHub AS THE BOT, so a token is required."
-        Write-Host "  Mint one (scripts/mint-token.sh) and export GH_TOKEN before any git/gh work."
-        $ok = 1
-    } else {
-        $actorType = ""
-        if (Get-Command gh -ErrorAction SilentlyContinue) {
-            $who = & gh api user --jq '{type: .type, login: .login}' 2>$null
-            $ghRc = $LASTEXITCODE
-            if ($ghRc -eq 0) {
-                $actorType = ($who | ConvertFrom-Json).type
+    if ($PREFLIGHT_MODE -eq "github") {
+        $appPemPath = $env:AGENT_GIT_TOKEN_APP_PEM_PATH_WINDOWS
+        if ([string]::IsNullOrEmpty($appPemPath)) { $appPemPath = $env:AGENT_GIT_TOKEN_APP_PEM_PATH }
+        if ([string]::IsNullOrEmpty($env:GH_TOKEN) -or [string]::IsNullOrEmpty($env:AGENT_GIT_TOKEN_ACTOR) -or [string]::IsNullOrEmpty($env:AGENT_GIT_TOKEN_SHA256) -or [string]::IsNullOrEmpty($env:AGENT_GIT_TOKEN_ATTESTATION) -or [string]::IsNullOrEmpty($env:AGENT_GIT_TOKEN_APP_ID) -or [string]::IsNullOrEmpty($appPemPath) -or -not (Get-Command gh -ErrorAction SilentlyContinue)) {
+            Write-Host "agent-git-setup.ps1: PREFLIGHT FAIL: github mode requires GH_TOKEN, signed actor metadata, gh, and network access." -ForegroundColor Red
+            $ok = 1
+        } else {
+            $sha256 = [System.Security.Cryptography.SHA256]::Create()
+            try {
+                $tokenBytes = [System.Text.Encoding]::UTF8.GetBytes($env:GH_TOKEN)
+                $actualTokenHash = [Convert]::ToHexString($sha256.ComputeHash($tokenBytes)).ToLowerInvariant()
+            } finally {
+                $sha256.Dispose()
             }
-        }
-        if ($actorType -eq "User") {
-            if ($env:AGENT_GIT_ALLOW_HUMAN_ACTOR -eq "1") {
-                Write-Host "agent-git-setup.ps1: PREFLOW WARN: proceeding as the account owner — approved explicitly; gh/API calls attributed to the account owner, not the bot." -ForegroundColor Yellow
-            } else {
-                Write-Host "agent-git-setup.ps1: PREFLOW FAIL: GH_TOKEN is the account owner's, not the bot." -ForegroundColor Red
-                Write-Host "  (to the agent) gh/API calls would be attributed to the account owner, not the bot."
-                Write-Host "  (to the agent) Fix: re-mint the bot token and export it before any gh/API work:"
-                Write-Host "    source <(scripts/mint-token.sh --shell)"
-                Write-Host "  (to the agent) If that fails, STOP and ask the account owner to approve acting as them;"
-                Write-Host "  only on explicit approval set AGENT_GIT_ALLOW_HUMAN_ACTOR=1 and re-run preflight for this session."
+            if ($actualTokenHash -cne $env:AGENT_GIT_TOKEN_SHA256.ToLowerInvariant()) {
+                Write-Host "agent-git-setup.ps1: PREFLIGHT FAIL: token fingerprint does not match GH_TOKEN." -ForegroundColor Red
                 $ok = 1
-            }
-        } elseif ([string]::IsNullOrEmpty($actorType)) {
-            if (Get-Command gh -ErrorAction SilentlyContinue) {
-                # bot install token (403) or gh present but unverifiable — pass
             } else {
-                Write-Host "agent-git-setup.ps1: PREFLOW WARN: could not verify GH_TOKEN actor (gh not installed / network unavailable)." -ForegroundColor Yellow
-                Write-Host "  (to the agent) Cannot confirm the token is the App bot — if it is the account owner's PAT, gh/API"
-                Write-Host "  calls will be attributed to the account owner. Re-mint the bot token (scripts/mint-token.sh"
-                Write-Host "  --shell) and ensure gh + network before any gh/API work."
+                $signatureValid = $false
+                $rsa = [System.Security.Cryptography.RSA]::Create()
+                try {
+                    $pemText = [System.IO.File]::ReadAllText($appPemPath)
+                    $rsa.ImportFromPem($pemText)
+                    $encodedSignature = $env:AGENT_GIT_TOKEN_ATTESTATION.Replace('-', '+').Replace('_', '/')
+                    $encodedSignature += '=' * ((4 - ($encodedSignature.Length % 4)) % 4)
+                    $signature = [Convert]::FromBase64String($encodedSignature)
+                    $statement = "agent-git-setup-token-v1`n$($env:AGENT_GIT_TOKEN_APP_ID)`n$($env:AGENT_GIT_TOKEN_ACTOR)`n$actualTokenHash"
+                    $signatureValid = $rsa.VerifyData([System.Text.Encoding]::UTF8.GetBytes($statement), $signature, [System.Security.Cryptography.HashAlgorithmName]::SHA256, [System.Security.Cryptography.RSASignaturePadding]::Pkcs1)
+                } catch {
+                    $signatureValid = $false
+                } finally {
+                    $rsa.Dispose()
+                }
+                if (-not $signatureValid) {
+                    Write-Host "agent-git-setup.ps1: PREFLIGHT FAIL: token actor attestation signature is invalid." -ForegroundColor Red
+                    $ok = 1
+                } elseif ($env:AGENT_GIT_TOKEN_ACTOR -ine $env:AGENT_GIT_NAME) {
+                Write-Host "agent-git-setup.ps1: PREFLIGHT FAIL: token provider actor '$($env:AGENT_GIT_TOKEN_ACTOR)' does not match '$($env:AGENT_GIT_NAME)'." -ForegroundColor Red
+                $ok = 1
+                } else {
+                    $ghRepo = Get-GhRepoForPath
+                    $accessibleRepo = ""
+                    if (-not [string]::IsNullOrEmpty($ghRepo)) {
+                        $accessibleRepo = & gh repo view --repo $ghRepo --json nameWithOwner --jq '.nameWithOwner' 2>$null
+                    }
+                    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrEmpty($accessibleRepo)) {
+                        Write-Host "agent-git-setup.ps1: PREFLIGHT FAIL: GitHub token cannot access the current repository." -ForegroundColor Red
+                        $ok = 1
+                    }
+                }
             }
         }
     }
@@ -180,7 +215,7 @@ function Preflight {
         Write-Host "agent-git-setup.ps1: preflight aborted (fail-closed). Fix the above and re-run." -ForegroundColor Red
         exit 1
     }
-    Write-Host "agent-git-setup.ps1: preflight OK — bot identity in effect, GH_TOKEN present."
+    Write-Host "agent-git-setup.ps1: preflight OK — linked worktree identity verified ($PREFLIGHT_MODE mode)."
     exit 0
 }
 
@@ -283,38 +318,27 @@ if ([string]::IsNullOrEmpty($env:AGENT_GIT_NAME)) {
     exit 1
 }
 
-# Validate GIT_USER_NAME shape (GitHub handle: alphanumeric + hyphens).
-function Test-ValidHandle {
-    param([string]$Handle)
-    return $Handle -match '^[A-Za-z0-9-]+$'
-}
-if (-not [string]::IsNullOrEmpty($env:GIT_USER_NAME) -and -not (Test-ValidHandle $env:GIT_USER_NAME)) {
-    Write-Host "agent-git-setup.ps1: GIT_USER_NAME must be a GitHub handle ([A-Za-z0-9-] only), got: $($env:GIT_USER_NAME)" -ForegroundColor Red
-    exit 2
-}
-
 # _ResolveId <handle>: print the numeric GitHub id for a handle, or empty.
-# Uses the public API; sends GH_TOKEN as Bearer when set.
+# Uses the public API without GH_TOKEN; installation tokens cannot read arbitrary users.
 function Resolve-Id {
     param([string]$Handle)
     $encoded = [System.Uri]::EscapeDataString($Handle)
-    $auth = @{}
-    if (-not [string]::IsNullOrEmpty($env:GH_TOKEN)) {
-        $auth["Authorization"] = "Bearer $($env:GH_TOKEN)"
-    }
     try {
-        $result = Invoke-RestMethod -Uri "https://api.github.com/users/$encoded" -Headers $auth -ErrorAction Stop
+        $result = Invoke-RestMethod -Uri "https://api.github.com/users/$encoded" -Headers @{ Accept = "application/vnd.github+json" } -ErrorAction Stop
         return $result.id.ToString()
     } catch {
         return ""
     }
 }
 
-# Commit email: prefer the BOT's own noreply identity so commits show as the agent.
-# Resolution order (bot-first, account-owner-fallback-last; fail only if nothing resolves):
+# Commit email must resolve to the bot account. Never silently substitute the human identity.
+# Resolution order:
 #   1. AGENT_GIT_BOT_ID   -> <id>+<AGENT_GIT_NAME>@users.noreply.github.com   (offline-safe)
-#   2. AGENT_GIT_NAME     -> API-resolved bot id (uses GH_TOKEN as Bearer if set)
-#   3. GIT_USER_NAME      -> account-owner-attributed fallback
+#   2. AGENT_GIT_NAME     -> API-resolved bot id
+if (-not [string]::IsNullOrEmpty($env:AGENT_GIT_BOT_ID) -and $env:AGENT_GIT_BOT_ID -notmatch '^[1-9][0-9]*$') {
+    Write-Host "agent-git-setup.ps1: AGENT_GIT_BOT_ID must be a positive integer without leading zeroes." -ForegroundColor Red
+    exit 2
+}
 $COMMIT_EMAIL = ""
 if (-not [string]::IsNullOrEmpty($env:AGENT_GIT_BOT_ID)) {
     $COMMIT_EMAIL = "$($env:AGENT_GIT_BOT_ID)+$($env:AGENT_GIT_NAME)@users.noreply.github.com"
@@ -324,19 +348,8 @@ if (-not [string]::IsNullOrEmpty($env:AGENT_GIT_BOT_ID)) {
         $COMMIT_EMAIL = "$botId+$($env:AGENT_GIT_NAME)@users.noreply.github.com"
     }
 }
-if ([string]::IsNullOrEmpty($COMMIT_EMAIL) -and -not [string]::IsNullOrEmpty($env:GIT_USER_NAME)) {
-    if (-not [string]::IsNullOrEmpty($env:GIT_USER_ID)) {
-        $COMMIT_EMAIL = "$($env:GIT_USER_ID)+$($env:GIT_USER_NAME)@users.noreply.github.com"
-    } else {
-        $uid = Resolve-Id $env:GIT_USER_NAME
-        if (-not [string]::IsNullOrEmpty($uid)) {
-            $COMMIT_EMAIL = "$uid+$($env:GIT_USER_NAME)@users.noreply.github.com"
-        }
-    }
-}
-
 if ([string]::IsNullOrEmpty($COMMIT_EMAIL)) {
-    Write-Host "agent-git-setup.ps1: could not resolve any commit identity. Provide AGENT_GIT_BOT_ID, a resolvable AGENT_GIT_NAME, or GIT_USER_NAME (+ GIT_USER_ID / network)." -ForegroundColor Red
+    Write-Host "agent-git-setup.ps1: could not resolve the bot account id. Provide numeric AGENT_GIT_BOT_ID or network access to the public GitHub user API." -ForegroundColor Red
     exit 1
 }
 
@@ -398,8 +411,10 @@ if ((Split-Path (Split-Path $currentGitDir -Parent) -Leaf) -eq "worktrees") {
     $wtTest = ""
     foreach ($line in $wtLines) {
         if ($line.StartsWith("worktree ")) {
-            $path = $line.Substring("worktree ".Length)
-            if ($path -ne $REPO_PATH) {
+            $path = $line.Substring("worktree ".Length).Replace('\', '/')
+            $candidateGitDir = & git -C $path rev-parse --absolute-git-dir 2>$null
+            $candidateCommonDir = & git -C $path rev-parse --path-format=absolute --git-common-dir 2>$null
+            if ($LASTEXITCODE -eq 0 -and $candidateGitDir -ne $candidateCommonDir) {
                 $wtTest = $path
                 break
             }

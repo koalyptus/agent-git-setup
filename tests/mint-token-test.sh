@@ -8,7 +8,7 @@
 # fully hermetic. Covers all credential resolution paths, precedence rules,
 # error handling, and output formats.
 #
-# HERMETIC SEAL: the tests mints use an ephemeral key with app-id 4646191 and
+# HERMETIC SEAL: the tests mints use an ephemeral key with app-id 1234567 and
 # verify against it. If ambient GITHUB_APP_ID / GITHUB_APP_PEM / GH_TOKEN are
 # present in the environment (e.g. a developer shell that just minted a real
 # token), mint-token.sh's discovery paths would pick them up and mint a JWT
@@ -17,7 +17,12 @@
 #
 set -uo pipefail
 
-unset GITHUB_APP_ID GITHUB_APP_PEM GITHUB_APP_NAME GH_TOKEN
+unset GITHUB_APP_ID GITHUB_APP_PEM GITHUB_APP_NAME GITHUB_APP_INSTALL_ID GH_TOKEN AGENT_GIT_CREDENTIALS
+
+TEST_HOME="$(mktemp -d -t mint-home.XXXXXX)"
+export HOME="$TEST_HOME"
+export XDG_CONFIG_HOME="$TEST_HOME/xdg"
+mkdir -p "$XDG_CONFIG_HOME"
 
 SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../scripts/mint-token.sh"
 
@@ -58,7 +63,7 @@ payload = json.loads(base64.urlsafe_b64decode(parts[1] + "=" * (-len(parts[1]) %
 sig = base64.urlsafe_b64decode(parts[2] + "=" * (-len(parts[2]) % 4))
 if header.get("alg") != "RS256":
     sys.exit(3)
-if payload.get("iss") != 4646191:
+if payload.get("iss") != 1234567:
     sys.exit(4)
 with open(pub_path, "rb") as f:
     pub = serialization.load_pem_public_key(f.read())
@@ -70,7 +75,10 @@ sys.exit(0)
 PY
 }
 
-cleanup() { rm -f "$PEM_FOR_TEST" "$PUB_FOR_TEST" "${PUB2:-}" "${CRED_FILE:-}"; }
+cleanup() {
+	rm -f "$PEM_FOR_TEST" "$PUB_FOR_TEST" "${PUB2:-}" "${CRED_FILE:-}"
+	rm -rf "$TEST_HOME"
+}
 trap cleanup EXIT
 
 # --- 1. Missing --app-id (arg path) ----------------------------------------
@@ -99,26 +107,113 @@ fi
 
 # --- 4. JWT generation offline (args) + full verification ------------------
 echo "jwt generation offline (args)"
-JWT="$("$SCRIPT" --app-id 4646191 --pem "$PEM_FOR_TEST" --print-jwt 2>/dev/null)"
+JWT="$("$SCRIPT" --app-id 1234567 --pem "$PEM_FOR_TEST" --print-jwt 2>/dev/null)"
 if [ -z "$JWT" ]; then
 	bad "no JWT produced"
 elif verify_jwt "$PUB_FOR_TEST" "$JWT"; then
-	ok "JWT valid RS256, iss=4646191, signature verifies"
+	ok "JWT valid RS256, iss=1234567, signature verifies"
 else
 	bad "JWT invalid (exit $?)"
 fi
 
 # --- 5. --shell output format (args) ---------------------------------------
 echo "--shell output format (args)"
-SHELL_LINE="$("$SCRIPT" --app-id 4646191 --pem "$PEM_FOR_TEST" --print-jwt --shell 2>/dev/null)"
+SHELL_LINE="$("$SCRIPT" --app-id 1234567 --pem "$PEM_FOR_TEST" --print-jwt --shell 2>/dev/null)"
 case "$SHELL_LINE" in
 *.*.*) ok "--shell still emits the JWT" ;;
 *) bad "--shell output unexpected: $SHELL_LINE" ;;
 esac
 
+# --- 5b. Local API fixture: App attestation, token binding, and shell output --
+echo "local API fixture: app attestation and shell metadata"
+FAKE_API_DIR="$TEST_HOME/fake-api"
+mkdir -p "$FAKE_API_DIR"
+cat >"$FAKE_API_DIR/sitecustomize.py" <<'PY'
+import base64
+import json
+import os
+import urllib.request
+
+
+class FakeResponse:
+	def __init__(self, payload):
+		self.body = json.dumps(payload).encode()
+
+	def read(self, *args):
+		return self.body
+
+	def __enter__(self):
+		return self
+
+	def __exit__(self, *args):
+		return False
+
+
+def fake_urlopen(request, *args, **kwargs):
+	authorization = request.get_header("Authorization") or ""
+	if not authorization.startswith("Bearer "):
+		raise RuntimeError("expected App JWT authorization")
+
+	jwt = authorization[len("Bearer "):].split(".")
+	claims = json.loads(base64.urlsafe_b64decode(jwt[1] + "=" * (-len(jwt[1]) % 4)))
+	requested_id = str(claims["iss"])
+	response_id = os.environ.get("AGENT_GIT_SETUP_TEST_APP_RESPONSE_ID", requested_id)
+	url = request.full_url
+
+	if url.endswith("/app"):
+		return FakeResponse({"id": int(response_id), "slug": "fixture-app"})
+	if url.endswith("/app/installations"):
+		return FakeResponse([{"id": 42}])
+	if url.endswith("/app/installations/42/access_tokens"):
+		return FakeResponse({"token": "ghs.synthetic-installation-token"})
+	raise RuntimeError("unexpected API path: " + url)
+
+
+urllib.request.urlopen = fake_urlopen
+PY
+SHELL_METADATA="$(PYTHONPATH="$FAKE_API_DIR" AGENT_GIT_SETUP_TEST_APP_RESPONSE_ID=1234567 \
+	"$SCRIPT" --app-id 1234567 --pem "$PEM_FOR_TEST" --shell 2>/dev/null)"
+SHELL_TOKEN="$(printf '%s\n' "$SHELL_METADATA" | sed -n 's/^export GH_TOKEN=//p')"
+SHELL_ACTOR="$(printf '%s\n' "$SHELL_METADATA" | sed -n 's/^export AGENT_GIT_TOKEN_ACTOR=//p')"
+SHELL_SHA="$(printf '%s\n' "$SHELL_METADATA" | sed -n 's/^export AGENT_GIT_TOKEN_SHA256=//p')"
+SHELL_ATTESTATION="$(printf '%s\n' "$SHELL_METADATA" | sed -n 's/^export AGENT_GIT_TOKEN_ATTESTATION=//p')"
+SHELL_APP_ID="$(printf '%s\n' "$SHELL_METADATA" | sed -n 's/^export AGENT_GIT_TOKEN_APP_ID=//p')"
+SHELL_PEM_PATH="$(printf '%s\n' "$SHELL_METADATA" | sed -n 's/^export AGENT_GIT_TOKEN_APP_PEM_PATH=//p')"
+SHELL_PEM_WINDOWS_PATH="$(printf '%s\n' "$SHELL_METADATA" | sed -n 's/^export AGENT_GIT_TOKEN_APP_PEM_PATH_WINDOWS=//p')"
+EXPECTED_SHA="$(python3 -c 'import hashlib,sys; print(hashlib.sha256(sys.argv[1].encode()).hexdigest())' "$SHELL_TOKEN")"
+if [ "$SHELL_TOKEN" != "ghs.synthetic-installation-token" ] || [ "$SHELL_ACTOR" != "fixture-app[bot]" ] || [ "$SHELL_SHA" != "$EXPECTED_SHA" ] || [ "$SHELL_APP_ID" != "1234567" ] || [ -z "$SHELL_PEM_PATH" ] || { { command -v wslpath >/dev/null 2>&1 || command -v cygpath >/dev/null 2>&1; } && [ -z "$SHELL_PEM_WINDOWS_PATH" ]; }; then
+	bad "--shell metadata mismatch (token=$([ "$SHELL_TOKEN" = "ghs.synthetic-installation-token" ] && echo yes || echo no) actor=$([ "$SHELL_ACTOR" = "fixture-app[bot]" ] && echo yes || echo no) hash=$([ "$SHELL_SHA" = "$EXPECTED_SHA" ] && echo yes || echo no) app-id=$([ "$SHELL_APP_ID" = "1234567" ] && echo yes || echo no) pem-path=$([ -n "$SHELL_PEM_PATH" ] && echo yes || echo no))"
+elif python3 - "$PUB_FOR_TEST" "$SHELL_APP_ID" "$SHELL_ACTOR" "$SHELL_SHA" "$SHELL_ATTESTATION" <<'PY'
+import base64, sys
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding
+
+public_path, app_id, actor, token_hash, encoded_signature = sys.argv[1:]
+with open(public_path, "rb") as public_file:
+    public_key = serialization.load_pem_public_key(public_file.read())
+signature = base64.urlsafe_b64decode(encoded_signature + "=" * (-len(encoded_signature) % 4))
+statement = ("agent-git-setup-token-v1\n%s\n%s\n%s" % (app_id, actor, token_hash)).encode()
+try:
+    public_key.verify(signature, statement, padding.PKCS1v15(), hashes.SHA256())
+except Exception:
+    sys.exit(1)
+PY
+then
+	ok "App actor attestation signature binds the exact minted token"
+else
+	bad "App actor attestation signature was invalid"
+fi
+
+if PYTHONPATH="$FAKE_API_DIR" AGENT_GIT_SETUP_TEST_APP_RESPONSE_ID=7654321 \
+	"$SCRIPT" --app-id 1234567 --pem "$PEM_FOR_TEST" --shell >/dev/null 2>&1; then
+	bad "should reject App ID mismatch in authenticated /app response"
+else
+	ok "rejects mismatched App ID from authenticated /app response"
+fi
+
 # --- 6. Env-var resolution (no args) ---------------------------------------
 echo "env-var resolution (no args)"
-ENV_JWT="$(GITHUB_APP_ID=4646191 GITHUB_APP_PEM="$PEM_FOR_TEST" "$SCRIPT" --print-jwt 2>/dev/null)"
+ENV_JWT="$(GITHUB_APP_ID=1234567 GITHUB_APP_PEM="$PEM_FOR_TEST" "$SCRIPT" --print-jwt 2>/dev/null)"
 if [ -z "$ENV_JWT" ]; then
 	bad "no JWT from env vars"
 elif verify_jwt "$PUB_FOR_TEST" "$ENV_JWT"; then
@@ -130,7 +225,7 @@ fi
 # --- 7. Credential-file discovery (no env, no args) -----------------------
 echo "credential-file discovery (no env/args)"
 CRED_FILE="$(mktemp -t agcreds.XXXXXX.env)"
-printf 'GITHUB_APP_ID=4646191\nGITHUB_APP_PEM=%s\n' "$PEM_FOR_TEST" >"$CRED_FILE"
+printf 'GITHUB_APP_ID=1234567\nGITHUB_APP_PEM=%s\n' "$PEM_FOR_TEST" >"$CRED_FILE"
 DISC_JWT="$("$SCRIPT" --print-jwt --credentials "$CRED_FILE" 2>/dev/null)"
 if [ -z "$DISC_JWT" ]; then
 	bad "no JWT from credential-file discovery"
@@ -145,8 +240,8 @@ echo "per-App credentials.d discovery (APP_ID given, no creds file in env)"
 # Isolation: use a temp XDG_CONFIG_HOME so we never touch the real ~/.config.
 CRED_XDG="$(mktemp -d -t agxdg.XXXXXX)"
 mkdir -p "$CRED_XDG/agent-git-setup/credentials.d"
-printf 'GITHUB_APP_ID=4646191\nGITHUB_APP_PEM=%s\n' "$PEM_FOR_TEST" >"$CRED_XDG/agent-git-setup/credentials.d/credentials-4646191.env"
-PERAPP_JWT="$(XDG_CONFIG_HOME="$CRED_XDG" "$SCRIPT" --app-id 4646191 --print-jwt 2>/dev/null)"
+printf 'GITHUB_APP_ID=1234567\nGITHUB_APP_PEM=%s\n' "$PEM_FOR_TEST" >"$CRED_XDG/agent-git-setup/credentials.d/credentials-1234567.env"
+PERAPP_JWT="$(XDG_CONFIG_HOME="$CRED_XDG" "$SCRIPT" --app-id 1234567 --print-jwt 2>/dev/null)"
 rm -rf "$CRED_XDG"
 if [ -z "$PERAPP_JWT" ]; then
 	bad "no JWT from per-App credentials.d discovery"
@@ -160,16 +255,16 @@ fi
 echo "precedence: per-App credentials.d overrides global credentials.env"
 CRED_XDG2="$(mktemp -d -t agxdg2.XXXXXX)"
 mkdir -p "$CRED_XDG2/agent-git-setup/credentials.d"
-# global says app 9999999; per-App for 4646191 is the one that should win
-printf 'GITHUB_APP_ID=9999999\nGITHUB_APP_PEM=%s\n' "$PEM_FOR_TEST" >"$CRED_XDG2/agent-git-setup/credentials.env"
-printf 'GITHUB_APP_ID=4646191\nGITHUB_APP_PEM=%s\n' "$PEM_FOR_TEST" >"$CRED_XDG2/agent-git-setup/credentials.d/credentials-4646191.env"
-PRE_PERAPP_JWT="$(XDG_CONFIG_HOME="$CRED_XDG2" "$SCRIPT" --app-id 4646191 --print-jwt 2>/dev/null)"
+# global says app 7654321; per-App for 1234567 is the one that should win
+printf 'GITHUB_APP_ID=7654321\nGITHUB_APP_PEM=%s\n' "$PEM_FOR_TEST" >"$CRED_XDG2/agent-git-setup/credentials.env"
+printf 'GITHUB_APP_ID=1234567\nGITHUB_APP_PEM=%s\n' "$PEM_FOR_TEST" >"$CRED_XDG2/agent-git-setup/credentials.d/credentials-1234567.env"
+PRE_PERAPP_JWT="$(XDG_CONFIG_HOME="$CRED_XDG2" "$SCRIPT" --app-id 1234567 --print-jwt 2>/dev/null)"
 rm -rf "$CRED_XDG2"
 if [ -z "$PRE_PERAPP_JWT" ]; then
 	bad "no JWT when both per-App and global present"
 elif verify_jwt "$PUB_FOR_TEST" "$PRE_PERAPP_JWT"; then
-	# assert iss is the APP_ID passed (4646191) -> per-App file was used, not global
-	if [ "$(python3 -c "import sys,base64,json;p=sys.argv[1].split('.')[1];print(json.loads(base64.urlsafe_b64decode(p+'='*(-len(p)%4)))['iss'])" "$PRE_PERAPP_JWT")" = "4646191" ]; then
+	# assert iss is the APP_ID passed (1234567) -> per-App file was used, not global
+	if [ "$(python3 -c "import sys,base64,json;p=sys.argv[1].split('.')[1];print(json.loads(base64.urlsafe_b64decode(p+'='*(-len(p)%4)))['iss'])" "$PRE_PERAPP_JWT")" = "1234567" ]; then
 		ok "per-App credentials.d takes precedence over global credentials.env"
 	else
 		bad "global credentials.env overrode per-App (iss mismatch)"
@@ -182,10 +277,10 @@ fi
 echo "precedence: explicit --credentials overrides per-App discovery"
 CRED_XDG3="$(mktemp -d -t agxdg3.XXXXXX)"
 mkdir -p "$CRED_XDG3/agent-git-setup/credentials.d"
-printf 'GITHUB_APP_ID=4646191\nGITHUB_APP_PEM=%s\n' "$PEM_FOR_TEST" >"$CRED_XDG3/agent-git-setup/credentials.d/credentials-4646191.env"
+printf 'GITHUB_APP_ID=1234567\nGITHUB_APP_PEM=%s\n' "$PEM_FOR_TEST" >"$CRED_XDG3/agent-git-setup/credentials.d/credentials-1234567.env"
 EXPLICIT_CRED="$(mktemp -t agexpl.XXXXXX.env)"
-printf 'GITHUB_APP_ID=4646191\nGITHUB_APP_PEM=%s\n' "$PEM_FOR_TEST" >"$EXPLICIT_CRED"
-EXPL_JWT="$(XDG_CONFIG_HOME="$CRED_XDG3" "$SCRIPT" --app-id 4646191 --print-jwt --credentials "$EXPLICIT_CRED" 2>/dev/null)"
+printf 'GITHUB_APP_ID=1234567\nGITHUB_APP_PEM=%s\n' "$PEM_FOR_TEST" >"$EXPLICIT_CRED"
+EXPL_JWT="$(XDG_CONFIG_HOME="$CRED_XDG3" "$SCRIPT" --app-id 1234567 --print-jwt --credentials "$EXPLICIT_CRED" 2>/dev/null)"
 rm -rf "$CRED_XDG3" "$EXPLICIT_CRED"
 if [ -z "$EXPL_JWT" ]; then
 	bad "no JWT with explicit --credentials + per-App present"
@@ -199,16 +294,16 @@ fi
 echo "precedence: args override credential file"
 # creds file points at the test PEM; args also point at the same PEM, but we
 # prove args are read by giving a DIFFERENT app id in the file and asserting
-# the arg's iss (4646191) wins.
+# the arg's iss (1234567) wins.
 CRED_FILE2="$(mktemp -t agcreds2.XXXXXX.env)"
-printf 'GITHUB_APP_ID=9999999\nGITHUB_APP_PEM=%s\n' "$PEM_FOR_TEST" >"$CRED_FILE2"
-PRE_JWT="$("$SCRIPT" --app-id 4646191 --pem "$PEM_FOR_TEST" --print-jwt --credentials "$CRED_FILE2" 2>/dev/null)"
+printf 'GITHUB_APP_ID=7654321\nGITHUB_APP_PEM=%s\n' "$PEM_FOR_TEST" >"$CRED_FILE2"
+PRE_JWT="$("$SCRIPT" --app-id 1234567 --pem "$PEM_FOR_TEST" --print-jwt --credentials "$CRED_FILE2" 2>/dev/null)"
 rm -f "$CRED_FILE2"
 if [ -z "$PRE_JWT" ]; then
 	bad "no JWT when args + creds both present"
 elif verify_jwt "$PUB_FOR_TEST" "$PRE_JWT"; then
-	# confirm iss is the ARG value (4646191), not the file's 9999999
-	if [ "$(python3 -c "import sys,base64,json;p=sys.argv[1].split('.')[1];print(json.loads(base64.urlsafe_b64decode(p+'='*(-len(p)%4)))['iss'])" "$PRE_JWT")" = "4646191" ]; then
+	# confirm iss is the ARG value (1234567), not the file's 7654321
+	if [ "$(python3 -c "import sys,base64,json;p=sys.argv[1].split('.')[1];print(json.loads(base64.urlsafe_b64decode(p+'='*(-len(p)%4)))['iss'])" "$PRE_JWT")" = "1234567" ]; then
 		ok "args take precedence over credential file"
 	else
 		bad "credential file overrode args (iss mismatch)"
@@ -220,13 +315,13 @@ fi
 # --- 9. Precedence: env wins over credential file --------------------------
 echo "precedence: env overrides credential file"
 CRED_FILE3="$(mktemp -t agcreds3.XXXXXX.env)"
-printf 'GITHUB_APP_ID=9999999\nGITHUB_APP_PEM=%s\n' "$PEM_FOR_TEST" >"$CRED_FILE3"
-ENV_PRE_JWT="$(GITHUB_APP_ID=4646191 GITHUB_APP_PEM="$PEM_FOR_TEST" "$SCRIPT" --print-jwt --credentials "$CRED_FILE3" 2>/dev/null)"
+printf 'GITHUB_APP_ID=7654321\nGITHUB_APP_PEM=%s\n' "$PEM_FOR_TEST" >"$CRED_FILE3"
+ENV_PRE_JWT="$(GITHUB_APP_ID=1234567 GITHUB_APP_PEM="$PEM_FOR_TEST" "$SCRIPT" --print-jwt --credentials "$CRED_FILE3" 2>/dev/null)"
 rm -f "$CRED_FILE3"
 if [ -z "$ENV_PRE_JWT" ]; then
 	bad "no JWT when env + creds both present"
 elif verify_jwt "$PUB_FOR_TEST" "$ENV_PRE_JWT"; then
-	if [ "$(python3 -c "import sys,base64,json;p=sys.argv[1].split('.')[1];print(json.loads(base64.urlsafe_b64decode(p+'='*(-len(p)%4)))['iss'])" "$ENV_PRE_JWT")" = "4646191" ]; then
+	if [ "$(python3 -c "import sys,base64,json;p=sys.argv[1].split('.')[1];print(json.loads(base64.urlsafe_b64decode(p+'='*(-len(p)%4)))['iss'])" "$ENV_PRE_JWT")" = "1234567" ]; then
 		ok "env takes precedence over credential file"
 	else
 		bad "credential file overrode env (iss mismatch)"
@@ -248,7 +343,7 @@ fi
 # --- 11. Unreadable credential file -> error ------------------------------
 echo "unreadable credential file -> error"
 BAD_CRED="$(mktemp -t agbad.XXXXXX.env)"
-printf 'GITHUB_APP_ID=4646191\nGITHUB_APP_PEM=%s\n' "$PEM_FOR_TEST" >"$BAD_CRED"
+printf 'GITHUB_APP_ID=1234567\nGITHUB_APP_PEM=%s\n' "$PEM_FOR_TEST" >"$BAD_CRED"
 chmod 000 "$BAD_CRED"
 RC2="$(
 	"$SCRIPT" --print-jwt --credentials "$BAD_CRED" >/dev/null 2>&1
@@ -265,7 +360,7 @@ fi
 # --- 12. Bad PEM path -> error ---------------------------------------------
 echo "bad PEM path -> error"
 CRED_BADPEM="$(mktemp -t agbadpem.XXXXXX.env)"
-printf 'GITHUB_APP_ID=4646191\nGITHUB_APP_PEM=/nonexistent/key.pem\n' >"$CRED_BADPEM"
+printf 'GITHUB_APP_ID=1234567\nGITHUB_APP_PEM=/nonexistent/key.pem\n' >"$CRED_BADPEM"
 if "$SCRIPT" --print-jwt --credentials "$CRED_BADPEM" >/dev/null 2>&1; then
 	bad "should fail with bad PEM path"
 else
@@ -273,10 +368,10 @@ else
 fi
 rm -f "$CRED_BADPEM"
 
-# --- 13. PEM passed positionally weird / file discovery reads only expected keys
+# --- 13. Credential file with extra/surrounding content is tolerated -------
 echo "credential file with extra/surrounding content is tolerated"
 CRED_MESSY="$(mktemp -t agmessy.XXXXXX.env)"
-printf '# comment line\nGITHUB_APP_ID=4646191\nexport GITHUB_APP_PEM=%s\nSOME_OTHER_VAR=ignored\n' "$PEM_FOR_TEST" >"$CRED_MESSY"
+printf '# comment line\nGITHUB_APP_ID=1234567\nexport GITHUB_APP_PEM=%s\nSOME_OTHER_VAR=ignored\n' "$PEM_FOR_TEST" >"$CRED_MESSY"
 MESSY_JWT="$("$SCRIPT" --print-jwt --credentials "$CRED_MESSY" 2>/dev/null)"
 rm -f "$CRED_MESSY"
 if [ -z "$MESSY_JWT" ]; then
