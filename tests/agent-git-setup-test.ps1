@@ -17,7 +17,7 @@ $ErrorActionPreference = "Continue"
 # leak into the worktree-commit assertions below).
 Get-ChildItem Env: | Where-Object { $_.Name -like "GIT_*" } | ForEach-Object { Remove-Item "Env:$($_.Name)" -ErrorAction SilentlyContinue }
 Remove-Item env:GH_TOKEN, env:GH_ENTERPRISE_TOKEN, env:GITHUB_TOKEN, env:GITHUB_APP_ID, env:GITHUB_APP_PEM, env:GITHUB_APP_INSTALL_ID, env:GH_HOST, env:GH_REPO -ErrorAction SilentlyContinue
-Remove-Item env:AGENT_GIT_NAME, env:AGENT_GIT_BOT_ID, env:AGENT_GIT_TOKEN_ACTOR, env:AGENT_GIT_TOKEN_SHA256, env:AGENT_GIT_TOKEN_ATTESTATION, env:AGENT_GIT_TOKEN_APP_ID, env:AGENT_GIT_TOKEN_APP_PEM_PATH, env:GIT_USER_NAME, env:GIT_USER_ID, env:AGENT_GIT_ALLOW_HUMAN_ACTOR -ErrorAction SilentlyContinue
+Remove-Item env:AGENT_GIT_NAME, env:AGENT_GIT_BOT_ID, env:AGENT_GIT_TOKEN_ACTOR, env:AGENT_GIT_TOKEN_SHA256, env:AGENT_GIT_TOKEN_ATTESTATION, env:AGENT_GIT_TOKEN_APP_ID, env:AGENT_GIT_TOKEN_APP_PEM_PATH, env:AGENT_GIT_TOKEN_APP_PEM_PATH_WINDOWS, env:GIT_USER_NAME, env:GIT_USER_ID, env:AGENT_GIT_ALLOW_HUMAN_ACTOR -ErrorAction SilentlyContinue
 
 $ScriptDir = Split-Path -Parent (Resolve-Path $MyInvocation.MyCommand.Path)
 $RepoRoot = Split-Path -Parent $ScriptDir

@@ -153,13 +153,13 @@ scripts/agent-git-setup.sh --preflight --mode github <worktree-path>
 | `AGENT_GIT_NAME` | Bot login used for commit attribution and actor verification. |
 | `AGENT_GIT_BOT_ID` | Numeric bot ID for noreply email; required for offline setup. |
 | `GH_TOKEN` | Required for GitHub-mode preflight and `gh`/API operations as the bot. |
-| `AGENT_GIT_TOKEN_ACTOR`, `AGENT_GIT_TOKEN_SHA256`, `AGENT_GIT_TOKEN_ATTESTATION`, `AGENT_GIT_TOKEN_APP_ID`, `AGENT_GIT_TOKEN_APP_PEM_PATH` | App actor and token hash signed by the App key; all required in GitHub mode. |
+| `AGENT_GIT_TOKEN_*` | App ID, actor, token hash, RSA attestation, and Windows-native PEM verifier path; required in GitHub mode. |
 | `AGENT_GIT_ALLOW_TMP` | Opt-in for ephemeral location. |
 
 ```powershell
 $env:AGENT_GIT_NAME = "myagent[bot]"   # replace with your bot's name (GitHub creates it as <app>[bot])
 $env:AGENT_GIT_BOT_ID = "123456789"
-# Set GH_TOKEN and the complete signed AGENT_GIT_TOKEN_* attestation from a trusted provider for GitHub mode.
+# Set GH_TOKEN and the complete signed AGENT_GIT_TOKEN_* attestation, including a Windows PEM path, from a trusted provider.
 scripts/agent-git-setup.ps1 <repo-dir>
 ```
 

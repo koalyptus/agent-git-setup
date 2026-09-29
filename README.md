@@ -279,7 +279,7 @@ Re-running is **idempotent**: the bot identity is reconfigured, not recreated.
 | `AGENT_GIT_NAME`     | Commit author name, e.g. `myagent[bot]`. Preferred identity source. |
 | `AGENT_GIT_BOT_ID`   | Numeric bot account ID; required for offline setup.                 |
 | `GH_TOKEN`           | Required only for GitHub-mode preflight and `gh`/API as the bot.    |
-| `AGENT_GIT_TOKEN_ACTOR`, `AGENT_GIT_TOKEN_SHA256`, `AGENT_GIT_TOKEN_ATTESTATION`, `AGENT_GIT_TOKEN_APP_ID`, `AGENT_GIT_TOKEN_APP_PEM_PATH` | App actor and exact-token hash signed by the App key; all required in GitHub mode. |
+| `AGENT_GIT_TOKEN_*` | App ID, actor, token hash, RSA attestation, and PEM verifier path(s); required in GitHub mode. |
 | `AGENT_GIT_ALLOW_TMP`| *(hidden)* Opt-in to allow running from an ephemeral location.        |
 
 The commit author requires `AGENT_GIT_NAME` and the bot's numeric ID (provided
@@ -327,9 +327,10 @@ do not expose their App slug through an introspection endpoint. This repo's
 `scripts/mint-token.sh --shell` creates the attestation from the App-JWT-
 authenticated App response. Other providers must create an equivalent
 signature; an unbound actor environment variable is insufficient. On native
-Windows, use a provider that exports the signed actor fields and PEM path, or
-run the POSIX-shell minter through a compatible shell. Other API clients must
-explicitly use `GH_TOKEN`; only `gh` automatically consumes it.
+Windows, the minter exports a shell-native PEM path and, under WSL/Git Bash, a
+Windows-native PEM path for PowerShell verification. Other providers must
+export the corresponding signed actor fields and PEM path. Other API clients
+must explicitly use `GH_TOKEN`; only `gh` automatically consumes it.
 A harness lifecycle hook is required to guarantee preflight runs before every
 session.
 

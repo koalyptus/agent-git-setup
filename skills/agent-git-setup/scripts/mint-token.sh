@@ -207,13 +207,14 @@ if [ "$SHELL_OUT" -eq 1 ]; then
 	echo "export AGENT_GIT_TOKEN_SHA256=$TOKEN_SHA256"
 	echo "export AGENT_GIT_TOKEN_ATTESTATION=$TOKEN_ATTESTATION"
 	echo "export AGENT_GIT_TOKEN_APP_ID=$APP_ID"
-	PEM_VERIFY_PATH="$PEM"
+	printf 'export AGENT_GIT_TOKEN_APP_PEM_PATH=%q\n' "$PEM"
 	if command -v wslpath >/dev/null 2>&1; then
-		PEM_VERIFY_PATH="$(wslpath -w "$PEM")"
+		PEM_WINDOWS_PATH="$(wslpath -w "$PEM")"
+		printf 'export AGENT_GIT_TOKEN_APP_PEM_PATH_WINDOWS=%q\n' "$PEM_WINDOWS_PATH"
 	elif command -v cygpath >/dev/null 2>&1; then
-		PEM_VERIFY_PATH="$(cygpath -w "$PEM")"
+		PEM_WINDOWS_PATH="$(cygpath -w "$PEM")"
+		printf 'export AGENT_GIT_TOKEN_APP_PEM_PATH_WINDOWS=%q\n' "$PEM_WINDOWS_PATH"
 	fi
-	printf 'export AGENT_GIT_TOKEN_APP_PEM_PATH=%q\n' "$PEM_VERIFY_PATH"
 	# Emit the App's bot id (if known) so the agent can persist it into the
 	# credentials file / env. AGENT_GIT_BOT_ID is static per App; when present,
 	# agent-git-setup.sh uses it as the commit-email prefix so commits are

@@ -179,8 +179,9 @@ SHELL_SHA="$(printf '%s\n' "$SHELL_METADATA" | sed -n 's/^export AGENT_GIT_TOKEN
 SHELL_ATTESTATION="$(printf '%s\n' "$SHELL_METADATA" | sed -n 's/^export AGENT_GIT_TOKEN_ATTESTATION=//p')"
 SHELL_APP_ID="$(printf '%s\n' "$SHELL_METADATA" | sed -n 's/^export AGENT_GIT_TOKEN_APP_ID=//p')"
 SHELL_PEM_PATH="$(printf '%s\n' "$SHELL_METADATA" | sed -n 's/^export AGENT_GIT_TOKEN_APP_PEM_PATH=//p')"
+SHELL_PEM_WINDOWS_PATH="$(printf '%s\n' "$SHELL_METADATA" | sed -n 's/^export AGENT_GIT_TOKEN_APP_PEM_PATH_WINDOWS=//p')"
 EXPECTED_SHA="$(python3 -c 'import hashlib,sys; print(hashlib.sha256(sys.argv[1].encode()).hexdigest())' "$SHELL_TOKEN")"
-if [ "$SHELL_TOKEN" != "ghs.synthetic-installation-token" ] || [ "$SHELL_ACTOR" != "fixture-app[bot]" ] || [ "$SHELL_SHA" != "$EXPECTED_SHA" ] || [ "$SHELL_APP_ID" != "1234567" ] || [ -z "$SHELL_PEM_PATH" ]; then
+if [ "$SHELL_TOKEN" != "ghs.synthetic-installation-token" ] || [ "$SHELL_ACTOR" != "fixture-app[bot]" ] || [ "$SHELL_SHA" != "$EXPECTED_SHA" ] || [ "$SHELL_APP_ID" != "1234567" ] || [ -z "$SHELL_PEM_PATH" ] || { { command -v wslpath >/dev/null 2>&1 || command -v cygpath >/dev/null 2>&1; } && [ -z "$SHELL_PEM_WINDOWS_PATH" ]; }; then
 	bad "--shell metadata mismatch (token=$([ "$SHELL_TOKEN" = "ghs.synthetic-installation-token" ] && echo yes || echo no) actor=$([ "$SHELL_ACTOR" = "fixture-app[bot]" ] && echo yes || echo no) hash=$([ "$SHELL_SHA" = "$EXPECTED_SHA" ] && echo yes || echo no) app-id=$([ "$SHELL_APP_ID" = "1234567" ] && echo yes || echo no) pem-path=$([ -n "$SHELL_PEM_PATH" ] && echo yes || echo no))"
 elif python3 - "$PUB_FOR_TEST" "$SHELL_APP_ID" "$SHELL_ACTOR" "$SHELL_SHA" "$SHELL_ATTESTATION" <<'PY'; then
 import base64, sys

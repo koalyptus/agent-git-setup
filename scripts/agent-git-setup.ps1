@@ -136,7 +136,9 @@ function Preflight {
     }
 
     if ($PREFLIGHT_MODE -eq "github") {
-        if ([string]::IsNullOrEmpty($env:GH_TOKEN) -or [string]::IsNullOrEmpty($env:AGENT_GIT_TOKEN_ACTOR) -or [string]::IsNullOrEmpty($env:AGENT_GIT_TOKEN_SHA256) -or [string]::IsNullOrEmpty($env:AGENT_GIT_TOKEN_ATTESTATION) -or [string]::IsNullOrEmpty($env:AGENT_GIT_TOKEN_APP_ID) -or [string]::IsNullOrEmpty($env:AGENT_GIT_TOKEN_APP_PEM_PATH) -or -not (Get-Command gh -ErrorAction SilentlyContinue)) {
+        $appPemPath = $env:AGENT_GIT_TOKEN_APP_PEM_PATH_WINDOWS
+        if ([string]::IsNullOrEmpty($appPemPath)) { $appPemPath = $env:AGENT_GIT_TOKEN_APP_PEM_PATH }
+        if ([string]::IsNullOrEmpty($env:GH_TOKEN) -or [string]::IsNullOrEmpty($env:AGENT_GIT_TOKEN_ACTOR) -or [string]::IsNullOrEmpty($env:AGENT_GIT_TOKEN_SHA256) -or [string]::IsNullOrEmpty($env:AGENT_GIT_TOKEN_ATTESTATION) -or [string]::IsNullOrEmpty($env:AGENT_GIT_TOKEN_APP_ID) -or [string]::IsNullOrEmpty($appPemPath) -or -not (Get-Command gh -ErrorAction SilentlyContinue)) {
             Write-Host "agent-git-setup.ps1: PREFLIGHT FAIL: github mode requires GH_TOKEN, signed actor metadata, gh, and network access." -ForegroundColor Red
             $ok = 1
         } else {
@@ -154,7 +156,7 @@ function Preflight {
                 $signatureValid = $false
                 $rsa = [System.Security.Cryptography.RSA]::Create()
                 try {
-                    $pemText = [System.IO.File]::ReadAllText($env:AGENT_GIT_TOKEN_APP_PEM_PATH)
+                    $pemText = [System.IO.File]::ReadAllText($appPemPath)
                     $rsa.ImportFromPem($pemText)
                     $encodedSignature = $env:AGENT_GIT_TOKEN_ATTESTATION.Replace('-', '+').Replace('_', '/')
                     $encodedSignature += '=' * ((4 - ($encodedSignature.Length % 4)) % 4)
