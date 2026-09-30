@@ -144,7 +144,7 @@ See [`skills/agent-git-setup/SKILL.md`](skills/agent-git-setup/SKILL.md) for com
 │           Token source               │  (only for gh/API agent identity)
 │   ────────────────────────────────   │
 │     scripts/mint-token.sh            │   scripts/mint-token.sh + GitHub App
-│     --app-id --pem                   │    (create app, download PEM,     
+│     --app-id --pem                   │    (create app, download PEM,
 │     --shell                          │     install; setup resolves identity)
 └──────────────┬───────────────────────┘
                │ exports GH_TOKEN + attestation
