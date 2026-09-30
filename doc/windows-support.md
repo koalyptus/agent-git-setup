@@ -12,7 +12,12 @@ Windows-specific scripts and hermetic tests, plus documentation and CI updates:
 | File | Purpose |
 |------|---------|
 | `scripts/agent-git-setup.ps1` | PowerShell port of `scripts/agent-git-setup.sh`. Identity-only: writes `user.name`/`user.email` to `.git/agent-bot-identity.config` and adds an `includeIf.gitdir/i:**/.git/worktrees/**.path` entry to the shared `.git/config`. Validates effective author and committer identity in GitHub's bot noreply format. |
+| `scripts/agent-git-override-main-identity.ps1` | Explicitly enables the persisted bot identity for the main worktree. Does not change global config. |
+| `scripts/agent-git-restore-main-identity.ps1` | Restores the saved repo-local identity for the main worktree. |
+| `scripts/lib/main-identity-core.ps1` | Shared implementation used by the two action-specific entrypoints above. |
 | `tests/agent-git-setup-test.ps1` | Hermetic PowerShell suite using real temporary Git repos/worktrees, synthetic identities, a global fake `gh` function, a throwing `Invoke-RestMethod` stub, isolated Git/GH config, and cleanup. |
+| `tests/git-agent-override-main-identity-test.ps1` | Hermetic PowerShell coverage for explicit main-worktree bot identity opt-in, restore, conflicts, and linked-worktree isolation. |
+| `tests/git-agent-restore-main-identity-test.ps1` | Hermetic PowerShell coverage for restoration, conflict refusal, and inherited global identity. |
 | `scripts/mint-token.ps1` | Native PowerShell GitHub App token minter. Uses PowerShell/.NET RSA and web requests; no Bash or Python dependency. |
 | `tests/agent-github-access-test.ps1` | Hermetic Windows access workflow test using a synthetic RSA key, mocked REST calls, fake `gh`, isolated config, and cleanup. |
 | `skills/agent-github-access/scripts/mint-token.ps1` | Bundled PowerShell minter synced from `scripts/mint-token.ps1`. |
@@ -26,7 +31,21 @@ Windows-specific scripts and hermetic tests, plus documentation and CI updates:
 - **Bot-only setup scripts.** `AGENT_GIT_NAME` and the numeric `AGENT_GIT_BOT_ID` determine the bot's noreply identity. The scripts fail if the bot ID cannot be resolved. The `agent-git-setup` skill may offer a human-identity fallback only after explaining the resolved identity and receiving explicit approval.
 - **Mode-specific preflight.** `git-only` needs no token. `github` requires `GH_TOKEN` and a signed attestation containing App ID, actor, token hash, signature, and PEM path. It verifies the signature/token binding, actor match, and `gh repo view` access. Native PowerShell uses Windows paths and does not require WSL. If `mint-token.sh` runs under WSL or Git Bash, it automatically exports an additional Windows-native PEM path via `wslpath` or `cygpath` when available.
 - **`includeIf` conditional-include.** The bot config is written ONCE to the shared `.git/config` and applies to every linked worktree (including those created after setup). The main repo's own `.git` directory is excluded by the glob.
+- **Optional main-worktree bot identity.** After running `agent-git-setup.ps1`, a user may explicitly approve the repo-local main-worktree override. It stores the prior local identity in `.git/agent-main-identity.backup.config`; restore puts it back only if the current values still match the bot identity. Global config is untouched, and linked worktrees keep their bot identity throughout.
 - **`--preflight` ported.** Both modes require a linked worktree and verify effective author/committer identity. GitHub mode verifies an App-key signature binding actor metadata to the exact token, then checks current-repo access. Tests mock `gh` and network lookups.
+
+The opt-in and restore commands are:
+
+```powershell
+pwsh scripts/agent-git-override-main-identity.ps1 --confirm .
+pwsh scripts/agent-git-restore-main-identity.ps1 --confirm .
+```
+
+The `--confirm` flag is intended for use only after the user has explicitly
+approved the operation. While the override is active, commits from the main
+worktree use the bot identity, including commits made by the human. Run restore
+before making human-attributed commits in this checkout. The operation refuses
+to run in a linked worktree or if the persisted setup identity is unavailable.
 
 ## Test parity
 

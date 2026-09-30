@@ -8,6 +8,16 @@ PTEST := $(TEST_DIR)/agent-git-setup-test.ps1
 MINT_TEST := $(TEST_DIR)/mint-token-test.sh
 ACCESS_TEST := $(TEST_DIR)/agent-github-access-test.sh
 ACCESS_PTEST := $(TEST_DIR)/agent-github-access-test.ps1
+MAIN_IDENTITY_CORE := scripts/lib/main-identity-core.sh
+MAIN_IDENTITY_CORE_PSCRIPT := scripts/lib/main-identity-core.ps1
+MAIN_IDENTITY_OVERRIDE := scripts/agent-git-override-main-identity.sh
+MAIN_IDENTITY_OVERRIDE_PSCRIPT := scripts/agent-git-override-main-identity.ps1
+MAIN_IDENTITY_RESTORE := scripts/agent-git-restore-main-identity.sh
+MAIN_IDENTITY_RESTORE_PSCRIPT := scripts/agent-git-restore-main-identity.ps1
+MAIN_IDENTITY_TEST := $(TEST_DIR)/git-agent-override-main-identity-test.sh
+MAIN_IDENTITY_PTEST := $(TEST_DIR)/git-agent-override-main-identity-test.ps1
+MAIN_IDENTITY_RESTORE_TEST := $(TEST_DIR)/git-agent-restore-main-identity-test.sh
+MAIN_IDENTITY_RESTORE_PTEST := $(TEST_DIR)/git-agent-restore-main-identity-test.ps1
 
 # Bundle copies for the setup and GitHub access skills.
 # Source of truth is the files in scripts/. This target keeps bundles in sync.
@@ -20,18 +30,20 @@ GITHUB_ACCESS_SKILL_SCRIPTS_DIR := skills/agent-github-access/scripts
 
 test:
 	bash $(TEST)
+	bash $(MAIN_IDENTITY_TEST)
+	bash $(MAIN_IDENTITY_RESTORE_TEST)
 	bash $(ACCESS_TEST)
-	@if command -v pwsh >/dev/null 2>&1; then pwsh $(PTEST) && pwsh $(ACCESS_PTEST); else echo "pwsh not found — skipping PowerShell tests"; fi
+	@if command -v pwsh >/dev/null 2>&1; then pwsh $(PTEST) && pwsh $(MAIN_IDENTITY_PTEST) && pwsh $(MAIN_IDENTITY_RESTORE_PTEST) && pwsh $(ACCESS_PTEST); else echo "pwsh not found — skipping PowerShell tests"; fi
 	bash $(MINT_TEST)
 
 lint:
-	shellcheck $(SCRIPT) $(MINT) $(TEST) $(ACCESS_TEST) $(MINT_TEST)
-	shfmt -d $(SCRIPT) $(MINT) $(TEST) $(ACCESS_TEST) $(MINT_TEST)
-	@if command -v pwsh >/dev/null 2>&1; then pwsh scripts/lint-ps1.ps1 $(PSCRIPT) $(PTEST) $(MINT_PSCRIPT) $(ACCESS_PTEST); else echo "pwsh not found — skipping PSScriptAnalyzer"; fi
+	shellcheck $(SCRIPT) $(MINT) $(TEST) $(MAIN_IDENTITY_CORE) $(MAIN_IDENTITY_OVERRIDE) $(MAIN_IDENTITY_RESTORE) $(MAIN_IDENTITY_TEST) $(MAIN_IDENTITY_RESTORE_TEST) $(ACCESS_TEST) $(MINT_TEST)
+	shfmt -d $(SCRIPT) $(MINT) $(TEST) $(MAIN_IDENTITY_CORE) $(MAIN_IDENTITY_OVERRIDE) $(MAIN_IDENTITY_RESTORE) $(MAIN_IDENTITY_TEST) $(MAIN_IDENTITY_RESTORE_TEST) $(ACCESS_TEST) $(MINT_TEST)
+	@if command -v pwsh >/dev/null 2>&1; then pwsh scripts/lint-ps1.ps1 $(PSCRIPT) $(PTEST) $(MINT_PSCRIPT) $(MAIN_IDENTITY_CORE_PSCRIPT) $(MAIN_IDENTITY_OVERRIDE_PSCRIPT) $(MAIN_IDENTITY_RESTORE_PSCRIPT) $(MAIN_IDENTITY_PTEST) $(MAIN_IDENTITY_RESTORE_PTEST) $(ACCESS_PTEST); else echo "pwsh not found — skipping PSScriptAnalyzer"; fi
 
 lint-bash:
-	shellcheck $(SCRIPT) $(MINT) $(TEST) $(ACCESS_TEST) $(MINT_TEST)
-	shfmt -d $(SCRIPT) $(MINT) $(TEST) $(ACCESS_TEST) $(MINT_TEST)
+	shellcheck $(SCRIPT) $(MINT) $(TEST) $(MAIN_IDENTITY_CORE) $(MAIN_IDENTITY_OVERRIDE) $(MAIN_IDENTITY_RESTORE) $(MAIN_IDENTITY_TEST) $(MAIN_IDENTITY_RESTORE_TEST) $(ACCESS_TEST) $(MINT_TEST)
+	shfmt -d $(SCRIPT) $(MINT) $(TEST) $(MAIN_IDENTITY_CORE) $(MAIN_IDENTITY_OVERRIDE) $(MAIN_IDENTITY_RESTORE) $(MAIN_IDENTITY_TEST) $(MAIN_IDENTITY_RESTORE_TEST) $(ACCESS_TEST) $(MINT_TEST)
 
 install:
 	@command -v shellcheck >/dev/null 2>&1 && echo "shellcheck: ok ($$(shellcheck --version | head -1))" || \
@@ -71,6 +83,7 @@ install:
 sync-skill-scripts:
 	@mkdir -p $(SKILL_SCRIPTS_DIR)
 	@mkdir -p $(GITHUB_ACCESS_SKILL_SCRIPTS_DIR)
+	@mkdir -p skills/agent-git-override-main-identity/scripts/lib skills/agent-git-restore-main-identity/scripts/lib
 	# Use cmp to skip the cp when content is already identical, so re-running
 	# the target is a no-op at the git level (no spurious mtime churn).
 	@for pair in "$(SCRIPT) $(SKILL_SCRIPTS_DIR)/agent-git-setup.sh" \
@@ -82,6 +95,18 @@ sync-skill-scripts:
 	done
 	@for pair in "$(MINT) $(GITHUB_ACCESS_SKILL_SCRIPTS_DIR)/mint-token.sh" \
 	             "$(MINT_PSCRIPT) $(GITHUB_ACCESS_SKILL_SCRIPTS_DIR)/mint-token.ps1"; do \
+	  set -- $$pair; \
+	  if cmp -s "$$1" "$$2"; then echo "ok   - $$2 already in sync"; \
+	  else cp "$$1" "$$2" && echo "synced $$1 -> $$2"; fi; \
+	done
+	@for pair in "$(MAIN_IDENTITY_OVERRIDE) skills/agent-git-override-main-identity/scripts/agent-git-override-main-identity.sh" \
+	            "$(MAIN_IDENTITY_OVERRIDE_PSCRIPT) skills/agent-git-override-main-identity/scripts/agent-git-override-main-identity.ps1" \
+	            "$(MAIN_IDENTITY_CORE) skills/agent-git-override-main-identity/scripts/lib/main-identity-core.sh" \
+	            "$(MAIN_IDENTITY_CORE_PSCRIPT) skills/agent-git-override-main-identity/scripts/lib/main-identity-core.ps1" \
+	            "$(MAIN_IDENTITY_RESTORE) skills/agent-git-restore-main-identity/scripts/agent-git-restore-main-identity.sh" \
+	            "$(MAIN_IDENTITY_RESTORE_PSCRIPT) skills/agent-git-restore-main-identity/scripts/agent-git-restore-main-identity.ps1" \
+	            "$(MAIN_IDENTITY_CORE) skills/agent-git-restore-main-identity/scripts/lib/main-identity-core.sh" \
+	            "$(MAIN_IDENTITY_CORE_PSCRIPT) skills/agent-git-restore-main-identity/scripts/lib/main-identity-core.ps1"; do \
 	  set -- $$pair; \
 	  if cmp -s "$$1" "$$2"; then echo "ok   - $$2 already in sync"; \
 	  else cp "$$1" "$$2" && echo "synced $$1 -> $$2"; fi; \
@@ -116,6 +141,19 @@ sync-check:
 	    echo "FAIL: $$dst is missing. Run: make sync-skill-scripts" >&2; status=1; \
 	  elif ! diff -q "$$src" "$$dst" >/dev/null 2>&1; then \
 	    echo "FAIL: $$dst is out of sync with $$src" >&2; diff "$$src" "$$dst" >&2 || true; status=1; \
+	  else echo "ok   - $$dst in sync"; fi; \
+	done; \
+	for pair in "$(MAIN_IDENTITY_OVERRIDE) skills/agent-git-override-main-identity/scripts/agent-git-override-main-identity.sh" \
+	            "$(MAIN_IDENTITY_OVERRIDE_PSCRIPT) skills/agent-git-override-main-identity/scripts/agent-git-override-main-identity.ps1" \
+	            "$(MAIN_IDENTITY_CORE) skills/agent-git-override-main-identity/scripts/lib/main-identity-core.sh" \
+	            "$(MAIN_IDENTITY_CORE_PSCRIPT) skills/agent-git-override-main-identity/scripts/lib/main-identity-core.ps1" \
+	            "$(MAIN_IDENTITY_RESTORE) skills/agent-git-restore-main-identity/scripts/agent-git-restore-main-identity.sh" \
+	            "$(MAIN_IDENTITY_RESTORE_PSCRIPT) skills/agent-git-restore-main-identity/scripts/agent-git-restore-main-identity.ps1" \
+	            "$(MAIN_IDENTITY_CORE) skills/agent-git-restore-main-identity/scripts/lib/main-identity-core.sh" \
+	            "$(MAIN_IDENTITY_CORE_PSCRIPT) skills/agent-git-restore-main-identity/scripts/lib/main-identity-core.ps1"; do \
+	  src="$${pair%% *}"; dst="$${pair##* }"; \
+	  if [ ! -f "$$dst" ]; then echo "FAIL: $$dst is missing. Run: make sync-skill-scripts" >&2; status=1; \
+	  elif ! diff -q "$$src" "$$dst" >/dev/null 2>&1; then echo "FAIL: $$dst is out of sync with $$src" >&2; diff "$$src" "$$dst" >&2 || true; status=1; \
 	  else echo "ok   - $$dst in sync"; fi; \
 	done; \
 	exit $$status

@@ -8,6 +8,10 @@ This repository provides a way to clearly identify agentic work in Git and GitHu
 |---|---|---|
 | `agent-git-setup` | When a repo does not yet have bot identity setup for Git and GitHub. | Sets bot commit identity once for every current and future linked agent worktree, leaving the main tree's existing identity unchanged. Its GitHub mode can also mint a short-lived token and preflight API access. |
 | `agent-github-access` | Before authorizing GitHub API work when you do not need to configure bot commit identity. | Mints a short-lived (about one hour) App installation token and verifies access to the current repository. |
+| `agent-git-override-main-identity` | When the user explicitly wants bot-attributed commits from the main worktree. | Temporarily replaces this clone's main-worktree `user.name` and `user.email` with the persisted bot identity. The change remains active until restored. |
+| `agent-git-restore-main-identity` | After the main-worktree bot identity is no longer wanted. | Restores the saved repo-local identity, refusing to overwrite identity changes made since activation. |
+
+The two main-identity skills are optional and do not change `agent-git-setup` behavior. They modify only this clone's `.git/config`; global Git config and other repositories are untouched. While enabled, commits made from this repository's main worktree use the bot identity, including human-made commits. Run the restore skill before making human-attributed commits here.
 
 If you decide to have both bot-authored commits and bot-authenticated API calls, use `agent-git-setup`'s `GitHub` mode; its workflow covers both. Use `agent-github-access` by itself for `gh` commands or GitHub API-only access.
 
@@ -33,11 +37,13 @@ git clone https://github.com/koalyptus/agent-git-setup
 
 ### 1. Install the skills you need in your harness
 
-Consult that harness's docs for the exact install / "load skill from repo" command. Install `agent-git-setup` and `agent-github-access`. When copying manually, include each installed skill's `scripts/` directory. If loading a raw `SKILL.md`, make its bundled scripts available at the installed skill path too.
+Consult that harness's docs for the exact install / "load skill from repo" command. Install `agent-git-setup` and `agent-github-access`; install the main-identity skills only if you want their opt-in workflow. When copying manually, include each installed skill's `scripts/` directory. If loading a raw `SKILL.md`, make its bundled scripts available at the installed skill path too.
 
 ```
 https://raw.githubusercontent.com/koalyptus/agent-git-setup/main/skills/agent-git-setup/SKILL.md
 https://raw.githubusercontent.com/koalyptus/agent-git-setup/main/skills/agent-github-access/SKILL.md
+https://raw.githubusercontent.com/koalyptus/agent-git-setup/main/skills/agent-git-override-main-identity/SKILL.md
+https://raw.githubusercontent.com/koalyptus/agent-git-setup/main/skills/agent-git-restore-main-identity/SKILL.md
 ```
 
 ### 2. Prepare relevant Git information
