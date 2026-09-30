@@ -22,7 +22,8 @@ Remove-Item env:AGENT_GIT_NAME, env:AGENT_GIT_BOT_ID, env:AGENT_GIT_TOKEN_ACTOR,
 $ScriptDir = Split-Path -Parent (Resolve-Path $MyInvocation.MyCommand.Path)
 $RepoRoot = Split-Path -Parent $ScriptDir
 $Script = Join-Path $RepoRoot "scripts" "agent-git-setup.ps1"
-$Sandbox = Join-Path $env:TEMP ("agent-git-setup-test-" + (Get-Date -Format "yyyyMMddHHmmssffffff"))
+$TempRoot = [System.IO.Path]::GetTempPath()
+$Sandbox = Join-Path $TempRoot ("agent-git-setup-test-" + (Get-Date -Format "yyyyMMddHHmmssffffff"))
 if (-not (Test-Path $Sandbox)) { New-Item -ItemType Directory -Path $Sandbox -Force | Out-Null }
 $env:HOME = $Sandbox
 $env:GIT_CONFIG_GLOBAL = Join-Path $Sandbox ".gitconfig"
@@ -33,7 +34,7 @@ function Invoke-RestMethod { throw "Network access is disabled in the hermetic t
 $script:FixtureRsa = [System.Security.Cryptography.RSA]::Create(2048)
 $script:FixturePemPath = Join-Path $Sandbox "fixture-app.pem"
 [System.IO.File]::WriteAllText($script:FixturePemPath, $script:FixtureRsa.ExportPkcs8PrivateKeyPem())
-# Repos are intentionally throwaway (under $env:TEMP); opt the hardening guard in.
+# Repos are intentionally throwaway (under the system temp directory); opt the hardening guard in.
 $env:AGENT_GIT_ALLOW_TMP = "1"
 
 $script:Pass = 0

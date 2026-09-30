@@ -75,6 +75,24 @@ sys.exit(0)
 PY
 }
 
+verify_app_attestation() {
+	python3 - "$@" <<'PY'
+import base64, sys
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding
+
+public_path, app_id, actor, token_hash, encoded_signature = sys.argv[1:]
+with open(public_path, "rb") as public_file:
+	public_key = serialization.load_pem_public_key(public_file.read())
+signature = base64.urlsafe_b64decode(encoded_signature + "=" * (-len(encoded_signature) % 4))
+statement = ("agent-git-setup-token-v1\n%s\n%s\n%s" % (app_id, actor, token_hash)).encode()
+try:
+	public_key.verify(signature, statement, padding.PKCS1v15(), hashes.SHA256())
+except Exception:
+	sys.exit(1)
+PY
+}
+
 cleanup() {
 	rm -f "$PEM_FOR_TEST" "$PUB_FOR_TEST" "${PUB2:-}" "${CRED_FILE:-}"
 	rm -rf "$TEST_HOME"
@@ -183,22 +201,7 @@ SHELL_PEM_WINDOWS_PATH="$(printf '%s\n' "$SHELL_METADATA" | sed -n 's/^export AG
 EXPECTED_SHA="$(python3 -c 'import hashlib,sys; print(hashlib.sha256(sys.argv[1].encode()).hexdigest())' "$SHELL_TOKEN")"
 if [ "$SHELL_TOKEN" != "ghs.synthetic-installation-token" ] || [ "$SHELL_ACTOR" != "fixture-app[bot]" ] || [ "$SHELL_SHA" != "$EXPECTED_SHA" ] || [ "$SHELL_APP_ID" != "1234567" ] || [ -z "$SHELL_PEM_PATH" ] || { { command -v wslpath >/dev/null 2>&1 || command -v cygpath >/dev/null 2>&1; } && [ -z "$SHELL_PEM_WINDOWS_PATH" ]; }; then
 	bad "--shell metadata mismatch (token=$([ "$SHELL_TOKEN" = "ghs.synthetic-installation-token" ] && echo yes || echo no) actor=$([ "$SHELL_ACTOR" = "fixture-app[bot]" ] && echo yes || echo no) hash=$([ "$SHELL_SHA" = "$EXPECTED_SHA" ] && echo yes || echo no) app-id=$([ "$SHELL_APP_ID" = "1234567" ] && echo yes || echo no) pem-path=$([ -n "$SHELL_PEM_PATH" ] && echo yes || echo no))"
-elif python3 - "$PUB_FOR_TEST" "$SHELL_APP_ID" "$SHELL_ACTOR" "$SHELL_SHA" "$SHELL_ATTESTATION" <<'PY'
-import base64, sys
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import padding
-
-public_path, app_id, actor, token_hash, encoded_signature = sys.argv[1:]
-with open(public_path, "rb") as public_file:
-    public_key = serialization.load_pem_public_key(public_file.read())
-signature = base64.urlsafe_b64decode(encoded_signature + "=" * (-len(encoded_signature) % 4))
-statement = ("agent-git-setup-token-v1\n%s\n%s\n%s" % (app_id, actor, token_hash)).encode()
-try:
-    public_key.verify(signature, statement, padding.PKCS1v15(), hashes.SHA256())
-except Exception:
-    sys.exit(1)
-PY
-then
+elif verify_app_attestation "$PUB_FOR_TEST" "$SHELL_APP_ID" "$SHELL_ACTOR" "$SHELL_SHA" "$SHELL_ATTESTATION"; then
 	ok "App actor attestation signature binds the exact minted token"
 else
 	bad "App actor attestation signature was invalid"
