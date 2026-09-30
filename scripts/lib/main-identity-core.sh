@@ -116,7 +116,9 @@ load_backup() {
 	ORIGINAL_EMAIL_PRESENT="$(git config --file "$BACKUP_CONFIG" --get main-identity.original-email-present 2>/dev/null || true)"
 	ORIGINAL_NAME="$(git config --file "$BACKUP_CONFIG" --get main-identity.original-name 2>/dev/null || true)"
 	ORIGINAL_EMAIL="$(git config --file "$BACKUP_CONFIG" --get main-identity.original-email 2>/dev/null || true)"
-	[ -n "$BOT_NAME" ] && [ -n "$BOT_EMAIL" ] || fail "backup file has no bot identity; preserve it and inspect it manually"
+	if [ -z "$BOT_NAME" ] || [ -z "$BOT_EMAIL" ]; then
+		fail "backup file has no bot identity; preserve it and inspect it manually"
+	fi
 	[[ "$ORIGINAL_NAME_PRESENT" == true || "$ORIGINAL_NAME_PRESENT" == false ]] || fail "backup file has invalid original-name-present state"
 	[[ "$ORIGINAL_EMAIL_PRESENT" == true || "$ORIGINAL_EMAIL_PRESENT" == false ]] || fail "backup file has invalid original-email-present state"
 }
@@ -163,7 +165,9 @@ if [ "$COMMAND" = override ]; then
 	[ -f "$BOT_CONFIG" ] || fail "bot identity is not configured; run agent-git-setup first"
 	BOT_NAME="$(git config --file "$BOT_CONFIG" --get user.name 2>/dev/null || true)"
 	BOT_EMAIL="$(git config --file "$BOT_CONFIG" --get user.email 2>/dev/null || true)"
-	[ -n "$BOT_NAME" ] && [ -n "$BOT_EMAIL" ] || fail "persisted bot identity is incomplete; run agent-git-setup again"
+	if [ -z "$BOT_NAME" ] || [ -z "$BOT_EMAIL" ]; then
+		fail "persisted bot identity is incomplete; run agent-git-setup again"
+	fi
 	[[ "$BOT_NAME" != *$'\n'* && "$BOT_EMAIL" != *$'\n'* ]] || fail "persisted bot identity contains a newline; refusing to apply it"
 	[[ "$BOT_EMAIL" =~ ^[1-9][0-9]*\+ ]] || fail "persisted bot email is not a numeric GitHub noreply address"
 	[ "${BOT_EMAIL#*+}" = "$BOT_NAME@users.noreply.github.com" ] || fail "persisted bot name and noreply email do not match"
@@ -176,7 +180,9 @@ if [ "$COMMAND" = override ]; then
 		read_local_value user.email
 		email_matches_bot=0
 		[ "$READ_PRESENT" -eq 1 ] && [ "$READ_VALUE" = "$BOT_EMAIL" ] && email_matches_bot=1
-		[ "$name_matches_bot" -eq 1 ] && [ "$email_matches_bot" -eq 1 ] || fail "backup exists but the main-worktree identity differs; restore or inspect it before overriding"
+		if [ "$name_matches_bot" -ne 1 ] || [ "$email_matches_bot" -ne 1 ]; then
+			fail "backup exists but the main-worktree identity differs; restore or inspect it before overriding"
+		fi
 		printf '%s: bot identity is already active for %s\n' "$PROGRAM" "$MAIN_ROOT"
 		exit 0
 	fi
@@ -194,15 +200,15 @@ if [ "$COMMAND" = override ]; then
 		fail "could not apply bot identity; original identity restoration was attempted"
 	fi
 	read_local_value user.name
-	[ "$READ_PRESENT" -eq 1 ] && [ "$READ_VALUE" = "$BOT_NAME" ] || {
+	if [ "$READ_PRESENT" -ne 1 ] || [ "$READ_VALUE" != "$BOT_NAME" ]; then
 		restore_original && rm -f "$BACKUP_CONFIG"
 		fail "could not verify bot user.name; original identity restoration was attempted"
-	}
+	fi
 	read_local_value user.email
-	[ "$READ_PRESENT" -eq 1 ] && [ "$READ_VALUE" = "$BOT_EMAIL" ] || {
+	if [ "$READ_PRESENT" -ne 1 ] || [ "$READ_VALUE" != "$BOT_EMAIL" ]; then
 		restore_original && rm -f "$BACKUP_CONFIG"
 		fail "could not verify bot user.email; original identity restoration was attempted"
-	}
+	fi
 	AUTHOR_IDENT="$(git -C "$MAIN_ROOT" var GIT_AUTHOR_IDENT 2>/dev/null || true)"
 	COMMITTER_IDENT="$(git -C "$MAIN_ROOT" var GIT_COMMITTER_IDENT 2>/dev/null || true)"
 	[[ "$AUTHOR_IDENT" == "$BOT_NAME <$BOT_EMAIL> "* && "$COMMITTER_IDENT" == "$BOT_NAME <$BOT_EMAIL> "* ]] || {
