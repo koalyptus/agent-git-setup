@@ -18,10 +18,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if ! command -v python3 >/dev/null 2>&1 || ! python3 - >/dev/null 2>&1 <<'PY'
+if ! command -v python3 >/dev/null 2>&1 || ! python3 - >/dev/null 2>&1 <<'PY'; then
 import cryptography
 PY
-	then
 	echo "agent-github-access-test.sh requires Python 3 and cryptography" >&2
 	exit 2
 fi
@@ -32,6 +31,8 @@ SKILL_DOC="$SCRIPT_DIR/skills/agent-github-access/SKILL.md"
 GIT_SKILL_DOC="$SCRIPT_DIR/skills/agent-git-setup/SKILL.md"
 
 echo "new skill documents the tested mint-and-verify workflow"
+# These are literal code samples in the skill document, not shell expansions.
+# shellcheck disable=SC2016
 if grep -Fq 'source <("$MINT_TOKEN_BASH" --shell)' "$SKILL_DOC" &&
 	grep -Fq '& $MINT_TOKEN_POWERSHELL' "$SKILL_DOC" &&
 	grep -Fq 'gh repo view --json nameWithOwner --jq .nameWithOwner' "$SKILL_DOC"; then
@@ -134,8 +135,11 @@ SH
 chmod +x "$TEST_HOME/bin/gh"
 
 case "$(uname -s)" in
-	MINGW*|MSYS*|CYGWIN*) export PYTHONPATH="$(cygpath -w "$FAKE_API_DIR")" ;;
-	*) export PYTHONPATH="$FAKE_API_DIR" ;;
+MINGW* | MSYS* | CYGWIN*)
+	WINDOWS_FAKE_API_DIR="$(cygpath -w "$FAKE_API_DIR")"
+	export PYTHONPATH="$WINDOWS_FAKE_API_DIR"
+	;;
+*) export PYTHONPATH="$FAKE_API_DIR" ;;
 esac
 
 REPO_DIR="$TEST_HOME/repo"
@@ -145,6 +149,8 @@ git -C "$REPO_DIR" remote add origin https://github.com/acme/widget.git
 cd "$REPO_DIR"
 
 echo "mint and verify with local fixtures only"
+# The minter emits trusted shell exports; ShellCheck cannot resolve its path.
+# shellcheck disable=SC1090
 source <("$MINT_TOKEN_SCRIPT" --shell)
 if [ "${AGENT_GIT_TOKEN_ACTOR:-}" = "fixture-app[bot]" ] && [ -n "${AGENT_GIT_TOKEN_ATTESTATION:-}" ]; then
 	echo "  ok   - existing minter exports the App actor and signed attestation"

@@ -8,7 +8,7 @@ $RepoRoot = Split-Path -Parent $ScriptDir
 $Minter = Join-Path $RepoRoot "skills" "agent-github-access" "scripts" "mint-token.ps1"
 $SkillDoc = Join-Path $RepoRoot "skills" "agent-github-access" "SKILL.md"
 $GitSkillDoc = Join-Path $RepoRoot "skills" "agent-git-setup" "SKILL.md"
-$TestRoot = Join-Path $env:TEMP ("agent-github-access-test-" + [guid]::NewGuid().ToString("N"))
+$TestRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("agent-github-access-test-" + [guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Path $TestRoot -Force | Out-Null
 
 $EnvironmentNames = @(
