@@ -18,9 +18,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if ! command -v python3 >/dev/null 2>&1 || ! python3 - >/dev/null 2>&1 <<'PY'; then
-import cryptography
-PY
+if ! command -v python3 >/dev/null 2>&1 || ! python3 -c 'import cryptography' >/dev/null 2>&1; then
 	echo "agent-github-access-test.sh requires Python 3 and cryptography" >&2
 	exit 2
 fi
