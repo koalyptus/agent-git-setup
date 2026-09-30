@@ -25,7 +25,7 @@ Note: neither skill configures `git push` authentication, which continues to use
 - `gh` (GitHub CLI) — required for GitHub-mode preflight and bot GitHub operations; Git-only mode does not need it
 - Network access to GitHub for automatic bot identity lookup; Bash setup also requires `curl` + `python3` for the lookup
 - `python3` + `cryptography` — required by the Bash token minter and GitHub-mode Bash attestation verification; not required for the native Windows path
-- PowerShell 7+ — required for native Windows setup and token minting; the PowerShell minter uses built-in .NET cryptography
+- PowerShell 7+ (`pwsh.exe`) — required for native Windows setup and token minting. Run the native Windows workflow in a PowerShell 7 session.
 
 ## Install
 

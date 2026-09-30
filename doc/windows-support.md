@@ -5,6 +5,10 @@ This document records native Windows (`cmd`/`PowerShell`) support for
 `agent-github-access`. It captures design decisions, test parity, and known
 platform differences.
 
+Use PowerShell 7 (`pwsh.exe`) for the native Windows scripts and tests. Keep
+token minting and subsequent `gh` commands in the same PowerShell 7 process so
+the exported token remains available to `gh`.
+
 ## What was built
 
 Windows-specific scripts and hermetic tests, plus documentation and CI updates:
