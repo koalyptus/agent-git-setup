@@ -1,32 +1,37 @@
 SCRIPT := scripts/agent-git-setup.sh
 PSCRIPT := scripts/agent-git-setup.ps1
 MINT := scripts/mint-token.sh
+MINT_PSCRIPT := scripts/mint-token.ps1
 TEST_DIR := tests
 TEST := $(TEST_DIR)/agent-git-setup-test.sh
 PTEST := $(TEST_DIR)/agent-git-setup-test.ps1
 MINT_TEST := $(TEST_DIR)/mint-token-test.sh
+ACCESS_TEST := $(TEST_DIR)/agent-github-access-test.sh
+ACCESS_PTEST := $(TEST_DIR)/agent-github-access-test.ps1
 
-# Bundle copies used by `hermes skills install github/koalyptus/agent-git-setup`.
-# Source of truth is the files in scripts/. This target keeps the bundle in sync.
+# Bundle copies for the setup and GitHub access skills.
+# Source of truth is the files in scripts/. This target keeps bundles in sync.
 SKILL_DIR := skills/agent-git-setup
 SKILL_SCRIPTS_DIR := $(SKILL_DIR)/scripts
 SKILL_BUNDLE := $(SKILL_SCRIPTS_DIR)/agent-git-setup.sh $(SKILL_SCRIPTS_DIR)/agent-git-setup.ps1 $(SKILL_SCRIPTS_DIR)/mint-token.sh
+GITHUB_ACCESS_SKILL_SCRIPTS_DIR := skills/agent-github-access/scripts
 
 .PHONY: test lint install ci sync-skill-scripts sync-check
 
 test:
 	bash $(TEST)
-	@if command -v pwsh >/dev/null 2>&1; then pwsh $(PTEST); else echo "pwsh not found — skipping PowerShell tests"; fi
+	bash $(ACCESS_TEST)
+	@if command -v pwsh >/dev/null 2>&1; then pwsh $(PTEST) && pwsh $(ACCESS_PTEST); else echo "pwsh not found — skipping PowerShell tests"; fi
 	bash $(MINT_TEST)
 
 lint:
-	shellcheck $(SCRIPT) $(MINT) $(TEST) $(MINT_TEST)
-	shfmt -d $(SCRIPT) $(MINT) $(TEST) $(MINT_TEST)
-	@if command -v pwsh >/dev/null 2>&1; then pwsh scripts/lint-ps1.ps1 $(PSCRIPT) $(PTEST); else echo "pwsh not found — skipping PSScriptAnalyzer"; fi
+	shellcheck $(SCRIPT) $(MINT) $(TEST) $(ACCESS_TEST) $(MINT_TEST)
+	shfmt -d $(SCRIPT) $(MINT) $(TEST) $(ACCESS_TEST) $(MINT_TEST)
+	@if command -v pwsh >/dev/null 2>&1; then pwsh scripts/lint-ps1.ps1 $(PSCRIPT) $(PTEST) $(MINT_PSCRIPT) $(ACCESS_PTEST); else echo "pwsh not found — skipping PSScriptAnalyzer"; fi
 
 lint-bash:
-	shellcheck $(SCRIPT) $(MINT) $(TEST) $(MINT_TEST)
-	shfmt -d $(SCRIPT) $(MINT) $(TEST) $(MINT_TEST)
+	shellcheck $(SCRIPT) $(MINT) $(TEST) $(ACCESS_TEST) $(MINT_TEST)
+	shfmt -d $(SCRIPT) $(MINT) $(TEST) $(ACCESS_TEST) $(MINT_TEST)
 
 install:
 	@command -v shellcheck >/dev/null 2>&1 && echo "shellcheck: ok ($$(shellcheck --version | head -1))" || \
@@ -58,18 +63,25 @@ install:
 	   else echo "no brew/apt found — install python3 + pip then: pip install cryptography" && exit 1; fi && \
 	   echo "python3+cryptography: installed")
 
-# Copy the two source-of-truth scripts into the skill bundle.
+# Copy source-of-truth scripts into their respective skill bundles.
 # Run this whenever you change a script at the repo root. `make ci` will not
 # do it for you — it runs `sync-check` first and fails if the bundle drifted,
 # forcing you to run `sync-skill-scripts` consciously (so the bundle change
 # ends up in the same commit as the source change, by intention).
 sync-skill-scripts:
 	@mkdir -p $(SKILL_SCRIPTS_DIR)
+	@mkdir -p $(GITHUB_ACCESS_SKILL_SCRIPTS_DIR)
 	# Use cmp to skip the cp when content is already identical, so re-running
 	# the target is a no-op at the git level (no spurious mtime churn).
 	@for pair in "$(SCRIPT) $(SKILL_SCRIPTS_DIR)/agent-git-setup.sh" \
 	             "$(PSCRIPT) $(SKILL_SCRIPTS_DIR)/agent-git-setup.ps1" \
 	             "$(MINT) $(SKILL_SCRIPTS_DIR)/mint-token.sh"; do \
+	  set -- $$pair; \
+	  if cmp -s "$$1" "$$2"; then echo "ok   - $$2 already in sync"; \
+	  else cp "$$1" "$$2" && echo "synced $$1 -> $$2"; fi; \
+	done
+	@for pair in "$(MINT) $(GITHUB_ACCESS_SKILL_SCRIPTS_DIR)/mint-token.sh" \
+	             "$(MINT_PSCRIPT) $(GITHUB_ACCESS_SKILL_SCRIPTS_DIR)/mint-token.ps1"; do \
 	  set -- $$pair; \
 	  if cmp -s "$$1" "$$2"; then echo "ok   - $$2 already in sync"; \
 	  else cp "$$1" "$$2" && echo "synced $$1 -> $$2"; fi; \
@@ -96,6 +108,15 @@ sync-check:
 	  else \
 	    echo "ok   - $$dst in sync"; \
 	  fi; \
+	done; \
+	for pair in "$(MINT) $(GITHUB_ACCESS_SKILL_SCRIPTS_DIR)/mint-token.sh" \
+	            "$(MINT_PSCRIPT) $(GITHUB_ACCESS_SKILL_SCRIPTS_DIR)/mint-token.ps1"; do \
+	  src="$${pair%% *}"; dst="$${pair##* }"; \
+	  if [ ! -f "$$dst" ]; then \
+	    echo "FAIL: $$dst is missing. Run: make sync-skill-scripts" >&2; status=1; \
+	  elif ! diff -q "$$src" "$$dst" >/dev/null 2>&1; then \
+	    echo "FAIL: $$dst is out of sync with $$src" >&2; diff "$$src" "$$dst" >&2 || true; status=1; \
+	  else echo "ok   - $$dst in sync"; fi; \
 	done; \
 	exit $$status
 
