@@ -48,7 +48,10 @@ done
 
 case "$COMMAND" in
 override | restore) ;;
-*) usage >&2; fail "choose override or restore" ;;
+*)
+	usage >&2
+	fail "choose override or restore"
+	;;
 esac
 [ "$CONFIRMED" -eq 1 ] || fail "explicit user approval is required (--confirm)"
 
@@ -122,7 +125,10 @@ write_backup() {
 	local name_present="$1" name="$2" email_present="$3" email="$4"
 	TEMP_CONFIG="$BACKUP_CONFIG.tmp.$$"
 	[ ! -e "$TEMP_CONFIG" ] || fail "temporary backup already exists: $TEMP_CONFIG"
-	(umask 077; : >"$TEMP_CONFIG") || fail "cannot create backup file"
+	(
+		umask 077
+		: >"$TEMP_CONFIG"
+	) || fail "cannot create backup file"
 	git config --file "$TEMP_CONFIG" main-identity.version 1
 	git config --file "$TEMP_CONFIG" main-identity.bot-name "$BOT_NAME"
 	git config --file "$TEMP_CONFIG" main-identity.bot-email "$BOT_EMAIL"

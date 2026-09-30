@@ -18,8 +18,14 @@ git config --global user.email global@example.invalid
 
 PASS=0
 FAIL=0
-ok() { PASS=$((PASS + 1)); printf '  ok   - %s\n' "$1"; }
-bad() { FAIL=$((FAIL + 1)); printf '  FAIL - %s\n' "$1"; }
+ok() {
+	PASS=$((PASS + 1))
+	printf '  ok   - %s\n' "$1"
+}
+bad() {
+	FAIL=$((FAIL + 1))
+	printf '  FAIL - %s\n' "$1"
+}
 assert_eq() {
 	if [ "$1" = "$2" ]; then ok "$3"; else bad "$3 (got '$1' expected '$2')"; fi
 }
