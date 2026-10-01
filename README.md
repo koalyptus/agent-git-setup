@@ -7,7 +7,7 @@ This repository provides a way to clearly identify agentic work in Git and GitHu
 | Skill | When to use it | What it does |
 |---|---|---|
 | `agent-git-setup` | When a repo does not yet have bot identity setup for Git and GitHub. | Sets bot commit identity once for every current and future linked agent worktree, leaving the main tree's existing identity unchanged. Its GitHub mode can also mint a short-lived token and preflight API access. |
-| `agent-github-access` | Before any agentic `gh` / GitHub API work when a GitHub app bot identity is alredy in place following a previous `agent-git-setup`. | Mints a short-lived (about one hour) App installation token and verifies access to the current repository. |
+| `agent-github-access` | Before any agentic `gh` / GitHub API work when a GitHub app bot identity is already in place following a previous `agent-git-setup`. | Mints a short-lived (about one hour) App installation token and verifies access to the current repository. |
 | `agent-git-override-main-identity` | When the user explicitly wants bot-attributed commits from the main worktree. | Temporarily replaces this clone's main-worktree `user.name` and `user.email` with the persisted bot identity. The change remains active until restored. |
 | `agent-git-restore-main-identity` | After the main-worktree bot identity is no longer wanted. | Restores the saved repo-local identity, refusing to overwrite identity changes made since activation. |
 
@@ -51,8 +51,8 @@ https://raw.githubusercontent.com/koalyptus/agent-git-setup/main/skills/agent-gi
 
 ### 2. Prepare relevant Git/GitHub information
 
-There are two flows `Git-only` and `GitHub App`.
-`Git-only` assigns provided agent identity to git commits
+There are two flows: `Git-only` and `GitHub App`.
+`Git-only` assigns the provided agent identity to Git commits only.
 
 #### Git-only
 
