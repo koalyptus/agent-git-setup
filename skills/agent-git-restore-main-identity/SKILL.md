@@ -9,7 +9,7 @@ platforms: [linux, macos, windows]
 
 # Restore Main-Worktree Identity
 
-Restore the repo-local identity saved by `agent-git-override-main-identity`. This affects only the current clone; global Git config is never changed.
+Restore the repo-local identity saved by `agent-git-override-main-identity` for this GitHub repository. This affects only the current clone; global Git config is never changed.
 
 ## Workflow
 

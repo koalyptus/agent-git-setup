@@ -20,7 +20,7 @@ Windows-specific scripts and hermetic tests, plus documentation and CI updates:
 | `scripts/agent-git-restore-main-identity.ps1` | Restores the saved repo-local identity for the main worktree. |
 | `scripts/lib/main-identity-core.ps1` | Shared implementation used by the two action-specific entrypoints above. |
 | `tests/agent-git-setup-test.ps1` | Hermetic PowerShell suite using real temporary Git repos/worktrees, synthetic identities, a global fake `gh` function, a throwing `Invoke-RestMethod` stub, isolated Git/GH config, and cleanup. |
-| `tests/git-agent-override-main-identity-test.ps1` | Hermetic PowerShell coverage for explicit main-worktree bot identity opt-in, restore, conflicts, and linked-worktree isolation. |
+| `tests/git-agent-override-main-identity-test.ps1` | Hermetic PowerShell coverage for main-worktree bot identity opt-in and linked-worktree/setup rejection. |
 | `tests/git-agent-restore-main-identity-test.ps1` | Hermetic PowerShell coverage for restoration, conflict refusal, and inherited global identity. |
 | `scripts/mint-token.ps1` | Native PowerShell GitHub App token minter. Uses PowerShell/.NET RSA and web requests; no Bash or Python dependency. |
 | `tests/agent-github-access-test.ps1` | Hermetic Windows access workflow test using a synthetic RSA key, mocked REST calls, fake `gh`, isolated config, and cleanup. |

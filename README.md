@@ -7,7 +7,7 @@ This repository provides a way to clearly identify agentic work in Git and GitHu
 | Skill | When to use it | What it does |
 |---|---|---|
 | `agent-git-setup` | When a repo does not yet have bot identity setup for Git and GitHub. | Sets bot commit identity once for every current and future linked agent worktree, leaving the main tree's existing identity unchanged. Its GitHub mode can also mint a short-lived token and preflight API access. |
-| `agent-github-access` | Before any agentic `gh` / GitHub API work when a GitHub app bot identity is already in place following a previous `agent-git-setup`. | Mints a short-lived (about one hour) App installation token and verifies access to the current repository. |
+| `agent-github-access` | Before authorizing GitHub CLI/API work when you do not need to configure bot commit identity. | Mints a short-lived (about one hour) App installation token and verifies access to the current repository. |
 | `agent-git-override-main-identity` | When the user explicitly wants bot-attributed commits from the main worktree. | Temporarily replaces this clone's main-worktree `user.name` and `user.email` with the persisted bot identity. The change remains active until restored. |
 | `agent-git-restore-main-identity` | After the main-worktree bot identity is no longer wanted. | Restores the saved repo-local identity, refusing to overwrite identity changes made since activation. |
 
@@ -15,7 +15,7 @@ The two main-identity skills are optional and do not change `agent-git-setup` be
 
 If you decide to have both bot-authored commits and bot-authenticated API calls, use `agent-git-setup`'s `GitHub` mode; its workflow covers both. Use `agent-github-access` by itself for subsequent `gh` commands or GitHub API-only access.
 
-Note: neither skill configures `git push` authentication, which continues to use Git's configured credential.
+Note: none of these skills configures `git push` authentication, which continues to use Git's configured credential.
 
 `agent-github-access` is a just-in-time step, not a permanent authorization. Run it and confirm repository access **before** assigning GitHub CLI/API work to the agent. If no explicit or default credentials select an App and several per-App files exist, the skill asks which public App ID to use; it never guesses. Mint a fresh token for each later session, or when the current token expires.
 
@@ -136,7 +136,7 @@ See [`skills/agent-git-setup/SKILL.md`](skills/agent-git-setup/SKILL.md) for com
 ┌──────────────────────────────────────┐
 │              Prompt                  │
 │   ────────────────────────────────   │
-│   "Use agent-git-setup skill on      │
+│   "Use agent-git-setup skill."       │
 └──────────────┬───────────────────────┘
                │
                ▼

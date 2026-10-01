@@ -51,6 +51,14 @@ if "$SETUP" "$REPO" >/dev/null 2>&1; then
 else
 	bad "existing setup should succeed"
 fi
+git -C "$REPO" config --local --add user.name ""
+if "$OVERRIDE" --confirm "$REPO" >/dev/null 2>&1; then
+	bad "override must reject duplicate local identity entries"
+else
+	ok "override rejects duplicate local identity entries"
+fi
+git -C "$REPO" config --local --unset-all user.name
+git -C "$REPO" config --local user.name repo-human
 WT="$SANDBOX/linked-worktree"
 git -C "$REPO" worktree add -q -b agent-linked "$WT"
 assert_eq "$(git -C "$WT" config user.name)" "$AGENT_GIT_NAME" "linked worktree inherits bot identity before override"

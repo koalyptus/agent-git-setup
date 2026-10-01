@@ -79,13 +79,29 @@ trap cleanup EXIT
 # Read one direct local config value. Refuse multiple or multiline entries so
 # restoration never has to guess how an unusual identity was represented.
 read_local_value() {
-	local key="$1" output rc
-	if output="$(git config --file "$LOCAL_CONFIG" --get-all "$key" 2>/dev/null)"; then
-		[[ "$output" != *$'\n'* ]] || fail "multiple or multiline $key entries found; refusing to change identity"
-		READ_PRESENT=1
-		READ_VALUE="$output"
+	local key="$1" rc temp_file value read_error
+	temp_file="$(mktemp)" || fail "could not create temporary config-value file"
+	if git config --file "$LOCAL_CONFIG" --null --get-all "$key" >"$temp_file" 2>/dev/null; then
+		READ_PRESENT=0
+		READ_VALUE=""
+		read_error=""
+		while IFS= read -r -d '' value; do
+			if [[ "$value" == *$'\n'* ]]; then
+				read_error="multiple or multiline $key entries found; refusing to change identity"
+				break
+			fi
+			if [ "$READ_PRESENT" -ne 0 ]; then
+				read_error="multiple or multiline $key entries found; refusing to change identity"
+				break
+			fi
+			READ_PRESENT=1
+			READ_VALUE="$value"
+		done <"$temp_file"
+		rm -f "$temp_file"
+		[ -z "$read_error" ] || fail "$read_error"
 	else
 		rc=$?
+		rm -f "$temp_file"
 		[ "$rc" -eq 1 ] || fail "could not read $key from repository-local config"
 		READ_PRESENT=0
 		READ_VALUE=""

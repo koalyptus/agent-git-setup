@@ -9,7 +9,7 @@ platforms: [linux, macos, windows]
 
 # Override Main-Worktree Identity
 
-Use this only when the human explicitly wants bot-attributed commits from the current repository's main worktree. The standard `agent-git-setup` workflow remains unchanged and continues to leave the main-worktree identity alone.
+Use this only when the human explicitly wants bot-attributed commits from the current GitHub repository's main worktree. This GitHub-specific workflow uses GitHub noreply identity values; it is not intended for GitLab or other Git hosts. The standard `agent-git-setup` workflow remains unchanged and continues to leave the main-worktree identity alone.
 
 ## Important behavior
 
