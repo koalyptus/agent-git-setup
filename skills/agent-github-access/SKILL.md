@@ -23,7 +23,7 @@ Do not use this skill to configure commit author identity or `git push` authenti
 - The GitHub App already exists, has a generated private key, and is installed for the current repository. The human creates the App, downloads its key, and grants its installation access.
 - The App has only the repository permissions needed for the requested API actions. Installation access controls which repositories the token can reach; this skill does not grant or narrow that access.
 - The current checkout has a GitHub.com `origin` remote.
-- `gh` and PowerShell 7+ on Windows. On Linux and macOS, Bash, Python 3, and Python `cryptography` are required for token minting.
+- `gh` and PowerShell 7+ (`pwsh.exe`) on Windows. Run the native workflow in a PowerShell 7 session and keep token minting and subsequent `gh` commands in that same process. On Linux and macOS, Bash, Python 3, and Python `cryptography` are required for token minting.
 - The private key file is outside the repository and readable by the agent. The user remains responsible for its file permissions.
 
 ## Workflow
@@ -41,7 +41,7 @@ Do not use this skill to configure commit author identity or `git push` authenti
 
    Set `MINT_TOKEN_BASH` to the installed skill's bundled `scripts/mint-token.sh`. If an App was selected from a per-App filename, add `--app-id "$SELECTED_APP_ID"`; if the harness provides an explicit credentials path, add `--credentials "$AGENT_GIT_CREDENTIALS"`. Do not pass a repository to the minter; it creates an installation-scoped token using the selected App configuration. Do not write token output to disk.
 
-   On Windows, use native PowerShell 7+:
+   On Windows, first verify that the active shell is PowerShell 7 or later with `$PSVersionTable.PSVersion.Major`. If it is below 7, start `pwsh.exe` and continue the entire mint-and-verify workflow there; do not invoke the minter from Windows PowerShell 5.1 (`powershell.exe`). Keep token minting and all subsequent `gh` commands in the same PowerShell 7 process so the exported token is available to them:
 
    ```powershell
    & $MINT_TOKEN_POWERSHELL -AppId $SelectedAppId

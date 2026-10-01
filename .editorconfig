@@ -1,0 +1,22 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.md]
+trim_trailing_whitespace = false
+
+[Makefile]
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = false
+
+[*.ps1]
+end_of_line = lf
+insert_final_newline = true
+
+[*.{png,jpg,jpeg,gif,ico,pdf,gz,zip,tar,ttf,woff,woff2}]
+# binary — no normalization
