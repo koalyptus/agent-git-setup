@@ -44,9 +44,7 @@ Use this for bot attribution first. If a bot setup or preflight failure makes bo
    # User must chmod 600 this file + the PEM. Agent never sets permissions.
    ```
 
-   Credentials file holds: public App ID + PEM **path**. Never the PEM bytes or a live token. Setup resolves the bot identity automatically.
-
-   `mint-token.sh` resolves creds: explicit `--credentials`/`AGENT_GIT_CREDENTIALS` → `credentials.d/credentials-<APP_ID>.env` → global `credentials.env`. One bot per repo = first-class.
+   Credentials file holds: public App ID + PEM **path**. Never the PEM bytes or a live token. `mint-token.sh` resolves creds: explicit `--credentials`/`AGENT_GIT_CREDENTIALS` → `credentials.d/credentials-<APP_ID>.env` → global `credentials.env`. One bot per repo = first-class.
 
 2. **Only for GitHub operations: mint + export GH_TOKEN.** Before any `gh`/API call. A single global `credentials.env` can be used without arguments; when using multiple per-App files, pass the matching App ID from the user's prompt or select the file explicitly with `--credentials`.
 
@@ -55,9 +53,7 @@ Use this for bot attribution first. If a bot setup or preflight failure makes bo
    # GH_TOKEN and signed AGENT_GIT_TOKEN_* attestation exported in the agent's shell
    ```
 
-   If `GITHUB_APP_ID`/`GITHUB_APP_PEM` already in env or passed as `--app-id`/`--pem`, those win.
-
-   Minting does not happen for Git-only sessions. `--shell` derives the App slug from the App-JWT-authenticated `GET /app` response, hashes the minted token, and signs the App ID, actor, and token hash with the App private key. It exports that attestation with `GH_TOKEN`; installation tokens do not expose their App slug to an introspection endpoint.
+   If `GITHUB_APP_ID`/`GITHUB_APP_PEM` already in env or passed as `--app-id`/`--pem`, those win. Minting does not happen for Git-only sessions. `--shell` derives the App slug from the App-JWT-authenticated `GET /app` response, hashes the minted token, and signs the App ID, actor, and token hash with the App private key. It exports that attestation with `GH_TOKEN`; installation tokens do not expose their App slug to an introspection endpoint.
 
 3. **Export bot identity vars.**
 
@@ -65,9 +61,7 @@ Use this for bot attribution first. If a bot setup or preflight failure makes bo
    export AGENT_GIT_NAME="myagent[bot]"   # replace with your bot's name (GitHub creates it as <app>[bot])
    ```
 
-   `AGENT_GIT_NAME`: the bot's actual GitHub login, normally `<app-slug>[bot]`.
-
-   `GIT_USER_NAME` is deprecated and ignored. The setup scripts never silently fall back to a human identity; on failure, follow the consent-gated fallback below.
+   `AGENT_GIT_NAME`: the bot's actual GitHub login, normally `<app-slug>[bot]`. `GIT_USER_NAME` is deprecated and ignored. The setup scripts never silently fall back to a human identity; on failure, follow the consent-gated fallback below.
 
 4. **Run setup once per repo.** Writes bot identity via `includeIf` into shared repo config. Every linked worktree (present + future) inherits the same bot identity. The main checkout stays human. The harness still chooses and creates the worktree.
 
@@ -81,10 +75,20 @@ Use this for bot attribution first. If a bot setup or preflight failure makes bo
 
 5. **Run the matching preflight in the actual agent worktree, then work there.** Git-only sessions use `git-only`; sessions that call GitHub as the bot use `github`. Commits there = `<name>[bot]`; the main tree is untouched. A harness lifecycle hook is needed to guarantee preflight on every session.
 
+   ```bash
+   scripts/agent-git-setup.sh --preflight --mode git-only .  # local commits only
+   scripts/agent-git-setup.sh --preflight --mode github .    # GitHub API as bot
+   scripts/agent-git-setup.ps1 --preflight --mode git-only . # PowerShell
+   scripts/agent-git-setup.ps1 --preflight --mode github .
+   ```
+
    - Agent must NOT rewrite `origin` or set `remote.origin.url` (leaks bot push credential into main tree — worktrees share remotes).
    - Bot actor for `gh`/API (PRs, issues, comments) = `GH_TOKEN` in env, NOT rewritten origin.
    - `git push` uses Git's configured credential, normally the existing user credential. This setup does not configure push authentication; a Git credential helper using the App token can make pushes act as the bot.
    - Agent must NOT touch main tree's `user.name`/`user.email` or global git config.
+   - Preflight is point-in-time, not continuous enforcement. Re-run after identity/token changes and after authentication failures. A skill is instructions, not a universal session hook — guaranteed execution requires the harness to call preflight as a lifecycle step.
+   - `git-only` mode requires a linked worktree and verifies effective author/committer name + bot noreply email (including env overrides). Does NOT require `GH_TOKEN`, `gh`, or network.
+   - `github` mode additionally requires `GH_TOKEN`, signed `AGENT_GIT_TOKEN_*` fields, `gh`, App PEM path, network, and a GitHub `origin`. It recomputes the token SHA-256, verifies the App-key signature over App ID/actor/hash, compares actor with `AGENT_GIT_NAME`, then uses `gh repo view --repo` with the worktree's `origin`. A standalone actor string is not trusted.
 
 ## Prerequisites
 
@@ -93,21 +97,6 @@ Use this for bot attribution first. If a bot setup or preflight failure makes bo
 - Setup needs network access to GitHub to resolve the bot identity automatically. Bash setup also needs `curl` + `python3`; GitHub mode additionally needs `python3` + `cryptography` for attestation verification and `mint-token.sh`. PowerShell uses .NET web requests and RSA verification.
 - GitHub App (App ID + PEM) only if using `mint-token.sh` for gh/API as bot. Not needed for Git-only.
 - PowerShell 7+ for `agent-git-setup.ps1` (Windows). Same env vars as bash.
-
-## Before work: mode-specific preflight
-
-```bash
-scripts/agent-git-setup.sh --preflight --mode git-only .  # local commits only
-scripts/agent-git-setup.sh --preflight --mode github .    # GitHub API as bot
-scripts/agent-git-setup.ps1 --preflight --mode git-only . # PowerShell
-scripts/agent-git-setup.ps1 --preflight --mode github .
-```
-
-- Both modes require a linked worktree and verify the effective author/committer name and bot noreply email, including environment overrides.
-- The `git-only` preflight itself does not require `GH_TOKEN`, `gh`, or network access. Initial setup still needs GitHub access to resolve the bot identity.
-- `github` requires `GH_TOKEN`, the signed `AGENT_GIT_TOKEN_*` fields, `gh`, the App PEM path, network access, and a GitHub `origin` for the target worktree. Preflight recomputes the token SHA-256, verifies the App-key signature over App ID/actor/hash, compares actor with `AGENT_GIT_NAME`, then uses `gh repo view --repo` with the target worktree's `origin`. A standalone actor string is not trusted. `gh` consumes `GH_TOKEN` automatically; other API clients must pass it explicitly.
-- Preflight is point-in-time, not continuous enforcement. Re-run after identity/token changes and after authentication failures.
-- A skill is instructions, not a universal session hook. Guaranteed execution before each session requires the harness to call preflight as a lifecycle step.
 
 ## If bot identity setup fails
 
@@ -122,36 +111,14 @@ Before asking for fallback permission, inspect the effective author and committe
 - Do not run the bot-mode preflight and claim it passed after a fallback. Report clearly that the commit will be human-attributed.
 - This approval applies only to Git commit attribution. For GitHub CLI/API operations, use the separate consent flow in `agent-github-access`. It does not authorize changing push credentials; `git push` continues to use Git's configured credential.
 
-## Example
-
-```bash
-git clone --depth 1 https://github.com/koalyptus/agent-git-setup.git /tmp/agent-git-setup 2>/dev/null || true
-source <(/tmp/agent-git-setup/scripts/mint-token.sh --app-id [APP_ID] --pem [/path/to/app-private-key.pem] --shell)
-export AGENT_GIT_NAME="[bot-name]"
-
-/tmp/agent-git-setup/scripts/agent-git-setup.sh .    # Linux/macOS
-/tmp/agent-git-setup/scripts/agent-git-setup.ps1 .   # Windows PowerShell
-# Setup scopes commit identity to linked worktrees; the harness creates/selects the worktree.
-scripts/agent-git-setup.sh --preflight --mode github <worktree-path>
-# agent commits as myagent[bot]; gh/API calls use the verified bot token
-```
-
 ## Pitfalls
 
 - **Bot login must exist on GitHub.** Setup resolves the account for `AGENT_GIT_NAME` and fails closed if it cannot. The skill may proceed with a verified human identity only after explicit human approval.
 - **File permissions = user's responsibility.** User `chmod 600` credentials file + PEM. Agent never sets/relaxes permissions. World-readable = anyone can mint bot tokens as the app.
 - **Re-running is safe (idempotent).** Bot identity rewritten, not recreated. Future worktrees keep inheriting.
 - **No origin is fine for setup and Git-only mode.** GitHub-mode preflight requires the target worktree's `origin` so it can verify access to that repository. Push identity follows Git's configured credential; PR/API actor = bot via `GH_TOKEN`.
-- **No worktreeConfig needed.** `includeIf` works on git 2.43+. Main repo's `.git` excluded by glob → stays human.
 - **Token expiry.** ~1h. If expires mid-session, `gh`/API calls fail. Agent detects failure, re-runs `mint-token.sh` (or configured minter), retries.
 - **Preflight is not a universal hook.** Run it in each actual agent worktree. Harness lifecycle integration is needed to guarantee it runs before every session.
-
-## Push / PR as the bot
-
-- Agent opens PRs as bot via `gh` + `GH_TOKEN`.
-- Script only sets commit AUTHOR identity; never rewrites `origin`.
-- Bot PR actor = `GH_TOKEN`. `git push` uses Git's configured credential; this script does not configure it.
-- Run the matching `--preflight --mode git-only|github` before work.
 
 ## Windows / PowerShell
 
