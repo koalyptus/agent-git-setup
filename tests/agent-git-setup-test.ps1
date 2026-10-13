@@ -339,7 +339,7 @@ Push-Location $CallerRepo
 $Rc = RunPreflight $WtDir $GhBin
 Pop-Location
 if ($Rc -eq 0) { Ok "preflight passes in linked worktree with bot identity + bot GH_TOKEN" } else { Bad "preflight should pass in linked worktree with bot identity + bot GH_TOKEN" }
-if (Select-String -Path $env:AGENT_GIT_SETUP_TEST_GH_LOG -SimpleMatch "repo view --repo target/repo" -Quiet) { Ok "GitHub access check targets explicit worktree origin, not caller repo" } else { Bad "GitHub access check did not target explicit worktree origin" }
+if (Select-String -Path $env:AGENT_GIT_SETUP_TEST_GH_LOG -SimpleMatch "repo view target/repo" -Quiet) { Ok "GitHub access check targets explicit worktree origin, not caller repo" } else { Bad "GitHub access check did not target explicit worktree origin" }
 Remove-Item env:GH_REPO -ErrorAction SilentlyContinue
 $env:AGENT_GIT_TOKEN_ACTOR = "other-app[bot]"
 $Rc = RunPreflight $WtDir $GhBin

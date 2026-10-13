@@ -88,7 +88,7 @@ Use this for bot attribution first. If a bot setup or preflight failure makes bo
    - Agent must NOT touch main tree's `user.name`/`user.email` or global git config.
    - Preflight is point-in-time, not continuous enforcement. Re-run after identity/token changes and after authentication failures. A skill is instructions, not a universal session hook — guaranteed execution requires the harness to call preflight as a lifecycle step.
    - `git-only` mode requires a linked worktree and verifies effective author/committer name + bot noreply email (including env overrides). Does NOT require `GH_TOKEN`, `gh`, or network.
-   - `github` mode additionally requires `GH_TOKEN`, signed `AGENT_GIT_TOKEN_*` fields, `gh`, App PEM path, network, and a GitHub `origin`. It recomputes the token SHA-256, verifies the App-key signature over App ID/actor/hash, compares actor with `AGENT_GIT_NAME`, then uses `gh repo view --repo` with the worktree's `origin`. A standalone actor string is not trusted.
+   - `github` mode additionally requires `GH_TOKEN`, signed `AGENT_GIT_TOKEN_*` fields, `gh`, App PEM path, network, and a GitHub `origin`. It recomputes the token SHA-256, verifies the App-key signature over App ID/actor/hash, compares actor with `AGENT_GIT_NAME`, then uses `gh repo view` with the worktree's `origin`. A standalone actor string is not trusted.
 
 ## Prerequisites
 

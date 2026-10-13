@@ -200,7 +200,7 @@ function Preflight {
                     $ghRepo = Get-GhRepoForPath
                     $accessibleRepo = ""
                     if (-not [string]::IsNullOrEmpty($ghRepo)) {
-                        $accessibleRepo = & gh repo view --repo $ghRepo --json nameWithOwner --jq '.nameWithOwner' 2>$null
+                        $accessibleRepo = & gh repo view $ghRepo --json nameWithOwner --jq '.nameWithOwner' 2>$null
                     }
                     if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrEmpty($accessibleRepo)) {
                         Write-Host "agent-git-setup.ps1: PREFLIGHT FAIL: GitHub token cannot access the current repository." -ForegroundColor Red
