@@ -224,7 +224,7 @@ preflight() {
 			else
 				gh_repo="$(_GH_REPO_FOR_PATH || true)"
 				if [ -n "$gh_repo" ]; then
-					accessible_repo="$(gh repo view --repo "$gh_repo" --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || true)"
+					accessible_repo="$(gh repo view "$gh_repo" --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || true)"
 				fi
 			fi
 			if [ "$ok" -eq 0 ] && [ -z "$accessible_repo" ]; then

@@ -324,7 +324,7 @@ if (cd "$CALLER_REPO" && GH_REPO=caller/repo "$SCRIPT" --preflight --mode github
 else
 	bad "preflight should pass in linked worktree with bot identity + bot GH_TOKEN"
 fi
-if grep -Fq -- "repo view --repo target/repo" "$AGENT_GIT_SETUP_TEST_GH_LOG"; then
+if grep -Fq -- "repo view target/repo" "$AGENT_GIT_SETUP_TEST_GH_LOG"; then
 	ok "GitHub access check targets explicit worktree origin, not caller repo"
 else
 	bad "GitHub access check did not target explicit worktree origin"
