@@ -254,6 +254,25 @@ else
 fi
 unset AGENT_GIT_SIGNING_KEY
 
+# 10c. Opt-in signing refuses a key file that exists but is not readable
+#      (permission denied). Skipped when running as root — root bypasses
+#      permission bits, so the readability check cannot fail.
+echo "10c. Opt-in signing refuses permission-denied key file"
+REPO10C="$(make_repo with-origin)"
+DENIED_KEY="$SANDBOX/denied-signing-key"
+ssh-keygen -t ed25519 -N "" -f "$DENIED_KEY" -q -C "hermetic-test" >/dev/null 2>&1
+chmod 000 "$DENIED_KEY"
+if [ "$(id -u)" = "0" ]; then
+	ok "skipped (running as root; permission bits not enforced)"
+else
+	export AGENT_GIT_SIGNING_KEY="$DENIED_KEY"
+	"$SCRIPT" "$REPO10C" >/dev/null 2>&1
+	RC10C=$?
+	assert_eq "$RC10C" "2" "opt-in: exits 2 on permission-denied key"
+	chmod 600 "$DENIED_KEY"
+fi
+unset AGENT_GIT_SIGNING_KEY
+
 echo "11. No hooks / no core.hooksPath written (harness owns hooks)"
 REPO11="$(make_repo with-origin)"
 export AGENT_GIT_NAME="fixture-bot[bot]" AGENT_GIT_BOT_ID=123456789 GH_TOKEN=dummy

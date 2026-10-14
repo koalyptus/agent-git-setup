@@ -381,7 +381,19 @@ if ([string]::IsNullOrEmpty($COMMIT_EMAIL)) {
 # bot noreply author email.
 $signingEnabled = $false
 if (-not [string]::IsNullOrEmpty($env:AGENT_GIT_SIGNING_KEY)) {
-    if (-not (Test-Path -PathType Leaf $env:AGENT_GIT_SIGNING_KEY)) {
+    # Match the bash check exactly: must be a regular file AND readable
+    # (Test-Path alone only proves the path exists).
+    $signingKeyReadable = $false
+    if (Test-Path -PathType Leaf $env:AGENT_GIT_SIGNING_KEY) {
+        try {
+            $signingKeyStream = [System.IO.File]::OpenRead($env:AGENT_GIT_SIGNING_KEY)
+            $signingKeyStream.Dispose()
+            $signingKeyReadable = $true
+        } catch {
+            $signingKeyReadable = $false
+        }
+    }
+    if (-not $signingKeyReadable) {
         Write-Host "agent-git-setup.ps1: ERROR: AGENT_GIT_SIGNING_KEY=$env:AGENT_GIT_SIGNING_KEY is not a readable file." -ForegroundColor Red
         Write-Host "agent-git-setup.ps1: point it at the private signing key the agent may use, or unset it to disable signing." -ForegroundColor Red
         exit 2

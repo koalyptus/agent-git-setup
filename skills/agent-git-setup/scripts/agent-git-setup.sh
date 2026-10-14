@@ -397,9 +397,24 @@ BOT_CONFIG="$GIT_DIR/agent-bot-identity.config"
 git config -f "$BOT_CONFIG" user.name "$AGENT_GIT_NAME"
 git config -f "$BOT_CONFIG" user.email "$COMMIT_EMAIL"
 if [ "$SIGNING_ENABLED" = "1" ]; then
-	git config -f "$BOT_CONFIG" gpg.format ssh
-	git config -f "$BOT_CONFIG" user.signingkey "$AGENT_GIT_SIGNING_KEY"
-	git config -f "$BOT_CONFIG" commit.gpgsign true
+	# Explicit failure handling for a clear message and a consistent exit code
+	# (set -e would abort on failure anyway, but with git's raw exit code and
+	# no reason printed — this matches the PowerShell script's behavior).
+	git config -f "$BOT_CONFIG" gpg.format ssh ||
+		{
+			echo "agent-git-setup.sh: ERROR: failed to write gpg.format to $BOT_CONFIG" >&2
+			exit 2
+		}
+	git config -f "$BOT_CONFIG" user.signingkey "$AGENT_GIT_SIGNING_KEY" ||
+		{
+			echo "agent-git-setup.sh: ERROR: failed to write user.signingkey to $BOT_CONFIG" >&2
+			exit 2
+		}
+	git config -f "$BOT_CONFIG" commit.gpgsign true ||
+		{
+			echo "agent-git-setup.sh: ERROR: failed to write commit.gpgsign to $BOT_CONFIG" >&2
+			exit 2
+		}
 	echo "agent-git-setup.sh: signing enabled — commits will be signed with $AGENT_GIT_SIGNING_KEY"
 	echo "agent-git-setup.sh: the badge attests to the account owning the key (usually the human's), not the bot"
 fi

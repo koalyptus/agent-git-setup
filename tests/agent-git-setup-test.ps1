@@ -275,6 +275,15 @@ AssertEq $Rc 2 "opt-in: exits 2 on unreadable signing key"
 if (Test-Path (Join-Path $Repo10B ".git" "agent-bot-identity.config")) { Bad "opt-in: bot config written despite unreadable key (should fail before write)" } else { Ok "opt-in: no bot config written when key unreadable" }
 Remove-Item env:AGENT_GIT_SIGNING_KEY -ErrorAction SilentlyContinue
 
+# 10c. Opt-in signing refuses a directory path (Test-Path -PathType Leaf must
+#      reject non-files, matching bash's -f check).
+Write-Host "10c. Opt-in signing refuses a directory as key path"
+$Repo10C = MakeRepo "with-origin"
+$env:AGENT_GIT_SIGNING_KEY = $Sandbox
+$Rc = RunSetup $Repo10C
+AssertEq $Rc 2 "opt-in: exits 2 on directory key path"
+Remove-Item env:AGENT_GIT_SIGNING_KEY -ErrorAction SilentlyContinue
+
 Write-Host "11. No hooks / no core.hooksPath written (harness owns hooks)"
 $Repo11 = MakeRepo "with-origin"
 $env:AGENT_GIT_NAME = "fixture-bot[bot]"
