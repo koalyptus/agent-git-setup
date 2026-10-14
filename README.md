@@ -76,15 +76,6 @@ The commit *author* stays the bot; the signature attests to the account that
 registered the key (yours). A missing or unreadable key path fails setup with
 exit 2 — no config is written.
 
-This mirrors Anthropic's documented pattern for Claude Code
-(`ssh_signing_key` in [claude-code-action security docs](https://github.com/anthropics/claude-code-action/blob/main/docs/security.md):
-"Commits will show as verified and attributed to the GitHub account that owns
-the signing key"), and the alternative — GitHub signing server-side for App
-bots via the API ("Signature verification for bots" in
-[About commit signature verification](https://docs.github.com/en/authentication/managing-commit-signature-verification/about-commit-signature-verification),
-how `dependabot[bot]` and `docs-bot` commits get their badge) — is the
-GitHub App flow already supported here.
-
 #### GitHub App
 
 You need a GitHub App (with its PEM) and its App ID. If you already have one,
@@ -255,7 +246,7 @@ This flow covers `gh` and GitHub API calls only. It does not set commit identity
 ## Behavior
 
 - Setup writes the bot's `user.name` and GitHub noreply email to shared repo config for linked worktrees. The main checkout keeps its existing Git identity; the setup leaves its local identity and global Git config untouched.
-- Commits are unsigned by default. Setting `AGENT_GIT_SIGNING_KEY` to a readable private key enables SSH signing (`gpg.format=ssh`, `commit.gpgsign=true`) for worktrees via the same scoping; the Verified badge then attests to the GitHub account that registered the matching public key as a Signing key (normally the human's), not to the bot. An unreadable key path fails setup with exit 2 before any config is written. This matches Anthropic's documented `ssh_signing_key` option for Claude Code; the GitHub App flow's server-side API signing (how `dependabot[bot]` gets its badge) is the alternative for bot-attributed verified commits.
+- Commits are unsigned by default. Setting `AGENT_GIT_SIGNING_KEY` to a readable private key enables SSH signing (`gpg.format=ssh`, `commit.gpgsign=true`) for worktrees via the same scoping; the Verified badge then attests to the GitHub account that registered the matching public key as a Signing key (normally the human's), not to the bot. An unreadable key path fails setup with exit 2 before any config is written.
 - GitHub-mode preflight verifies a signed App installation token and access to the target worktree's `origin`. `gh` uses `GH_TOKEN`; other API clients must pass it explicitly. Bot-user tokens are not supported.
 - `agent-github-access` mints a token using the App installation already selected by the harness and verifies access to the current repository. The token's repository scope is controlled by the App installation's GitHub settings, not narrowed by this check.
 - If bot setup or access fails, the corresponding skill must surface the error and obtain explicit, session-scoped human approval before using an existing human identity. No approval means stop; no identity or credential config is changed for fallback.
