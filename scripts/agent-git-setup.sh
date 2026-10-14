@@ -28,12 +28,18 @@
 #
 # DESIGN (matches industry standard: Codex, Claude Code, Cursor, Copilot):
 #   Local commits use the BOT noreply email so the agent name appears in the
-#   GitHub commit list. No SSH signing by default — the "verified" badge is
-#   not worth the key management complexity for ephemeral agent environments.
+#   GitHub commit list. No signing by default — a GitHub App bot cannot register
+#   a signing key (it has no user account), so local signing can only ever
+#   attest to the account that owns the key, not to the bot. Key management in
+#   ephemeral agent environments is the same complexity every industry tool
+#   skips.
 #
 #   Git-only flow: bot noreply, no signing → agent name shows, no badge.
 #   GitHub App flow: bot noreply for local commits + `gh` with `GH_TOKEN` for
 #   API commits (GitHub signs server-side → agent name + Verified badge).
+#   Opt-in flow: AGENT_GIT_SIGNING_KEY signs commits locally with a key the
+#   human registered on their GitHub account → Verified badge, but the
+#   signature attests to the human, not the bot. Commit AUTHOR stays the bot.
 #
 # GitHub operations as the bot require `GH_TOKEN`; local commits do not.
 #
@@ -55,9 +61,14 @@
 #                         Bash GitHub mode requires python3 + cryptography to verify this signature.
 #
 # Optional environment variables:
-#   AGENT_GIT_SIGNINGKEY  DEPRECATED — SSH signing does not verify for bot
-#                         noreply emails. Kept for backward compatibility
-#                         but has no effect on bot identity commits.
+#   AGENT_GIT_SIGNING_KEY  Path to a private signing key readable by the agent.
+#                         When set, the bot config enables SSH commit signing
+#                         (gpg.format=ssh, user.signingkey=<path>,
+#                         commit.gpgsign=true) for all worktrees. The matching
+#                         PUBLIC key must be uploaded to a GitHub account as a
+#                         Signing key (one-time, by the human) for the badge.
+#                         The signature attests to that account (usually the
+#                         human's), not to the bot. Unset = no signing.
 #   AGENT_GIT_BOT_ID      Numeric bot id for the noreply email. If unset, the
 #                         bot id is resolved via the public GitHub API.
 #
@@ -361,9 +372,37 @@ COMMIT_EMAIL="$_COMMIT_EMAIL"
 # (quoted args) so AGENT_GIT_NAME / COMMIT_EMAIL are stored verbatim — no shell
 # expansion, command substitution, or config-section breakout is possible even if
 # those values contain $(...), backticks, or newlines.
+# Optional opt-in signing: when AGENT_GIT_SIGNING_KEY is set, the agent's
+# commits are signed locally with that key. Validate the key file BEFORE any
+# config write so a bad path fails closed without touching the repo at all —
+# failing later at `git commit` time would surface as a confusing signing
+# failure mid-session.
+#
+# The signature attests to the GitHub account that registered the key (the
+# human's), not to the bot: a GitHub App bot has no user account and cannot
+# register signing keys. The commit AUTHOR remains the bot. GitHub shows the
+# Verified badge when the signing key matches an account, regardless of the
+# bot noreply author email.
+SIGNING_ENABLED=0
+if [ -n "${AGENT_GIT_SIGNING_KEY:-}" ]; then
+	if [ ! -f "$AGENT_GIT_SIGNING_KEY" ] || [ ! -r "$AGENT_GIT_SIGNING_KEY" ]; then
+		echo "agent-git-setup.sh: ERROR: AGENT_GIT_SIGNING_KEY=$AGENT_GIT_SIGNING_KEY is not a readable file." >&2
+		echo "agent-git-setup.sh: point it at the private signing key the agent may use, or unset it to disable signing." >&2
+		exit 2
+	fi
+	SIGNING_ENABLED=1
+fi
+
 BOT_CONFIG="$GIT_DIR/agent-bot-identity.config"
 git config -f "$BOT_CONFIG" user.name "$AGENT_GIT_NAME"
 git config -f "$BOT_CONFIG" user.email "$COMMIT_EMAIL"
+if [ "$SIGNING_ENABLED" = "1" ]; then
+	git config -f "$BOT_CONFIG" gpg.format ssh
+	git config -f "$BOT_CONFIG" user.signingkey "$AGENT_GIT_SIGNING_KEY"
+	git config -f "$BOT_CONFIG" commit.gpgsign true
+	echo "agent-git-setup.sh: signing enabled — commits will be signed with $AGENT_GIT_SIGNING_KEY"
+	echo "agent-git-setup.sh: the badge attests to the account owning the key (usually the human's), not the bot"
+fi
 
 # Conditional include: apply the bot config to every linked worktree
 # (.git/worktrees/<name>) but NOT to the main repo's own .git directory.

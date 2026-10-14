@@ -17,7 +17,7 @@ $ErrorActionPreference = "Continue"
 # leak into the worktree-commit assertions below).
 Get-ChildItem Env: | Where-Object { $_.Name -like "GIT_*" } | ForEach-Object { Remove-Item "Env:$($_.Name)" -ErrorAction SilentlyContinue }
 Remove-Item env:GH_TOKEN, env:GH_ENTERPRISE_TOKEN, env:GITHUB_TOKEN, env:GITHUB_APP_ID, env:GITHUB_APP_PEM, env:GITHUB_APP_INSTALL_ID, env:GH_HOST, env:GH_REPO -ErrorAction SilentlyContinue
-Remove-Item env:AGENT_GIT_NAME, env:AGENT_GIT_BOT_ID, env:AGENT_GIT_TOKEN_ACTOR, env:AGENT_GIT_TOKEN_SHA256, env:AGENT_GIT_TOKEN_ATTESTATION, env:AGENT_GIT_TOKEN_APP_ID, env:AGENT_GIT_TOKEN_APP_PEM_PATH, env:AGENT_GIT_TOKEN_APP_PEM_PATH_WINDOWS, env:GIT_USER_NAME, env:GIT_USER_ID, env:AGENT_GIT_ALLOW_HUMAN_ACTOR -ErrorAction SilentlyContinue
+Remove-Item env:AGENT_GIT_NAME, env:AGENT_GIT_BOT_ID, env:AGENT_GIT_TOKEN_ACTOR, env:AGENT_GIT_TOKEN_SHA256, env:AGENT_GIT_TOKEN_ATTESTATION, env:AGENT_GIT_TOKEN_APP_ID, env:AGENT_GIT_TOKEN_APP_PEM_PATH, env:AGENT_GIT_TOKEN_APP_PEM_PATH_WINDOWS, env:GIT_USER_NAME, env:GIT_USER_ID, env:AGENT_GIT_ALLOW_HUMAN_ACTOR, env:AGENT_GIT_SIGNING_KEY -ErrorAction SilentlyContinue
 
 $ScriptDir = Split-Path -Parent (Resolve-Path $MyInvocation.MyCommand.Path)
 $RepoRoot = Split-Path -Parent $ScriptDir
@@ -230,9 +230,50 @@ $Repo10 = MakeRepo "with-origin"
 $env:AGENT_GIT_NAME = "fixture-bot[bot]"
 $env:AGENT_GIT_BOT_ID = "123456789"
 $env:GH_TOKEN = "dummy"
+Remove-Item env:AGENT_GIT_SIGNING_KEY -ErrorAction SilentlyContinue
 $Rc = RunSetup $Repo10
 if ($Rc -ne 0) { Bad "no-signing setup failed (exit $Rc)" }
 if (-not (& git -C $Repo10 config commit.gpgsign 2>$null) -and -not (& git -C $Repo10 config user.signingkey 2>$null)) { Ok "no commit.gpgsign / user.signingkey set" } else { Bad "signing config unexpectedly set" }
+
+# 10a. Opt-in signing: AGENT_GIT_SIGNING_KEY enables SSH signing, scoped to
+#      worktrees via the same includeIf (main tree must NOT get signing keys).
+Write-Host "10a. Opt-in signing via AGENT_GIT_SIGNING_KEY"
+$SigningKey = Join-Path $Sandbox "agent-signing-key"
+& ssh-keygen -t ed25519 -N "" -f $SigningKey -q -C "hermetic-test" 2>$null | Out-Null
+if ($LASTEXITCODE -ne 0) { Bad "ssh-keygen failed (cannot run signing test)" }
+else {
+    # allowed-signers file so `git verify-commit` can resolve the signer.
+    $AllowedSigners = Join-Path $Sandbox "allowed_signers"
+    Set-Content -Path $AllowedSigners -Value ("fixture-bot[bot] " + (Get-Content "$SigningKey.pub" -Raw).Trim()) -NoNewline
+    & git config --file $env:GIT_CONFIG_GLOBAL gpg.ssh.allowedSignersFile $AllowedSigners
+    $Repo10A = MakeRepo "with-origin"
+    $Wt10A = MakeWorktree $Repo10A
+    $env:AGENT_GIT_SIGNING_KEY = $SigningKey
+    $Rc = RunSetup $Wt10A
+    if ($Rc -ne 0) { Bad "opt-in signing setup failed (exit $Rc)" }
+    else {
+        AssertEq (& git -C $Wt10A config commit.gpgsign) "true" "opt-in: worktree commit.gpgsign=true"
+        AssertEq (& git -C $Wt10A config gpg.format) "ssh" "opt-in: worktree gpg.format=ssh"
+        AssertEq (& git -C $Wt10A config user.signingkey) $SigningKey "opt-in: worktree user.signingkey=key path"
+        if (& git -C $Repo10A config commit.gpgsign 2>$null) { Bad "opt-in: signing config leaked into main tree" } else { Ok "opt-in: main tree has no signing config (no leak)" }
+        Set-Content -Path (Join-Path $Wt10A "signed.txt") -Value "hello" -NoNewline
+        & git -C $Wt10A add signed.txt
+        & git -C $Wt10A commit -q -m "signed commit as bot"
+        AssertEq (& git -C $Wt10A log -1 --format='%G?') "G" "opt-in: worktree commit signature verifies (G)"
+        AssertEq (& git -C $Wt10A log -1 --format='%an %ae') "fixture-bot[bot] 123456789+fixture-bot[bot]@users.noreply.github.com" "opt-in: signed commit author still the bot"
+    }
+    Remove-Item env:AGENT_GIT_SIGNING_KEY -ErrorAction SilentlyContinue
+}
+
+# 10b. Opt-in signing with a missing/unreadable key path fails loudly (exit 2),
+#      rather than silently continuing or failing later at git commit time.
+Write-Host "10b. Opt-in signing refuses unreadable key path"
+$Repo10B = MakeRepo "with-origin"
+$env:AGENT_GIT_SIGNING_KEY = Join-Path $Sandbox "does-not-exist-key"
+$Rc = RunSetup $Repo10B
+AssertEq $Rc 2 "opt-in: exits 2 on unreadable signing key"
+if (Test-Path (Join-Path $Repo10B ".git" "agent-bot-identity.config")) { Bad "opt-in: bot config written despite unreadable key (should fail before write)" } else { Ok "opt-in: no bot config written when key unreadable" }
+Remove-Item env:AGENT_GIT_SIGNING_KEY -ErrorAction SilentlyContinue
 
 Write-Host "11. No hooks / no core.hooksPath written (harness owns hooks)"
 $Repo11 = MakeRepo "with-origin"

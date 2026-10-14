@@ -17,7 +17,7 @@ for name in $(compgen -e); do
 	esac
 done
 unset GH_TOKEN GH_ENTERPRISE_TOKEN GITHUB_TOKEN GITHUB_APP_ID GITHUB_APP_PEM GITHUB_APP_INSTALL_ID GH_HOST GH_REPO
-unset AGENT_GIT_NAME AGENT_GIT_BOT_ID AGENT_GIT_TOKEN_ACTOR AGENT_GIT_TOKEN_SHA256 AGENT_GIT_TOKEN_ATTESTATION AGENT_GIT_TOKEN_APP_ID AGENT_GIT_TOKEN_APP_PEM_PATH AGENT_GIT_TOKEN_APP_PEM_PATH_WINDOWS GIT_USER_NAME GIT_USER_ID AGENT_GIT_ALLOW_HUMAN_ACTOR
+unset AGENT_GIT_NAME AGENT_GIT_BOT_ID AGENT_GIT_TOKEN_ACTOR AGENT_GIT_TOKEN_SHA256 AGENT_GIT_TOKEN_ATTESTATION AGENT_GIT_TOKEN_APP_ID AGENT_GIT_TOKEN_APP_PEM_PATH AGENT_GIT_TOKEN_APP_PEM_PATH_WINDOWS GIT_USER_NAME GIT_USER_ID AGENT_GIT_ALLOW_HUMAN_ACTOR AGENT_GIT_SIGNING_KEY
 
 SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/scripts/agent-git-setup.sh"
 SANDBOX="$(mktemp -d)"
@@ -198,12 +198,61 @@ if "$SCRIPT" "$REPO9b" >/dev/null 2>&1; then bad "setup must not silently substi
 echo "10. No signing by default"
 REPO10="$(make_repo with-origin)"
 export AGENT_GIT_NAME="fixture-bot[bot]" AGENT_GIT_BOT_ID=123456789 GH_TOKEN=dummy
+unset AGENT_GIT_SIGNING_KEY
 "$SCRIPT" "$REPO10" >/dev/null 2>&1
 if [ -z "$(git -C "$REPO10" config commit.gpgsign 2>/dev/null)" ] && [ -z "$(git -C "$REPO10" config user.signingkey 2>/dev/null)" ]; then
 	ok "no commit.gpgsign / user.signingkey set"
 else
 	bad "signing config unexpectedly set"
 fi
+
+# 10a. Opt-in signing: AGENT_GIT_SIGNING_KEY enables SSH signing, scoped to
+#      worktrees via the same includeIf (main tree must NOT get signing keys).
+echo "10a. Opt-in signing via AGENT_GIT_SIGNING_KEY"
+SIGNING_KEY="$SANDBOX/agent-signing-key"
+ssh-keygen -t ed25519 -N "" -f "$SIGNING_KEY" -q -C "hermetic-test" >/dev/null 2>&1
+# allowed-signers file so `git verify-commit` can resolve the signer.
+ALLOWED_SIGNERS="$SANDBOX/allowed_signers"
+echo "fixture-bot[bot] $(cat "$SIGNING_KEY.pub")" >"$ALLOWED_SIGNERS"
+git config --file "$GIT_CONFIG_GLOBAL" gpg.ssh.allowedSignersFile "$ALLOWED_SIGNERS"
+REPO10A="$(make_repo with-origin)"
+make_worktree "$REPO10A"
+WT10A="$WT_DIR"
+export AGENT_GIT_SIGNING_KEY="$SIGNING_KEY"
+if "$SCRIPT" "$WT10A" >/dev/null 2>&1; then
+	assert_eq "$(git -C "$WT10A" config commit.gpgsign)" "true" "opt-in: worktree commit.gpgsign=true"
+	assert_eq "$(git -C "$WT10A" config gpg.format)" "ssh" "opt-in: worktree gpg.format=ssh"
+	assert_eq "$(git -C "$WT10A" config user.signingkey)" "$SIGNING_KEY" "opt-in: worktree user.signingkey=key path"
+	if [ -z "$(git -C "$REPO10A" config commit.gpgsign 2>/dev/null)" ]; then
+		ok "opt-in: main tree has no signing config (no leak)"
+	else
+		bad "opt-in: signing config leaked into main tree"
+	fi
+	echo hello >"$WT10A/signed.txt"
+	git -C "$WT10A" add signed.txt
+	git -C "$WT10A" commit -q -m "signed commit as bot"
+	SIG_STATUS="$(git -C "$WT10A" log -1 --format='%G?')"
+	assert_eq "$SIG_STATUS" "G" "opt-in: worktree commit signature verifies (G)"
+	assert_eq "$(git -C "$WT10A" log -1 --format='%an %ae')" "fixture-bot[bot] 123456789+fixture-bot[bot]@users.noreply.github.com" "opt-in: signed commit author still the bot"
+else
+	bad "opt-in signing test: script failed unexpectedly"
+fi
+unset AGENT_GIT_SIGNING_KEY
+
+# 10b. Opt-in signing with a missing/unreadable key path fails loudly (exit 2),
+#      rather than silently continuing or failing later at git commit time.
+echo "10b. Opt-in signing refuses unreadable key path"
+REPO10B="$(make_repo with-origin)"
+export AGENT_GIT_SIGNING_KEY="$SANDBOX/does-not-exist-key"
+"$SCRIPT" "$REPO10B" >/dev/null 2>&1
+RC10B=$?
+assert_eq "$RC10B" "2" "opt-in: exits 2 on unreadable signing key"
+if [ -f "$REPO10B/.git/agent-bot-identity.config" ]; then
+	bad "opt-in: bot config written despite unreadable key (should fail before write)"
+else
+	ok "opt-in: no bot config written when key unreadable"
+fi
+unset AGENT_GIT_SIGNING_KEY
 
 echo "11. No hooks / no core.hooksPath written (harness owns hooks)"
 REPO11="$(make_repo with-origin)"
