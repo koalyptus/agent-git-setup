@@ -1,6 +1,6 @@
 ---
 name: agent-git-setup
-description: "Set up a bot git identity (<name>[bot]) for an AI agent's worktree so commits are attributed to the bot, leaving the human's working tree untouched. Identity-only: the harness owns the worktree."
+description: "Set up a bot git identity (<name>[bot]) for an AI agent's worktree so commits are attributed to the bot, leaving the account owner's working tree untouched. Identity-only: the harness owns the worktree."
 version: 2.0.0
 author: koalyptus
 license: MIT
@@ -9,15 +9,15 @@ platforms: [linux, macos, windows]
 
 # Agent Git Setup
 
-Give an AI agent its own bot identity so commits are attributed to `<name>[bot]`, not the human's account.
+Give an AI agent its own bot identity so commits are attributed to `<name>[bot]`, not the account owner's account.
 
 ## When to use
 
 - Agent does git work (commits, PRs) and should appear as `<name>[bot]`.
-- Bot identity applies to every linked worktree in the clone; human's main checkout + global git config stay untouched.
+- Bot identity applies to every linked worktree in the clone; account owner's main checkout + global git config stay untouched.
 - Triggers: "commit as a bot", "agent should commit as <bot>", "separate bot identity for the agent".
 
-Use this for bot attribution first. If a bot setup or preflight failure makes bot commits unavailable, follow the explicit human-identity fallback below; never switch identities silently.
+Use this for bot attribution first. If a bot setup or preflight failure makes bot commits unavailable, follow the explicit account-owner identity fallback below; never switch identities silently.
 
 ## Scope (read first)
 
@@ -61,9 +61,9 @@ Use this for bot attribution first. If a bot setup or preflight failure makes bo
    export AGENT_GIT_NAME="myagent[bot]"   # replace with your bot's name (GitHub creates it as <app>[bot])
    ```
 
-   `AGENT_GIT_NAME`: the bot's actual GitHub login, normally `<app-slug>[bot]`. `GIT_USER_NAME` is deprecated and ignored. The setup scripts never silently fall back to a human identity; on failure, follow the consent-gated fallback below.
+   `AGENT_GIT_NAME`: the bot's actual GitHub login, normally `<app-slug>[bot]`. `GIT_USER_NAME` is deprecated and ignored. The setup scripts never silently fall back to an account owner identity; on failure, follow the consent-gated fallback below.
 
-4. **Run setup once per repo.** Writes bot identity via `includeIf` into shared repo config. Every linked worktree (present + future) inherits the same bot identity. The main checkout stays human. The harness still chooses and creates the worktree.
+4. **Run setup once per repo.** Writes bot identity via `includeIf` into shared repo config. Every linked worktree (present + future) inherits the same bot identity. The main checkout stays account owner. The harness still chooses and creates the worktree.
 
    ```bash
    git clone --depth 1 https://github.com/koalyptus/agent-git-setup.git /tmp/agent-git-setup 2>/dev/null || true
@@ -102,18 +102,18 @@ Use this for bot attribution first. If a bot setup or preflight failure makes bo
 
 If setup or bot-mode preflight fails, stop before creating any commit. Report the exact failure and its remedy. Do not present the failure as success or silently continue with whatever identity Git happens to resolve.
 
-Before asking for fallback permission, inspect the effective author and committer identities in the agent worktree with `git var GIT_AUTHOR_IDENT` and `git var GIT_COMMITTER_IDENT`. Show the resolved names and emails, explain that GitHub attribution will be to that human identity rather than the bot, and ask explicitly:
+Before asking for fallback permission, inspect the effective author and committer identities in the agent worktree with `git var GIT_AUTHOR_IDENT` and `git var GIT_COMMITTER_IDENT`. Show the resolved names and emails, explain that GitHub attribution will be to that account owner identity rather than the bot, and ask explicitly:
 
-> Bot identity setup failed because `<reason>`. The current Git author and committer resolve to `<name> <email>`. May I create commits as this human identity in `<repo>` for this session?
+> Bot identity setup failed because `<reason>`. The current Git author and committer resolve to `<name> <email>`. May I create commits as this account owner identity in `<repo>` for this session?
 
-- If the human declines, gives no answer, or either identity is missing, inconsistent, or still resolves to the bot, stop without committing. Explain how to repair bot identity or configure the human identity.
-- Only after explicit approval, proceed for this session using the already-configured human author and committer. Do not write or change `user.name`, `user.email`, global config, shared repo config, or the bot identity include file. Recheck the identities before each commit; stop if they change.
-- Do not run the bot-mode preflight and claim it passed after a fallback. Report clearly that the commit will be human-attributed.
+- If the account owner declines, gives no answer, or either identity is missing, inconsistent, or still resolves to the bot, stop without committing. Explain how to repair bot identity or configure the account owner identity.
+- Only after explicit approval, proceed for this session using the already-configured account owner author and committer. Do not write or change `user.name`, `user.email`, global config, shared repo config, or the bot identity include file. Recheck the identities before each commit; stop if they change.
+- Do not run the bot-mode preflight and claim it passed after a fallback. Report clearly that the commit will be account-owner attributed.
 - This approval applies only to Git commit attribution. For GitHub CLI/API operations, use the separate consent flow in `agent-github-access`. It does not authorize changing push credentials; `git push` continues to use Git's configured credential.
 
 ## Pitfalls
 
-- **Bot login must exist on GitHub.** Setup resolves the account for `AGENT_GIT_NAME` and fails closed if it cannot. The skill may proceed with a verified human identity only after explicit human approval.
+- **Bot login must exist on GitHub.** Setup resolves the account for `AGENT_GIT_NAME` and fails closed if it cannot. The skill may proceed with a verified account owner identity only after explicit account owner approval.
 - **File permissions = user's responsibility.** User `chmod 600` credentials file + PEM. Agent never sets/relaxes permissions. World-readable = anyone can mint bot tokens as the app.
 - **Re-running is safe (idempotent).** Bot identity rewritten, not recreated. Future worktrees keep inheriting.
 - **No origin is fine for setup and Git-only mode.** GitHub-mode preflight requires the target worktree's `origin` so it can verify access to that repository. Push identity follows Git's configured credential; PR/API actor = bot via `GH_TOKEN`.

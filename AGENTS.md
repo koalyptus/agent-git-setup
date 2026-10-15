@@ -5,7 +5,7 @@
 - This file guides changes to this repository. For end-user setup instructions, read `README.md`, `skills/agent-git-setup/SKILL.md`, and `skills/agent-github-access/SKILL.md`.
 - Keep Bash and PowerShell behavior aligned. Update tests and both user-facing guides when the contract changes.
 - `AGENT_GIT_BOT_ID` is an internal override; normal setup resolves bot identity automatically. Do not ask users to supply it in prompts or document it as a prerequisite.
-- Push identity comes from Git's configured credential mechanism. The setup scripts configure commit identity only; do not claim that they force pushes to use either the human or bot credential.
+- Push identity comes from Git's configured credential mechanism. The setup scripts configure commit identity only; do not claim that they force pushes to use either the account owner or bot credential.
 
 ## Source of Truth
 

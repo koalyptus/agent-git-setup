@@ -330,7 +330,7 @@ _RESOLVE_ID() {
 	return 0
 }
 
-# Commit email must resolve to the bot account. Never silently substitute the human identity.
+# Commit email must resolve to the bot account. Never silently substitute the account owner identity.
 # The bot id is numeric and determines GitHub's noreply account association.
 if [ -n "${AGENT_GIT_BOT_ID:-}" ] && [[ ! "$AGENT_GIT_BOT_ID" =~ ^[1-9][0-9]*$ ]]; then
 	echo "agent-git-setup.sh: AGENT_GIT_BOT_ID must be a positive integer without leading zeroes." >&2

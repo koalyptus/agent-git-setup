@@ -32,7 +32,7 @@ Windows-specific scripts and hermetic tests, plus documentation and CI updates:
 
 - **Identity-only, no worktree management.** The PowerShell port does NOT create worktrees, does NOT install hooks, does NOT rewrite remotes, and does NOT impose a path or branch convention. This matches the bash script exactly — worktree lifecycle is the harness's responsibility.
 - **No SSH signing by default.** Same as the bash script: local commits use the bot noreply email only. The "verified" badge is not worth the key-management complexity for ephemeral agent environments.
-- **Bot-only setup scripts.** `AGENT_GIT_NAME` and the numeric `AGENT_GIT_BOT_ID` determine the bot's noreply identity. The scripts fail if the bot ID cannot be resolved. The `agent-git-setup` skill may offer a human-identity fallback only after explaining the resolved identity and receiving explicit approval.
+- **Bot-only setup scripts.** `AGENT_GIT_NAME` and the numeric `AGENT_GIT_BOT_ID` determine the bot's noreply identity. The scripts fail if the bot ID cannot be resolved. The `agent-git-setup` skill may offer a account-owner identity fallback only after explaining the resolved identity and receiving explicit approval.
 - **Mode-specific preflight.** `git-only` needs no token. `github` requires `GH_TOKEN` and a signed attestation containing App ID, actor, token hash, signature, and PEM path. It verifies the signature/token binding, actor match, and `gh repo view` access. Native PowerShell uses Windows paths and does not require WSL. If `mint-token.sh` runs under WSL or Git Bash, it automatically exports an additional Windows-native PEM path via `wslpath` or `cygpath` when available.
 - **`includeIf` conditional-include.** The bot config is written ONCE to the shared `.git/config` and applies to every linked worktree (including those created after setup). The main repo's own `.git` directory is excluded by the glob.
 - **Optional main-worktree bot identity.** After running `agent-git-setup.ps1`, a user may explicitly approve the repo-local main-worktree override. It stores the prior local identity in `.git/agent-main-identity.backup.config`; restore puts it back only if the current values still match the bot identity. Global config is untouched, and linked worktrees keep their bot identity throughout.
@@ -47,8 +47,8 @@ pwsh scripts/agent-git-restore-main-identity.ps1 --confirm .
 
 The `--confirm` flag is intended for use only after the user has explicitly
 approved the operation. While the override is active, commits from the main
-worktree use the bot identity, including commits made by the human. Run restore
-before making human-attributed commits in this checkout. The operation refuses
+worktree use the bot identity, including commits made by the account owner. Run restore
+before making account-owner attributed commits in this checkout. The operation refuses
 to run in a linked worktree or if the persisted setup identity is unavailable.
 
 ## Test parity
@@ -66,7 +66,7 @@ behavioral contract as `tests/agent-git-setup-test.sh`:
 8. Noreply email construction (`GIT_USER_ID` + `GIT_USER_NAME`)
 9. Noreply from bot id via `AGENT_GIT_BOT_ID` (no network needed)
 9a. Invalid and zero bot IDs rejected
-9b. Setup script refuses human-email fallback when bot id cannot be resolved
+9b. Setup script refuses account-owner email fallback when bot id cannot be resolved
 10. No signing by default
 11. No hooks / no `core.hooksPath` written
 12. Ephemeral-location guard: refuses without opt-in
@@ -76,7 +76,7 @@ behavioral contract as `tests/agent-git-setup-test.sh`:
 16. Git-only preflight requires a linked worktree and validates author/committer overrides without a token
 17. GitHub preflight verifies actor, token fingerprint, and repository access
 18. `--preflight` fails in a separate clone (effect-based, not path-based)
-19. GitHub preflight rejects human, mismatched, stale, and unverifiable actor metadata
+19. GitHub preflight rejects account owner, mismatched, stale, and unverifiable actor metadata
 
 The PowerShell suite runs in CI on `windows-latest` and can be run locally with
 `pwsh tests/agent-git-setup-test.ps1`. Its GitHub CLI and network dependencies

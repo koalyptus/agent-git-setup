@@ -189,11 +189,11 @@ if "$SCRIPT" "$REPO9a" >/dev/null 2>&1; then bad "malformed bot ID must fail"; e
 export AGENT_GIT_BOT_ID=0
 if "$SCRIPT" "$REPO9a" >/dev/null 2>&1; then bad "zero bot ID must fail"; else ok "rejects zero bot ID"; fi
 
-echo "9b. Refuses setup when bot id cannot be resolved, even if human fallback is supplied"
+echo "9b. Refuses setup when bot id cannot be resolved, even if account owner fallback is supplied"
 REPO9b="$(make_repo with-origin)"
 export AGENT_GIT_NAME="unresolvable-bot-xyz[bot]" GIT_USER_NAME="fixture-human" GIT_USER_ID=123456789
 unset AGENT_GIT_BOT_ID GH_TOKEN
-if "$SCRIPT" "$REPO9b" >/dev/null 2>&1; then bad "setup must not silently substitute human email"; else ok "refuses human-email fallback"; fi
+if "$SCRIPT" "$REPO9b" >/dev/null 2>&1; then bad "setup must not silently substitute account owner email"; else ok "refuses account-owner-email fallback"; fi
 
 echo "10. No signing by default"
 REPO10="$(make_repo with-origin)"
@@ -334,7 +334,7 @@ export AGENT_GIT_TOKEN_ACTOR="other-app[bot]"
 if "$SCRIPT" --preflight --mode github "$WT17" >/dev/null 2>&1; then bad "mismatched App identity must fail"; else ok "rejects mismatched App identity"; fi
 export AGENT_GIT_TOKEN_ACTOR="fixture-bot[bot]"
 export GH_TOKEN="fixture-human-pat"
-if "$SCRIPT" --preflight --mode github "$WT17" >/dev/null 2>&1; then bad "changed token must not reuse bot attestation"; else ok "rejects human token with stale bot fingerprint"; fi
+if "$SCRIPT" --preflight --mode github "$WT17" >/dev/null 2>&1; then bad "changed token must not reuse bot attestation"; else ok "rejects account owner token with stale bot fingerprint"; fi
 export GH_TOKEN=dummy
 make_fake_gh_identity repo-denied
 if "$SCRIPT" --preflight --mode github "$WT17" >/dev/null 2>&1; then bad "inaccessible repository must fail"; else ok "rejects token without current-repository access"; fi
@@ -392,7 +392,7 @@ fi
 
 # 19c. Human token, explicit consent (AGENT_GIT_ALLOW_HUMAN_ACTOR=1) -> pass.
 export AGENT_GIT_ALLOW_HUMAN_ACTOR=1
-if "$SCRIPT" --preflight --mode github "$WT19" >/dev/null 2>&1; then bad "human actor must remain rejected"; else ok "human actor remains rejected despite legacy consent flag"; fi
+if "$SCRIPT" --preflight --mode github "$WT19" >/dev/null 2>&1; then bad "account owner actor must remain rejected"; else ok "account owner actor remains rejected despite legacy consent flag"; fi
 unset AGENT_GIT_ALLOW_HUMAN_ACTOR
 
 # 19d. Missing provider actor metadata fails closed.

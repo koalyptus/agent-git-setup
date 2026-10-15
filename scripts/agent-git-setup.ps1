@@ -331,7 +331,7 @@ function Resolve-Id {
     }
 }
 
-# Commit email must resolve to the bot account. Never silently substitute the human identity.
+# Commit email must resolve to the bot account. Never silently substitute the account owner identity.
 # Resolution order:
 #   1. AGENT_GIT_BOT_ID   -> <id>+<AGENT_GIT_NAME>@users.noreply.github.com   (offline-safe)
 #   2. AGENT_GIT_NAME     -> API-resolved bot id

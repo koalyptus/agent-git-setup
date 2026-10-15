@@ -1,7 +1,7 @@
 # Roadmap
 
 Loose plan for agent-git-setup. Nothing here is committed to a release; it is
-a working list so contributors (human or agent) know what is considered.
+a working list so contributors (account owner or agent) know what is considered.
 
 ## Windows / PowerShell native support (done)
 
