@@ -17,7 +17,7 @@ function Get-ConfiguredCredentials {
 
     $values = @{}
     foreach ($line in [System.IO.File]::ReadAllLines($Path)) {
-        if ($line -match '^\s*(?:export\s+)?(?<name>GITHUB_APP_ID|GITHUB_APP_PEM|GITHUB_APP_INSTALL_ID|AGENT_GIT_BOT_ID)\s*=\s*(?<value>.*)\s*$') {
+        if ($line -match '^\s*(?:export\s+)?(?<name>GITHUB_APP_ID|GITHUB_APP_PEM|GITHUB_APP_INSTALL_ID|AGENT_GIT_BOT_ID|AGENT_GIT_SIGNING_KEY)\s*=\s*(?<value>.*)\s*$') {
             $value = $Matches.value.Trim()
             if ($value.Length -ge 2 -and (($value.StartsWith('"') -and $value.EndsWith('"')) -or ($value.StartsWith("'") -and $value.EndsWith("'")))) {
                 $value = $value.Substring(1, $value.Length - 2)
@@ -148,6 +148,14 @@ try {
     $env:AGENT_GIT_TOKEN_APP_PEM_PATH_WINDOWS = $Pem
     if ($configured.ContainsKey('AGENT_GIT_BOT_ID')) {
         $env:AGENT_GIT_BOT_ID = $configured.AGENT_GIT_BOT_ID
+    }
+    # Same ride-along for the opt-in signing key: when the credentials file
+    # carries AGENT_GIT_SIGNING_KEY (a PATH to the human's private SSH key),
+    # export it so agent-git-setup.ps1 enables signing with no manual
+    # per-session export. The key bytes never enter the environment - only
+    # the path, and only because the human put it in the credentials file.
+    if ($configured.ContainsKey('AGENT_GIT_SIGNING_KEY')) {
+        $env:AGENT_GIT_SIGNING_KEY = $configured.AGENT_GIT_SIGNING_KEY
     }
     Write-Host "mint-token.ps1: exported installation token and signed actor attestation for $actor."
 } catch {

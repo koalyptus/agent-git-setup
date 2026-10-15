@@ -70,7 +70,11 @@ agent:
 1. Generate or reuse an SSH key (e.g. `ssh-keygen -t ed25519 -f ~/.ssh/agent-signing`).
 2. Upload the **public** key (`*.pub`) to your GitHub account under
    **Settings → SSH and GPG keys → New SSH key → Key type: Signing Key**.
-3. Export `AGENT_GIT_SIGNING_KEY` pointing at the **private** key path.
+3. Export `AGENT_GIT_SIGNING_KEY` pointing at the **private** key path — or,
+   to avoid exporting it in every session, add
+   `AGENT_GIT_SIGNING_KEY=*** to your credentials file; `mint-token.sh
+   --shell` then re-exports it automatically (only the path, never the key
+   bytes).
 
 The commit *author* stays the bot; the signature attests to the account that
 registered the key (yours). A missing or unreadable key path fails setup with
