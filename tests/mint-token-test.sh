@@ -17,7 +17,7 @@
 #
 set -uo pipefail
 
-unset GITHUB_APP_ID GITHUB_APP_PEM GITHUB_APP_NAME GITHUB_APP_INSTALL_ID GH_TOKEN AGENT_GIT_CREDENTIALS
+unset GITHUB_APP_ID GITHUB_APP_PEM GITHUB_APP_NAME GITHUB_APP_INSTALL_ID GH_TOKEN AGENT_GIT_CREDENTIALS AGENT_GIT_SIGNING_KEY
 
 TEST_HOME="$(mktemp -d -t mint-home.XXXXXX)"
 export HOME="$TEST_HOME"
@@ -331,6 +331,49 @@ elif verify_jwt "$PUB_FOR_TEST" "$ENV_PRE_JWT"; then
 	fi
 else
 	bad "env-precedence JWT invalid (exit $?)"
+fi
+
+# --- 9b. --shell re-exports AGENT_GIT_SIGNING_KEY from the credentials file
+echo "--shell re-exports AGENT_GIT_SIGNING_KEY from credentials file"
+CRED_XDG4="$(mktemp -d -t agxdg4.XXXXXX)"
+mkdir -p "$CRED_XDG4/agent-git-setup/credentials.d"
+FAKE_SIGNING_KEY="$(mktemp -t agsignkey.XXXXXX)"
+printf 'GITHUB_APP_ID=1234567\nGITHUB_APP_PEM=%s\nAGENT_GIT_SIGNING_KEY=%s\n' "$PEM_FOR_TEST" "$FAKE_SIGNING_KEY" >"$CRED_XDG4/agent-git-setup/credentials.d/credentials-1234567.env"
+SHELL_SIGNING="$(PYTHONPATH="$FAKE_API_DIR" XDG_CONFIG_HOME="$CRED_XDG4" "$SCRIPT" --app-id 1234567 --shell 2>/dev/null | sed -n 's/^export AGENT_GIT_SIGNING_KEY=//p')"
+rm -rf "$CRED_XDG4" "$FAKE_SIGNING_KEY"
+if [ "$SHELL_SIGNING" = "" ]; then
+	bad "--shell did not emit AGENT_GIT_SIGNING_KEY from the credentials file"
+elif [ "$(printf '%s' "$SHELL_SIGNING" | sed "s/'//g")" != "$FAKE_SIGNING_KEY" ]; then
+	bad "--shell AGENT_GIT_SIGNING_KEY path mismatch: $SHELL_SIGNING"
+else
+	ok "--shell re-exports AGENT_GIT_SIGNING_KEY (path only) from credentials file"
+fi
+
+# --- 9c. --shell omits AGENT_GIT_SIGNING_KEY when the credentials file has none
+echo "--shell omits AGENT_GIT_SIGNING_KEY when not configured"
+CRED_XDG5="$(mktemp -d -t agxdg5.XXXXXX)"
+mkdir -p "$CRED_XDG5/agent-git-setup/credentials.d"
+printf 'GITHUB_APP_ID=1234567\nGITHUB_APP_PEM=%s\n' "$PEM_FOR_TEST" >"$CRED_XDG5/agent-git-setup/credentials.d/credentials-1234567.env"
+SHELL_NOSIGN="$(PYTHONPATH="$FAKE_API_DIR" XDG_CONFIG_HOME="$CRED_XDG5" "$SCRIPT" --app-id 1234567 --shell 2>/dev/null | grep -c '^export AGENT_GIT_SIGNING_KEY=' || true)"
+rm -rf "$CRED_XDG5"
+if [ "$SHELL_NOSIGN" = "0" ]; then
+	ok "--shell omits AGENT_GIT_SIGNING_KEY when the credentials file has none"
+else
+	bad "--shell emitted AGENT_GIT_SIGNING_KEY although none is configured"
+fi
+
+# --- 9d. Credentials-file AGENT_GIT_SIGNING_KEY wins over ambient env (same
+# precedence as APP_ID/PEM/BOT_ID: file-sourced values win, env fills gaps)
+echo "credentials-file AGENT_GIT_SIGNING_KEY wins over ambient env"
+CRED_XDG6="$(mktemp -d -t agxdg6.XXXXXX)"
+mkdir -p "$CRED_XDG6/agent-git-setup/credentials.d"
+printf 'GITHUB_APP_ID=1234567\nGITHUB_APP_PEM=%s\nAGENT_GIT_SIGNING_KEY=/from/file\n' "$PEM_FOR_TEST" >"$CRED_XDG6/agent-git-setup/credentials.d/credentials-1234567.env"
+SHELL_ENVSIGN="$(PYTHONPATH="$FAKE_API_DIR" AGENT_GIT_SIGNING_KEY=/from/env XDG_CONFIG_HOME="$CRED_XDG6" "$SCRIPT" --app-id 1234567 --shell 2>/dev/null | sed -n 's/^export AGENT_GIT_SIGNING_KEY=//p')"
+rm -rf "$CRED_XDG6"
+if [ "$(printf '%s' "$SHELL_ENVSIGN" | sed "s/'//g")" = "/from/file" ]; then
+	ok "credentials-file AGENT_GIT_SIGNING_KEY takes precedence over ambient env"
+else
+	bad "ambient env overrode credentials-file AGENT_GIT_SIGNING_KEY (got: $SHELL_ENVSIGN)"
 fi
 
 # --- 10. Missing credential file -> clear error ----------------------------
