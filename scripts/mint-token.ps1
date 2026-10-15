@@ -150,10 +150,12 @@ try {
         $env:AGENT_GIT_BOT_ID = $configured.AGENT_GIT_BOT_ID
     }
     # Same ride-along for the opt-in signing key: when the credentials file
-    # carries AGENT_GIT_SIGNING_KEY (a PATH to the human's private SSH key),
-    # export it so agent-git-setup.ps1 enables signing with no manual
-    # per-session export. The key bytes never enter the environment - only
-    # the path, and only because the human put it in the credentials file.
+    # carries AGENT_GIT_SIGNING_KEY, export it so agent-git-setup.ps1 enables
+    # signing with no manual per-session export. The value is ALWAYS a
+    # filesystem PATH (to the human's private SSH key), never the key bytes
+    # themselves - do not "simplify" this by inlining key material into the
+    # environment; the credentials file already holds only paths, and this
+    # export must keep that invariant.
     if ($configured.ContainsKey('AGENT_GIT_SIGNING_KEY')) {
         $env:AGENT_GIT_SIGNING_KEY = $configured.AGENT_GIT_SIGNING_KEY
     }
