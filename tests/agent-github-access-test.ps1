@@ -117,7 +117,7 @@ try {
     $env:GIT_CONFIG_NOSYSTEM = "1"
     $gitSkillText = [System.IO.File]::ReadAllText($GitSkillDoc)
     $accessSkillText = [System.IO.File]::ReadAllText($SkillDoc)
-    if ($gitSkillText.Contains("May I create commits as this human identity") -and $gitSkillText.Contains("If the human declines") -and $accessSkillText.Contains("May I perform") -and $accessSkillText.Contains("Only after explicit approval") -and $accessSkillText.Contains("show the public App IDs from their filenames") -and $accessSkillText.Contains("ask the human which App to use")) {
+    if ($gitSkillText.Contains("May I create commits as this account owner identity") -and $gitSkillText.Contains("If the account owner declines") -and $accessSkillText.Contains("May I perform") -and $accessSkillText.Contains("Only after explicit approval") -and $accessSkillText.Contains("show the public App IDs from their filenames") -and $accessSkillText.Contains("ask the account owner which App to use")) {
         Ok "both skills require consent and access skill resolves multiple App configs explicitly"
     } else {
         Bad "skills must require consent and explicit App choice when credentials are ambiguous"

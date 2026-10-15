@@ -215,7 +215,7 @@ $env:AGENT_GIT_BOT_ID = "0"
 $Rc = RunSetup $Repo9a
 if ($Rc -ne 0) { Ok "rejects zero bot ID" } else { Bad "zero bot ID must fail" }
 
-Write-Host "9b. Refuses human-email fallback when bot id cannot be resolved"
+Write-Host "9b. Refuses account-owner-email fallback when bot id cannot be resolved"
 $Repo9b = MakeRepo "with-origin"
 $env:AGENT_GIT_NAME = "unresolvable-bot-xyz[bot]"
 $env:GIT_USER_NAME = "fixture-human"
@@ -223,7 +223,7 @@ $env:GIT_USER_ID = "123456789"
 Remove-Item env:AGENT_GIT_BOT_ID -ErrorAction SilentlyContinue
 Remove-Item env:GH_TOKEN -ErrorAction SilentlyContinue
 $Rc = RunSetup $Repo9b
-if ($Rc -ne 0) { Ok "refuses human-email fallback" } else { Bad "setup must not silently substitute human email" }
+if ($Rc -ne 0) { Ok "refuses account-owner-email fallback" } else { Bad "setup must not silently substitute account owner email" }
 
 Write-Host "10. No signing by default"
 $Repo10 = MakeRepo "with-origin"
@@ -397,7 +397,7 @@ if ($Rc -ne 0) { Ok "rejects mismatched App identity" } else { Bad "mismatched A
 $env:AGENT_GIT_TOKEN_ACTOR = "fixture-bot[bot]"
 $env:GH_TOKEN = "fixture-human-pat"
 $Rc = RunPreflight $WtDir $GhBin
-if ($Rc -ne 0) { Ok "rejects human token with stale bot attestation" } else { Bad "stale bot attestation must not accept a changed token" }
+if ($Rc -ne 0) { Ok "rejects account owner token with stale bot attestation" } else { Bad "stale bot attestation must not accept a changed token" }
 SetFixtureToken "dummy"
 $GhBin = MakeFakeGh "repo-denied"
 $Rc = RunPreflight $WtDir $GhBin
@@ -429,16 +429,16 @@ $env:AGENT_GIT_TOKEN_ACTOR = "fixture-bot[bot]"
 $GhBin = MakeFakeGh "bot-user" "fixture-bot[bot]"
 $Rc = RunPreflight $WtDir $GhBin
 if ($Rc -eq 0) { Ok "GitHub preflight passes for matching bot account" } else { Bad "GitHub preflight should pass for matching bot account" }
-# 19b: human token (gh api user -> User), no consent -> preflight FAILS.
+# 19b: account owner token (gh api user -> User), no consent -> preflight FAILS.
 $GhBin = MakeFakeGh "human" "fixture-human"
 $env:AGENT_GIT_TOKEN_ACTOR = "fixture-human[bot]"
 Remove-Item env:AGENT_GIT_ALLOW_HUMAN_ACTOR -ErrorAction SilentlyContinue
 $Rc = RunPreflight $WtDir $GhBin
 if ($Rc -ne 0) { Ok "preflight fails closed when GH_TOKEN actor is the account owner (no consent)" } else { Bad "exit code wrong" }
-# 19c: human token, explicit consent -> pass.
+# 19c: account owner token, explicit consent -> pass.
 $env:AGENT_GIT_ALLOW_HUMAN_ACTOR = "1"
 $Rc = RunPreflight $WtDir $GhBin
-if ($Rc -ne 0) { Ok "human actor remains rejected despite legacy consent flag" } else { Bad "human actor must remain rejected" }
+if ($Rc -ne 0) { Ok "account owner actor remains rejected despite legacy consent flag" } else { Bad "account owner actor must remain rejected" }
 Remove-Item env:AGENT_GIT_ALLOW_HUMAN_ACTOR -ErrorAction SilentlyContinue
 # 19d: missing provider actor metadata fails closed.
 Remove-Item env:AGENT_GIT_TOKEN_ACTOR -ErrorAction SilentlyContinue

@@ -11,7 +11,7 @@ This repository provides a way to clearly identify agentic work in Git and GitHu
 | `agent-git-override-main-identity` | When the user explicitly wants bot-attributed commits from the main worktree. | Temporarily replaces this clone's main-worktree `user.name` and `user.email` with the persisted bot identity. The change remains active until restored. |
 | `agent-git-restore-main-identity` | After the main-worktree bot identity is no longer wanted. | Restores the saved repo-local identity, refusing to overwrite identity changes made since activation. |
 
-The two main-identity skills are optional and do not change `agent-git-setup` behavior. They modify only this clone's `.git/config`; global Git config and other repositories are untouched. While enabled, commits made from this repository's main worktree use the bot identity, including human-made commits. Run the restore skill before making human-attributed commits here.
+The two main-identity skills are optional and do not change `agent-git-setup` behavior. They modify only this clone's `.git/config`; global Git config and other repositories are untouched. While enabled, commits made from this repository's main worktree use the bot identity, including account-owner made commits. Run the restore skill before making account-owner attributed commits here.
 
 If you decide to have both bot-authored commits and bot-authenticated API calls, use `agent-git-setup`'s `GitHub` mode; its workflow covers both. Use `agent-github-access` by itself for subsequent `gh` commands or GitHub API-only access.
 
@@ -142,7 +142,7 @@ GITHUB_APP_PEM=[/path/to/myagent.pem]
 Note: Once setup is done, run the access skill `agent-github-access` before asking the agent to perform GitHub CLI/API actions. It uses the App credentials already selected by the harness or configured for the minter. The minter creates an installation-scoped token that lasts about one hour, and the skill verifies access to the current repository.
 
 If bot identity setup or access fails, the skill reports the reason and asks
-before using the configured human identity as a last resort. Approval is
+before using the configured account owner identity as a last resort. Approval is
 session-scoped; declining or failing to verify the selected identity aborts
 that workflow. The setup scripts themselves remain bot-only and never silently
 fall back.
@@ -228,7 +228,7 @@ This flow covers `gh` and GitHub API calls only. It does not set commit identity
                ▼                     ▼
 ┌──────────────────────────────┐  ┌──────────────────────────────┐
 │ Requested gh/API actions     │  │ Explain failure and ask for  │
-│ as the App bot               │  │ explicit human approval      │
+│ as the App bot               │  │ explicit account owner approval      │
 └──────────────────────────────┘  └──────────────┬───────────────┘
                                                  ▼
                ┌────────────────────────────────────┐
@@ -238,12 +238,12 @@ This flow covers `gh` and GitHub API calls only. It does not set commit identity
                               ▼                   ▼
           ┌──────────────────────────────┐  ┌──────────────────┐
           │ Clear bot-token variables;   │  │ Stop; no GitHub  │
-          │ verify human login + repo    │  │ changes          │
+          │ verify account owner login + repo    │  │ changes          │
           └──────────────┬───────────────┘  └──────────────────┘
                          ▼
           ┌──────────────────────────────┐
           │ Approved API actions as      │
-          │ human for this session       │
+          │ account owner for this session       │
           └──────────────────────────────┘
 ```
 
@@ -253,7 +253,7 @@ This flow covers `gh` and GitHub API calls only. It does not set commit identity
 - Commits are unsigned by default. Setting `AGENT_GIT_SIGNING_KEY` to a readable private key enables SSH signing (`gpg.format=ssh`, `commit.gpgsign=true`) for worktrees via the same scoping; the Verified badge then attests to the GitHub account that registered the matching public key as a Signing key (normally the human's), not to the bot. An unreadable key path fails setup with exit 2 before any config is written.
 - GitHub-mode preflight verifies a signed App installation token and access to the target worktree's `origin`. `gh` uses `GH_TOKEN`; other API clients must pass it explicitly. Bot-user tokens are not supported.
 - `agent-github-access` mints a token using the App installation already selected by the harness and verifies access to the current repository. The token's repository scope is controlled by the App installation's GitHub settings, not narrowed by this check.
-- If bot setup or access fails, the corresponding skill must surface the error and obtain explicit, session-scoped human approval before using an existing human identity. No approval means stop; no identity or credential config is changed for fallback.
+- If bot setup or access fails, the corresponding skill must surface the error and obtain explicit, session-scoped account owner approval before using an existing account owner identity. No approval means stop; no identity or credential config is changed for fallback.
 - The script does not manage worktrees, hooks, remotes, or push credentials. The harness owns lifecycle enforcement. Push identity follows Git's configured credential, normally the user's existing credential; a helper configured with the App token can push as the bot.
 
 ## Validation

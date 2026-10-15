@@ -40,13 +40,13 @@ else
 	exit 1
 fi
 
-echo "bot-identity failures require explicit human approval"
-if grep -Fq 'May I create commits as this human identity' "$GIT_SKILL_DOC" &&
-	grep -Fq 'If the human declines' "$GIT_SKILL_DOC" &&
+echo "bot-identity failures require explicit account owner approval"
+if grep -Fq 'May I create commits as this account owner identity' "$GIT_SKILL_DOC" &&
+	grep -Fq 'If the account owner declines' "$GIT_SKILL_DOC" &&
 	grep -Fq 'May I perform' "$SKILL_DOC" &&
 	grep -Fq 'Only after explicit approval' "$SKILL_DOC" &&
 	grep -Fq 'show the public App IDs from their filenames' "$SKILL_DOC" &&
-	grep -Fq 'ask the human which App to use' "$SKILL_DOC"; then
+	grep -Fq 'ask the account owner which App to use' "$SKILL_DOC"; then
 	echo "  ok   - skills require consent and explicit App choice when credentials are ambiguous"
 else
 	echo "  FAIL - skills must require consent and explicit App choice when credentials are ambiguous"
