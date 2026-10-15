@@ -63,6 +63,8 @@ Use this for bot attribution first. If a bot setup or preflight failure makes bo
 
    `AGENT_GIT_NAME`: the bot's actual GitHub login, normally `<app-slug>[bot]`. `GIT_USER_NAME` is deprecated and ignored. The setup scripts never silently fall back to a human identity; on failure, follow the consent-gated fallback below.
 
+   **Optional — signed commits (Verified badge).** By default commits are unsigned: a GitHub App bot has no user account, so it cannot register a signing key, and local signing can only attest to the account owning the key. If the human wants the green badge on agent commits, they provide `AGENT_GIT_SIGNING_KEY=/path/to/private-key` after (one-time, outside the agent) generating an SSH key and uploading its **public** key to their GitHub account as a Signing key (Settings → SSH and GPG keys → New SSH key → Key type: Signing Key). Two ways to provide it: export it in the agent's shell, or record it in the credentials file (`AGENT_GIT_SIGNING_KEY=*** — `mint-token.sh --shell` then re-exports the path automatically in every session; only the path is exported, never the key bytes). The commit *author* stays the bot; the signature attests to the key-owning account (the human's). An unreadable key path fails setup with exit 2 before any config is written. Omit the variable to keep commits unsigned.
+
 4. **Run setup once per repo.** Writes bot identity via `includeIf` into shared repo config. Every linked worktree (present + future) inherits the same bot identity. The main checkout stays human. The harness still chooses and creates the worktree.
 
    ```bash
@@ -94,6 +96,7 @@ Use this for bot attribution first. If a bot setup or preflight failure makes bo
 
 - Git repo the agent works in (git >= 2.43). Harness places agent in worktree; `includeIf` scopes to all worktrees, no `worktreeConfig` needed.
 - `gh` (GitHub CLI) required for bot GitHub-actor path (PRs, comments, API commits). Local commits need only `git`.
+- Optional: `AGENT_GIT_SIGNING_KEY` (path to a readable private SSH key) enables commit signing for the Verified badge. The matching public key must be registered as a Signing key on a GitHub account (the human's — a bot cannot have one). Unset = unsigned commits.
 - Setup needs network access to GitHub to resolve the bot identity automatically. Bash setup also needs `curl` + `python3`; GitHub mode additionally needs `python3` + `cryptography` for attestation verification and `mint-token.sh`. PowerShell uses .NET web requests and RSA verification.
 - GitHub App (App ID + PEM) only if using `mint-token.sh` for gh/API as bot. Not needed for Git-only.
 - PowerShell 7+ for `agent-git-setup.ps1` (Windows). Same env vars as bash.

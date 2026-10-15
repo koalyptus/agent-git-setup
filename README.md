@@ -60,6 +60,26 @@ There are two flows: `Git-only` and `GitHub App`.
 
 The bot account identity is resolved automatically from GitHub.
 
+**Optional — signed commits.** By default agent commits are unsigned (no
+"Verified" badge): a GitHub App bot has no user account, so it cannot register
+a signing key, and local signing can only attest to the account owning the key.
+To get the green Verified badge on agent commits, export
+`AGENT_GIT_SIGNING_KEY=/path/to/private-key` — one-time setup outside the
+agent:
+
+1. Generate or reuse an SSH key (e.g. `ssh-keygen -t ed25519 -f ~/.ssh/agent-signing`).
+2. Upload the **public** key (`*.pub`) to your GitHub account under
+   **Settings → SSH and GPG keys → New SSH key → Key type: Signing Key**.
+3. Export `AGENT_GIT_SIGNING_KEY` pointing at the **private** key path — or,
+   to avoid exporting it in every session, add
+   `AGENT_GIT_SIGNING_KEY=*** to your credentials file; `mint-token.sh
+   --shell` then re-exports it automatically (only the path, never the key
+   bytes).
+
+The commit *author* stays the bot; the signature attests to the account that
+registered the key (yours). A missing or unreadable key path fails setup with
+exit 2 — no config is written.
+
 #### GitHub App
 
 You need a GitHub App (with its PEM) and its App ID. If you already have one,
@@ -106,6 +126,7 @@ before assigning API-only work where commit identity should remain unchanged.
 Use the agent-git-setup skill. Set up a bot git identity for current repo.
 
 AGENT_GIT_NAME=myagent[bot]   # replace with your bot's name (e.g. myagent → myagent[bot])
+AGENT_GIT_SIGNING_KEY=/path/to/private-key   # optional; omit for unsigned commits
 ```
 
 #### GitHub App
@@ -229,6 +250,7 @@ This flow covers `gh` and GitHub API calls only. It does not set commit identity
 ## Behavior
 
 - Setup writes the bot's `user.name` and GitHub noreply email to shared repo config for linked worktrees. The main checkout keeps its existing Git identity; the setup leaves its local identity and global Git config untouched.
+- Commits are unsigned by default. Setting `AGENT_GIT_SIGNING_KEY` to a readable private key enables SSH signing (`gpg.format=ssh`, `commit.gpgsign=true`) for worktrees via the same scoping; the Verified badge then attests to the GitHub account that registered the matching public key as a Signing key (normally the human's), not to the bot. An unreadable key path fails setup with exit 2 before any config is written.
 - GitHub-mode preflight verifies a signed App installation token and access to the target worktree's `origin`. `gh` uses `GH_TOKEN`; other API clients must pass it explicitly. Bot-user tokens are not supported.
 - `agent-github-access` mints a token using the App installation already selected by the harness and verifies access to the current repository. The token's repository scope is controlled by the App installation's GitHub settings, not narrowed by this check.
 - If bot setup or access fails, the corresponding skill must surface the error and obtain explicit, session-scoped human approval before using an existing human identity. No approval means stop; no identity or credential config is changed for fallback.

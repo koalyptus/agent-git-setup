@@ -223,6 +223,16 @@ if [ "$SHELL_OUT" -eq 1 ]; then
 	if [ -n "${AGENT_GIT_BOT_ID:-}" ]; then
 		echo "export AGENT_GIT_BOT_ID=$AGENT_GIT_BOT_ID"
 	fi
+	# Same ride-along for the opt-in signing key: when the credentials file
+	# carries AGENT_GIT_SIGNING_KEY, re-export it so `agent-git-setup.sh`
+	# enables signing with no manual per-session export. The value is ALWAYS
+	# a filesystem PATH (to the human's private SSH key), never the key bytes
+	# themselves — do not "simplify" this by inlining key material into the
+	# environment; the credentials file already holds only paths, and this
+	# export must keep that invariant.
+	if [ -n "${AGENT_GIT_SIGNING_KEY:-}" ]; then
+		printf 'export AGENT_GIT_SIGNING_KEY=%q\n' "$AGENT_GIT_SIGNING_KEY"
+	fi
 else
 	printf '%s\n' "$TOKEN"
 fi
