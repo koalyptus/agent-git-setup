@@ -12,8 +12,14 @@ set -uo pipefail
 
 PASS=0
 FAIL=0
-ok() { PASS=$((PASS + 1)); echo "  ok   - $1"; }
-bad() { FAIL=$((FAIL + 1)); echo "  FAIL - $1"; }
+ok() {
+	PASS=$((PASS + 1))
+	echo "  ok   - $1"
+}
+bad() {
+	FAIL=$((FAIL + 1))
+	echo "  FAIL - $1"
+}
 assert_eq() { if [ "$1" = "$2" ]; then ok "$3"; else bad "$3 (got '$1' expected '$2')"; fi; }
 
 SANDBOX="$(mktemp -d)"
@@ -62,7 +68,7 @@ cd "$REPO" || exit 1
 git init -q -b main 2>/dev/null || git init -q
 git config user.email "test@example.com"
 git config user.name "Test"
-echo "hello" > README.md
+echo "hello" >README.md
 git add README.md
 git commit -q -m "initial"
 
@@ -85,19 +91,25 @@ assert_eq "$(grep -c -- '--tags' "$GIT_CALL_LOG")" "0" "no --tags flag used"
 TAG_LINE=$(grep -n 'tag -a' "$GIT_CALL_LOG" | cut -d: -f1)
 PUSH_LINE=$(grep -n 'push' "$GIT_CALL_LOG" | cut -d: -f1)
 if [ -n "$TAG_LINE" ] && [ -n "$PUSH_LINE" ] && [ "$TAG_LINE" -lt "$PUSH_LINE" ]; then
-  ok "git tag -a called before git push"
+	ok "git tag -a called before git push"
 else
-  bad "git tag -a must be called before git push"
+	bad "git tag -a must be called before git push"
 fi
+
+# Tag message is the expected release message.
+assert_eq "$(grep -c "Release v${VERSION}" "$GIT_CALL_LOG")" "1" "tag message is Release v${VERSION}"
 
 # gh release create called exactly once.
 assert_eq "$(grep -c 'release create' "$GH_CALL_LOG")" "1" "gh release create called exactly once"
 
+# gh release create uses --generate-notes.
+assert_eq "$(grep -c -- '--generate-notes' "$GH_CALL_LOG")" "1" "gh release create uses --generate-notes"
+
 # No real tag created in the repo.
 if git tag | grep -q "^v${VERSION}$"; then
-  bad "real tag v${VERSION} should not exist"
+	bad "real tag v${VERSION} should not exist"
 else
-  ok "no real tag created in repo"
+	ok "no real tag created in repo"
 fi
 
 echo "PASS=$PASS FAIL=$FAIL"
