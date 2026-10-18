@@ -5,8 +5,8 @@
 # Hermetic tests for the `make release` target. Fakes git + gh on PATH,
 # runs the target, and asserts the correct push refspec is used.
 #
-# Requires: bash, make, git (for repo setup only — all git commands in the
-# target are intercepted by the fake on PATH).
+# Requires: bash + make. No real git or gh is invoked — the fakes on PATH
+# intercept every call the release target makes.
 
 set -uo pipefail
 
@@ -61,16 +61,13 @@ export PATH="$SANDBOX/bin:$PATH"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MAKEFILE="$SCRIPT_DIR/../Makefile"
 
-# Create a minimal repo on main with a clean tree.
+# Run make from a throwaway directory, never the caller's repo. Every git/gh
+# call the release target makes is intercepted by the fakes on PATH, so no real
+# repo is needed — but a neutral cwd keeps the target off the caller's tree if
+# a fake ever fails to intercept.
 REPO="$SANDBOX/repo"
 mkdir -p "$REPO"
 cd "$REPO" || exit 1
-git init -q -b main 2>/dev/null || git init -q
-git config user.email "test@example.com"
-git config user.name "Test"
-echo "hello" >README.md
-git add README.md
-git commit -q -m "initial"
 
 # Run make release with VERSION set.
 VERSION="1.2.3"
