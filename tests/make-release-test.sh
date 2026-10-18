@@ -3,7 +3,8 @@
 # make-release-test.sh
 #
 # Hermetic tests for the `make release` target. Fakes git + gh on PATH,
-# runs the target, and asserts the correct push refspec is used.
+# runs the target, and asserts the correct push refspec is used, including the
+# push-failure recovery path (#29).
 #
 # Requires: bash + make. No real git or gh is invoked — the fakes on PATH
 # intercept every call the release target makes.
@@ -31,18 +32,38 @@ GIT_CALL_LOG="$SANDBOX/git-calls.log"
 GH_CALL_LOG="$SANDBOX/gh-calls.log"
 export GIT_CALL_LOG GH_CALL_LOG
 
+# The fake git tracks whether the tag exists in a state file, so it models the
+# real failure mode: the annotated tag survives an aborted run.
+GIT_STATE="$SANDBOX/tag-state"
+export GIT_STATE
+echo 0 >"$GIT_STATE"
+
 mkdir -p "$SANDBOX/bin"
 
-# Fake git: logs all calls, returns appropriate exit codes.
+# Fake git: logs all calls and tracks tag existence across calls.
 cat >"$SANDBOX/bin/git" <<'GITEOF'
 #!/usr/bin/env bash
 echo "$@" >> "$GIT_CALL_LOG"
+state="${GIT_STATE:-/dev/null}"
 case "$1" in
   rev-parse)
     if [ "$2" = "--abbrev-ref" ]; then echo "main"; exit 0; fi
-    if [ "$2" = "-q" ]; then exit 1; fi  # tag doesn't exist
+    if [ "$2" = "-q" ]; then
+      [ -f "$state" ] && [ "$(cat "$state")" = "1" ] && exit 0
+      exit 1
+    fi
     exit 0;;
-  fetch|merge|diff|tag|push) exit 0;;
+  tag)
+    case "$2" in
+      -a) echo 1 >"$state"; exit 0;;
+      -d) echo 0 >"$state"; exit 0;;
+      *) exit 0;;
+    esac;;
+  push)
+    # Simulate a failed push (no credentials, no write access, stale ref).
+    [ "${FAIL_PUSH:-0}" = "1" ] && exit 1
+    exit 0;;
+  fetch|merge|diff) exit 0;;
   *) exit 0;;
 esac
 GITEOF
@@ -69,22 +90,17 @@ REPO="$SANDBOX/repo"
 mkdir -p "$REPO"
 cd "$REPO" || exit 1
 
-# Run make release with VERSION set.
 VERSION="1.2.3"
+
+# --- Happy path: tag, push, GitHub Release. ---
+
+echo 0 >"$GIT_STATE"
 make -f "$MAKEFILE" release VERSION="$VERSION" >/dev/null 2>&1
 
-# --- Assertions ---
-
-# git push called exactly once.
 assert_eq "$(grep -c 'push' "$GIT_CALL_LOG")" "1" "git push called exactly once"
-
-# push uses single refspec: origin "v$(VERSION)".
 assert_eq "$(grep 'push' "$GIT_CALL_LOG")" "push origin v${VERSION}" "push uses single refspec origin v${VERSION}"
-
-# No --tags flag.
 assert_eq "$(grep -c -- '--tags' "$GIT_CALL_LOG")" "0" "no --tags flag used"
 
-# git tag -a called before git push.
 TAG_LINE=$(grep -n 'tag -a' "$GIT_CALL_LOG" | cut -d: -f1)
 PUSH_LINE=$(grep -n 'push' "$GIT_CALL_LOG" | cut -d: -f1)
 if [ -n "$TAG_LINE" ] && [ -n "$PUSH_LINE" ] && [ "$TAG_LINE" -lt "$PUSH_LINE" ]; then
@@ -93,20 +109,59 @@ else
 	bad "git tag -a must be called before git push"
 fi
 
-# Tag message is the expected release message.
 assert_eq "$(grep -c "Release v${VERSION}" "$GIT_CALL_LOG")" "1" "tag message is Release v${VERSION}"
-
-# gh release create called exactly once.
 assert_eq "$(grep -c 'release create' "$GH_CALL_LOG")" "1" "gh release create called exactly once"
-
-# gh release create uses --generate-notes.
 assert_eq "$(grep -c -- '--generate-notes' "$GH_CALL_LOG")" "1" "gh release create uses --generate-notes"
+assert_eq "$(cat "$GIT_STATE")" "1" "tag still exists after a successful release"
 
-# No real tag created in the repo.
-if git tag | grep -q "^v${VERSION}$"; then
-	bad "real tag v${VERSION} should not exist"
+# --- Push failure: the tag lands locally but the push fails (#29). ---
+
+fail_dir="$SANDBOX/fail"
+mkdir -p "$fail_dir"
+echo 0 >"$GIT_STATE" # fresh clone: no local tag
+: >"$GIT_CALL_LOG"   # isolate this attempt in the log
+: >"$GH_CALL_LOG"
+FAIL_PUSH=1 make -f "$MAKEFILE" release VERSION="$VERSION" >"$fail_dir/out" 2>&1
+fail_exit=$?
+
+if [ "$fail_exit" -eq 0 ]; then
+	bad "push failure must not exit 0"
 else
-	ok "no real tag created in repo"
+	ok "push failure exits non-zero"
+fi
+
+assert_eq "$(grep -c '^tag -d' "$GIT_CALL_LOG")" "1" "stale local tag deleted on push failure"
+assert_eq "$(grep '^tag -d' "$GIT_CALL_LOG")" "tag -d v${VERSION}" "tag deleted with tag -d v${VERSION}"
+
+TAG_LINE=$(grep -n '^tag -a' "$GIT_CALL_LOG" | cut -d: -f1)
+DELETE_LINE=$(grep -n '^tag -d' "$GIT_CALL_LOG" | cut -d: -f1)
+if [ -n "$TAG_LINE" ] && [ -n "$DELETE_LINE" ] && [ "$TAG_LINE" -lt "$DELETE_LINE" ]; then
+	ok "tag deleted after it was created"
+else
+	bad "tag must be deleted after creation"
+fi
+
+# A retry must be able to recreate the tag: the stale one is gone.
+assert_eq "$(cat "$GIT_STATE")" "0" "stale tag is gone so a retry can proceed"
+
+if grep -q 'release create' "$GH_CALL_LOG"; then
+	bad "gh release create must not run when the push fails"
+else
+	ok "gh release create not attempted on push failure"
+fi
+
+# The failure output must tell the operator the tag was cleaned up and how to
+# retry, so a failed push is recoverable without knowing the target's internals.
+if grep -q 'deleted the local tag' "$fail_dir/out"; then
+	ok "push failure reports the local tag was deleted"
+else
+	bad "push failure must report the local tag was deleted"
+fi
+
+if grep -q 'retry with' "$fail_dir/out"; then
+	ok "push failure gives the retry command"
+else
+	bad "push failure must give the retry command"
 fi
 
 echo "PASS=$PASS FAIL=$FAIL"

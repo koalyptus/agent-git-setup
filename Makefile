@@ -166,6 +166,11 @@ ci: sync-check test lint
 # Cut a release: tag main (must be clean + synced with origin/main) and create
 # a GitHub Release with auto-generated notes. Usage: make release VERSION=x.y.z
 # Requires `gh` authenticated and the working tree on `main`, up to date.
+#
+# If the tag is created but the push fails (no credentials, no write access,
+# stale ref), the target deletes the local tag so a retry does not abort at the
+# "tag v$(VERSION) already exists" guard. Manually, that is:
+#   git tag -d "v$(VERSION)"
 .PHONY: release
 release:
 	@test -n "$(VERSION)" || { echo "usage: make release VERSION=x.y.z" >&2; exit 1; }
@@ -175,6 +180,12 @@ release:
 	@git diff --quiet || { echo "working tree is dirty; commit or stash first" >&2; exit 1; }
 	@git rev-parse -q --verify "v$(VERSION)" >/dev/null && { echo "tag v$(VERSION) already exists" >&2; exit 1; } || true
 	git tag -a "v$(VERSION)" -m "Release v$(VERSION)"
-	git push origin "v$(VERSION)"
-	gh release create "v$(VERSION)" --generate-notes
+	@if git push origin "v$(VERSION)"; then \
+		gh release create "v$(VERSION)" --generate-notes; \
+	else \
+		git tag -d "v$(VERSION)" >/dev/null 2>&1 || true; \
+		echo "push failed; deleted the local tag v$(VERSION) so a retry can recreate it" >&2; \
+		echo "retry with: make release VERSION=$(VERSION)" >&2; \
+		exit 1; \
+	fi
 	@echo "released v$(VERSION)"
