@@ -173,6 +173,6 @@ release:
 	@git diff --quiet || { echo "working tree is dirty; commit or stash first" >&2; exit 1; }
 	@git rev-parse -q --verify "v$(VERSION)" >/dev/null && { echo "tag v$(VERSION) already exists" >&2; exit 1; } || true
 	git tag -a "v$(VERSION)" -m "Release v$(VERSION)"
-	git push --tags
+	git push origin "v$(VERSION)"
 	gh release create "v$(VERSION)" --generate-notes
 	@echo "released v$(VERSION)"
