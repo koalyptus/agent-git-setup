@@ -147,6 +147,31 @@ session-scoped; declining or failing to verify the selected identity aborts
 that workflow. The setup scripts themselves remain bot-only and never silently
 fall back.
 
+### Add an AGENTS file to the harness or project
+
+Add an `AGENTS.md` (or `AGENTS`, depending on your harness) file to the
+harness or project root instructing agents working on this repository to
+follow the agent-git-setup flow. The file should tell agents to run
+`agent-git-setup` when they start work on a repository that has no bot
+identity configured, and to ask the user for their agent details if those
+details are not already available (for example `AGENT_GIT_NAME` or the
+GitHub App ID + PEM). Add a pointer to this README so an agent can find the
+setup steps.
+
+Example `AGENTS.md`:
+
+```markdown
+# AGENTS
+
+When working on this repository:
+- Run `agent-git-setup` before making commits or API calls.
+- If this repository has no bot identity configured, ask the user to
+  provide their agent details before proceeding.
+```
+
+If a repository already has an `AGENTS` file, add these instructions to it
+rather than creating a duplicate.
+
 ## 4. What happens
 
 See [`skills/agent-git-setup/SKILL.md`](skills/agent-git-setup/SKILL.md) for commit attribution and preflight and [`skills/agent-github-access/SKILL.md`](skills/agent-github-access/SKILL.md) for GitHub API access.
