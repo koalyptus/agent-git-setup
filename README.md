@@ -36,7 +36,7 @@ https://raw.githubusercontent.com/koalyptus/agent-git-setup/main/skills/agent-gi
 
 ### 2. Prepare relevant Git/GitHub information
 
-There are two flows: `Git-only` and `GitHub App`.
+There are two modes: `Git-only` and `GitHub App`.
 `Git-only` assigns the provided agent identity to Git commits only.
 
 #### Git-only
@@ -119,7 +119,7 @@ AGENT_GIT_SIGNING_KEY=/path/to/private-key
 
 ### 4. Add section to AGENTS.md
 
-Example:
+You also may consider adding a dedicated instruction in AGENTS.md to make sure the agent follows the agent-git-setup flows for desired project. Example:
 
 ```markdown
 ...
@@ -137,16 +137,30 @@ their agent details before proceeding.
 |---|---|---|
 | `agent-git-setup` | When a repo does not yet have bot identity setup for Git and GitHub. | Sets bot commit identity once for every current and future linked agent worktree, leaving the main tree's existing identity unchanged. Its GitHub mode can also mint a short-lived token and preflight API access. |
 | `agent-github-access` | Before any agentic GitHub CLI/API work when a GitHub app bot identity is already in place. | Mints a short-lived (about one hour) App installation token and verifies access to the current repository. |
-| `agent-git-override-main-identity` | When the user explicitly wants bot-attributed commits from the main worktree. | Temporarily replaces this clone's main-worktree `user.name` and `user.email` with the persisted bot identity. The change remains active until restored. |
-| `agent-git-restore-main-identity` | After the main-worktree bot identity is no longer wanted. | Restores the saved repo-local identity, refusing to overwrite identity changes made since activation. |
-
-The two main-identity skills are optional and do not change `agent-git-setup` behavior. They modify only this clone's `.git/config`; global Git config and other repositories are untouched. While enabled, commits made from this repository's main worktree use the bot identity, including account-owner made commits. Run the restore skill before making account-owner attributed commits here.
-
-If you decide to have both bot-authored commits and bot-authenticated API calls, use `agent-git-setup`'s `GitHub` mode; its workflow covers both. Use `agent-github-access` by itself for subsequent `gh` commands or GitHub API-only access.
+| `agent-git-override-main-identity` | When the account owner explicitly wants bot-attributed commits from the main worktree. | Temporarily replaces this clone's main-worktree `user.name` and `user.email` with the persisted bot identity. The change remains active until restored. |
+| `agent-git-restore-main-identity` | When the account owner wants to restore own git identity in main-worktree previously overriden with bot identity. | Restores the saved repo-local identity, refusing to overwrite identity changes made since identity override activation. |
 
 Note: none of these skills configures `git push` authentication, which continues to use Git's configured credential.
 
 `agent-github-access` is a just-in-time step, not a permanent authorization. Run it and confirm repository access **before** assigning GitHub CLI/API work to the agent. If no explicit or default credentials select an App and several per-App files exist, the skill asks which public App ID to use; it never guesses. Mint a fresh token for each later session, or when the current token expires.
+
+## Skills usage
+
+Ideally, the agent should not modify the local git config. It should only use the skills provided by `agent-git-setup`.
+
+By default, the agent identity applies only in linked worktrees and `agent-git-setup` does not require your agent to use them. As a result, commits made by the agent in the main checkout remain attributed to your original git identity, unless you deliberately use the `agent-git-override-main-identity` skill to temporarily apply the agent identity in the main worktree.
+
+### agent-git-setup
+This skill is meant to be used once per repo to set up the agent identity whether with the `git-only` or `GitHub App` mode. After that it should be just a question of tactically using the other skills via session prompts or with instructions in AGENTS.md.
+
+### agent-github-access
+This should be invoked ahead of any GitHub CLI or API interaction to ensure bot identity is correctly attributed to the agent in current session.
+
+### agent-git-override-main-identity
+This is a convenience skill to invoke when the account owner wants to override in main tree own identity with agent's one.
+
+### agent-git-restore-main-identity
+This convenience skill restores the identity saved before the override.
 
 ## Flows
 
