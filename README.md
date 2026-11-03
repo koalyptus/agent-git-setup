@@ -47,9 +47,7 @@ The bot account identity is resolved automatically from GitHub.
 
 **Optional — signed commits.** By default agent commits are unsigned (no
 "Verified" badge): sign agent commits with an SSH key:
-To get the green Verified badge on agent commits, export
-`AGENT_GIT_SIGNING_KEY=/path/to/private-key` — one-time setup outside the
-agent:
+To get the green Verified badge on agent commits:
 
 1. Generate or reuse an SSH key (e.g. `ssh-keygen -t ed25519 -f ~/.ssh/agent-signing`).
 2. Upload the **public** key (`*.pub`) to your GitHub account under
@@ -61,10 +59,9 @@ Note: The bot becomes the commit *author*, GitHub verifies the signature against
 #### GitHub App
 
 You need a GitHub App (with its PEM) and its App ID. If you already have one,
-skip next section below. To create one, see the steps under "Creating a GitHub
-App".
+skip next section below.
 
-**Creating a GitHub App** (one-time, if not already done)
+**Creating a GitHub App**
 
 1. **Create the app** — GitHub → **Settings → Developer settings → GitHub Apps → New GitHub App**. For a private automation-only app set only:
    - **GitHub App name**: choose a name whose App slug matches the bot login you want (for example, slug `myagent` gives `myagent[bot]` for `AGENT_GIT_NAME`).
@@ -85,11 +82,11 @@ App".
 2. **Generate the private key** — on the app page click **Generate a private key (PEM)**, download the `.pem`, keep it secret and store it **outside any git repo** (e.g. `~/.ssh/myagent.pem`).
 3. **Install the app** — on the app page click **Install** and select the repositories the agent should touch. This grants permission; it does not change the bot name.
 
-The `agent-github-access` skill reads the App ID and PEM path from the
-existing agent-git-setup credentials configuration. Keep the configuration and
-PEM outside repositories; do not include either value in the agent prompt.
-
 For commit attribution, provide `AGENT_GIT_NAME` (the bot login, normally `<app-slug>[bot]`) to `agent-git-setup`. GitHub API access uses the App actor from the minted token and does not require `AGENT_GIT_NAME`.
+
+Note: the `agent-github-access` skill reads the App ID and PEM path from the
+existing `agent-git-setup` credentials configuration. Keep the configuration and
+PEM outside repositories and DO NOT include either value in the agent prompt.
 
 ### 3. Prompt the agent
 
@@ -104,7 +101,9 @@ before assigning API-only work where commit identity should remain unchanged.
 Use the agent-git-setup skill. Set up a bot git identity for current repo.
 
 AGENT_GIT_NAME=myagent[bot]   # replace with your bot's name (e.g. myagent → myagent[bot])
-AGENT_GIT_SIGNING_KEY=/path/to/private-key   # optional; omit for unsigned commits
+
+# optional; path to private key, omit for unsigned commits
+AGENT_GIT_SIGNING_KEY=/path/to/private-key
 ```
 
 #### GitHub App
@@ -255,6 +254,31 @@ This flow covers `gh` and GitHub API calls only. It does not set commit identity
           │ account owner for this session       │
           └──────────────────────────────┘
 ```
+
+## Configuration
+
+GitHub App credentials are stored in a `.env` file outside your repositories. The token minter (`mint-token.sh` / `mint-token.ps1`) reads it; the Git-only flow needs none of this.
+
+| OS | Default location |
+|---|---|
+| Linux / macOS | `~/.config/agent-git-setup/` |
+| Windows | `%USERPROFILE%\.config\agent-git-setup\` |
+
+If `XDG_CONFIG_HOME` is set, `$XDG_CONFIG_HOME/agent-git-setup/` is used instead.
+
+Inside that folder:
+
+- `credentials-<APP_ID>.env` under `credentials.d/`: one file per GitHub App (checked first when the App ID is known).
+- `credentials.env`: a single default App.
+
+Each file holds only plain `NAME=value` lines:
+
+- `GITHUB_APP_ID`: the public App ID.
+- `GITHUB_APP_PEM`: the **path** to the App's private key (`.pem`), not its contents.
+- `AGENT_GIT_BOT_ID` (optional): the bot's numeric account id.
+- `AGENT_GIT_SIGNING_KEY` (optional): the **path** to an SSH key for signed commits.
+
+No tokens or key contents are ever stored. To use a file elsewhere, pass `--credentials <file>` (`-Credentials` in PowerShell) or set `AGENT_GIT_CREDENTIALS`.
 
 ## Behavior
 
