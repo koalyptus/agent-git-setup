@@ -46,8 +46,8 @@ There are two flows: `Git-only` and `GitHub App`.
 The bot account identity is resolved automatically from GitHub.
 
 **Optional — signed commits.** By default agent commits are unsigned (no
-"Verified" badge): sign agent commits with an SSH key:
-To get the green Verified badge on agent commits:
+"Verified" badge), agent commits can be signed with an SSH key.
+To get the green `Verified` badge on agent commits:
 
 1. Generate or reuse an SSH key (e.g. `ssh-keygen -t ed25519 -f ~/.ssh/agent-signing`).
 2. Upload the **public** key (`*.pub`) to your GitHub account under
@@ -84,9 +84,7 @@ skip next section below.
 
 For commit attribution, provide `AGENT_GIT_NAME` (the bot login, normally `<app-slug>[bot]`) to `agent-git-setup`. GitHub API access uses the App actor from the minted token and does not require `AGENT_GIT_NAME`.
 
-Note: the `agent-github-access` skill reads the App ID and PEM path from the
-existing `agent-git-setup` credentials configuration. Keep the configuration and
-PEM outside repositories and DO NOT include either value in the agent prompt.
+Note: never commit the .pem file or paste its contents into a prompt.
 
 ### 3. Prompt the agent
 
@@ -109,20 +107,15 @@ AGENT_GIT_SIGNING_KEY=/path/to/private-key
 #### GitHub App
 
 ```text
-Use the agent-git-setup skill. Set up a bot git identity for current repo.
+Use the agent-git-setup skill. Set up a bot git and GitHub identity for current repo.
 
 AGENT_GIT_NAME=myagent[bot]   # replace with your bot's name (e.g. myagent → myagent[bot])
-GITHUB_APP_ID=[1234567]
-GITHUB_APP_PEM=[/path/to/myagent.pem]
+GITHUB_APP_ID=1234567
+GITHUB_APP_PEM=/path/to/myagent.pem
+
+# optional; path to private key, omit for unsigned commits
+AGENT_GIT_SIGNING_KEY=/path/to/private-key
 ```
-
-Note: Once setup is done, run the access skill `agent-github-access` before asking the agent to perform GitHub CLI/API actions. It uses the App credentials already selected by the harness or configured for the minter. The minter creates an installation-scoped token that lasts about one hour, and the skill verifies access to the current repository.
-
-If bot identity setup or access fails, the skill reports the reason and asks
-before using the configured account owner identity as a last resort. Approval is
-session-scoped; declining or failing to verify the selected identity aborts
-that workflow. The setup scripts themselves remain bot-only and never silently
-fall back.
 
 ### 4. Add section to AGENTS.md
 
