@@ -2,7 +2,7 @@
 $ErrorActionPreference = "Stop"
 
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$WorkDir = Join-Path $env:TEMP "agent-skills-validator-latest"
+$WorkDir = Join-Path $env:TEMP "agent-skills-validator-$(New-Guid)"
 New-Item -ItemType Directory -Force -Path $WorkDir | Out-Null
 
 $release = Invoke-RestMethod -Uri "https://api.github.com/repos/coolapso/agent-skills-validator/releases/latest"
@@ -37,5 +37,8 @@ $Bin = Join-Path $WorkDir "agent-skills-validator.exe"
 $SkillDirs = Get-ChildItem -Path (Join-Path $RepoRoot "skills") -Recurse -Filter SKILL.md | ForEach-Object { $_.DirectoryName }
 if (-not $SkillDirs) { throw "No SKILL.md files found" }
 
+$exitCode = 0
 & $Bin validate @SkillDirs
+$exitCode = $LASTEXITCODE
 Remove-Item -Recurse -Force $WorkDir -ErrorAction SilentlyContinue
+exit $exitCode

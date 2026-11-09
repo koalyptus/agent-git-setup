@@ -191,4 +191,8 @@ release:
 	@echo "released v$(VERSION)"
 
 validate-skills:
+ifeq ($(OS),Windows_NT)
+	pwsh scripts/validate-skills.ps1
+else
 	bash scripts/validate-skills.sh
+endif
