@@ -1,23 +1,8 @@
 # agent-git-setup
 
-This repository provides a way to clearly identify agentic work in Git and GitHub. It provides setup and preflight tools for agents using Git and GitHub. When an agent creates or selects a worktree for a task, use these tools to configure bot identity for commits and give the agent a GitHub App bot identity for `gh` and API interactions, using a short-lived token. This tool is harness agnostic and does not prescribe usage of linked worktrees. If the harness decides to use worktrees then agentic work will be clearly attributed to the agent identity.
+This repository provides a way to clearly identify agentic work in Git and GitHub. It provides setup and preflight tools for agents using Git and GitHub. When an agent creates or selects a worktree for a task, it will use these tools to configure bot identity for commits and give the agent a GitHub App bot identity for `gh` CLI and API interactions, using a short-lived token.
 
-## Choose a skill
-
-| Skill | When to use it | What it does |
-|---|---|---|
-| `agent-git-setup` | When a repo does not yet have bot identity setup for Git and GitHub. | Sets bot commit identity once for every current and future linked agent worktree, leaving the main tree's existing identity unchanged. Its GitHub mode can also mint a short-lived token and preflight API access. |
-| `agent-github-access` | Before any agentic GitHub CLI/API work when a GitHub app bot identity is already in place. | Mints a short-lived (about one hour) App installation token and verifies access to the current repository. |
-| `agent-git-override-main-identity` | When the user explicitly wants bot-attributed commits from the main worktree. | Temporarily replaces this clone's main-worktree `user.name` and `user.email` with the persisted bot identity. The change remains active until restored. |
-| `agent-git-restore-main-identity` | After the main-worktree bot identity is no longer wanted. | Restores the saved repo-local identity, refusing to overwrite identity changes made since activation. |
-
-The two main-identity skills are optional and do not change `agent-git-setup` behavior. They modify only this clone's `.git/config`; global Git config and other repositories are untouched. While enabled, commits made from this repository's main worktree use the bot identity, including account-owner made commits. Run the restore skill before making account-owner attributed commits here.
-
-If you decide to have both bot-authored commits and bot-authenticated API calls, use `agent-git-setup`'s `GitHub` mode; its workflow covers both. Use `agent-github-access` by itself for subsequent `gh` commands or GitHub API-only access.
-
-Note: none of these skills configures `git push` authentication, which continues to use Git's configured credential.
-
-`agent-github-access` is a just-in-time step, not a permanent authorization. Run it and confirm repository access **before** assigning GitHub CLI/API work to the agent. If no explicit or default credentials select an App and several per-App files exist, the skill asks which public App ID to use; it never guesses. Mint a fresh token for each later session, or when the current token expires.
+This tool is harness agnostic and does not prescribe usage of linked worktrees. If the harness decides to use worktrees or that is a project requirement then agentic work will be clearly attributed to the agent identity by default. `agent-git-setup` also allows to override the main tree identity with agent's identity and easily revert back to original identity.
 
 ## Requirements
 
@@ -37,7 +22,7 @@ git clone https://github.com/koalyptus/agent-git-setup
 
 ### 1. Install the skills you need in your harness
 
-Consult that harness's docs for the exact install / "load skill from repo" command. Install `agent-git-setup` and `agent-github-access`; install the main-identity skills only if you want their opt-in workflow. When copying manually, include each installed skill's `scripts/` directory. If loading a raw `SKILL.md`, make its bundled scripts available at the installed skill path too.
+Consult harness's docs for the exact install / "load skill from repo" command. Install `agent-git-setup` and `agent-github-access`; install the main-identity skills only if you want their opt-in workflow. When copying manually, include each installed skill's `scripts/` directory. If loading a raw `SKILL.md`, make its bundled scripts available at the installed skill path too.
 
 ```
 https://raw.githubusercontent.com/koalyptus/agent-git-setup/main/skills/agent-git-setup/SKILL.md
@@ -51,7 +36,7 @@ https://raw.githubusercontent.com/koalyptus/agent-git-setup/main/skills/agent-gi
 
 ### 2. Prepare relevant Git/GitHub information
 
-There are two flows: `Git-only` and `GitHub App`.
+There are two modes: `Git-only` and `GitHub App`.
 `Git-only` assigns the provided agent identity to Git commits only.
 
 #### Git-only
@@ -61,32 +46,22 @@ There are two flows: `Git-only` and `GitHub App`.
 The bot account identity is resolved automatically from GitHub.
 
 **Optional — signed commits.** By default agent commits are unsigned (no
-"Verified" badge): a GitHub App bot has no user account, so it cannot register
-a signing key, and local signing can only attest to the account owning the key.
-To get the green Verified badge on agent commits, export
-`AGENT_GIT_SIGNING_KEY=/path/to/private-key` — one-time setup outside the
-agent:
+"Verified" badge), agent commits can be signed with an SSH key.
+To get the green `Verified` badge on agent commits:
 
 1. Generate or reuse an SSH key (e.g. `ssh-keygen -t ed25519 -f ~/.ssh/agent-signing`).
 2. Upload the **public** key (`*.pub`) to your GitHub account under
    **Settings → SSH and GPG keys → New SSH key → Key type: Signing Key**.
-3. Export `AGENT_GIT_SIGNING_KEY` pointing at the **private** key path — or,
-   to avoid exporting it in every session, add
-   `AGENT_GIT_SIGNING_KEY=*** to your credentials file; `mint-token.sh
-   --shell` then re-exports it automatically (only the path, never the key
-   bytes).
+3. Assign `AGENT_GIT_SIGNING_KEY=/path/to/private-key` to a valid signing key: 
 
-The commit *author* stays the bot; the signature attests to the account that
-registered the key (yours). A missing or unreadable key path fails setup with
-exit 2 — no config is written.
+Note: The bot becomes the commit *author*, GitHub verifies the signature against the public key registered to that account. A missing or unreadable key path fails setup with exit 2 and no config is written.
 
 #### GitHub App
 
 You need a GitHub App (with its PEM) and its App ID. If you already have one,
-skip next section below. To create one, see the steps under "Creating a GitHub
-App".
+skip next section below.
 
-**Creating a GitHub App** (one-time, if not already done)
+**Creating a GitHub App**
 
 1. **Create the app** — GitHub → **Settings → Developer settings → GitHub Apps → New GitHub App**. For a private automation-only app set only:
    - **GitHub App name**: choose a name whose App slug matches the bot login you want (for example, slug `myagent` gives `myagent[bot]` for `AGENT_GIT_NAME`).
@@ -107,11 +82,9 @@ App".
 2. **Generate the private key** — on the app page click **Generate a private key (PEM)**, download the `.pem`, keep it secret and store it **outside any git repo** (e.g. `~/.ssh/myagent.pem`).
 3. **Install the app** — on the app page click **Install** and select the repositories the agent should touch. This grants permission; it does not change the bot name.
 
-The `agent-github-access` skill reads the App ID and PEM path from the
-existing agent-git-setup credentials configuration. Keep the configuration and
-PEM outside repositories; do not include either value in the agent prompt.
-
 For commit attribution, provide `AGENT_GIT_NAME` (the bot login, normally `<app-slug>[bot]`) to `agent-git-setup`. GitHub API access uses the App actor from the minted token and does not require `AGENT_GIT_NAME`.
+
+Note: never commit the .pem file or paste its contents into a prompt.
 
 ### 3. Prompt the agent
 
@@ -126,53 +99,70 @@ before assigning API-only work where commit identity should remain unchanged.
 Use the agent-git-setup skill. Set up a bot git identity for current repo.
 
 AGENT_GIT_NAME=myagent[bot]   # replace with your bot's name (e.g. myagent → myagent[bot])
-AGENT_GIT_SIGNING_KEY=/path/to/private-key   # optional; omit for unsigned commits
+
+# optional; path to private key, omit for unsigned commits
+AGENT_GIT_SIGNING_KEY=/path/to/private-key
 ```
 
 #### GitHub App
 
 ```text
-Use the agent-git-setup skill. Set up a bot git identity for current repo.
+Use the agent-git-setup skill. Set up a bot git and GitHub identity for current repo.
 
 AGENT_GIT_NAME=myagent[bot]   # replace with your bot's name (e.g. myagent → myagent[bot])
-GITHUB_APP_ID=[1234567]
-GITHUB_APP_PEM=[/path/to/myagent.pem]
+GITHUB_APP_ID=1234567
+GITHUB_APP_PEM=/path/to/myagent.pem
+
+# optional; path to private key, omit for unsigned commits
+AGENT_GIT_SIGNING_KEY=/path/to/private-key
 ```
 
-Note: Once setup is done, run the access skill `agent-github-access` before asking the agent to perform GitHub CLI/API actions. It uses the App credentials already selected by the harness or configured for the minter. The minter creates an installation-scoped token that lasts about one hour, and the skill verifies access to the current repository.
+### 4. Add section to AGENTS.md
 
-If bot identity setup or access fails, the skill reports the reason and asks
-before using the configured account owner identity as a last resort. Approval is
-session-scoped; declining or failing to verify the selected identity aborts
-that workflow. The setup scripts themselves remain bot-only and never silently
-fall back.
-
-### Add an AGENTS file to the harness or project
-
-Add an `AGENTS.md` (or `AGENTS`, depending on your harness) file to the
-harness or project root instructing agents working on this repository to
-follow the agent-git-setup flow. The file should tell agents to run
-`agent-git-setup` when they start work on a repository that has no bot
-identity configured, and to ask the user for their agent details if those
-details are not already available (for example `AGENT_GIT_NAME` or the
-GitHub App ID + PEM). Add a pointer to this README so an agent can find the
-setup steps.
-
-Example `AGENTS.md`:
+You also may consider adding a dedicated instruction in AGENTS.md to make sure the agent follows the agent-git-setup flows for desired project. Example:
 
 ```markdown
-# AGENTS
-
+...
 When working on this repository:
-- Run `agent-git-setup` before making commits or API calls.
-- If this repository has no bot identity configured, ask the user to
-  provide their agent details before proceeding.
+- Follow the `agent-git-setup` flows for agentic commits and GitHub calls
+(gh or API calls).
+- If this repository has no bot identity configured, ask the user to provide
+their agent details before proceeding.
+...
 ```
 
-If a repository already has an `AGENTS` file, add these instructions to it
-rather than creating a duplicate.
+## Available skills
 
-## 4. What happens
+| Skill | When to use it | What it does |
+|---|---|---|
+| `agent-git-setup` | When a repo does not yet have bot identity setup for Git and GitHub. | Sets bot commit identity once for every current and future linked agent worktree, leaving the main tree's existing identity unchanged. Its GitHub mode can also mint a short-lived token and preflight API access. |
+| `agent-github-access` | Before any agentic GitHub CLI/API work when a GitHub app bot identity is already in place. | Mints a short-lived (about one hour) App installation token and verifies access to the current repository. |
+| `agent-git-override-main-identity` | When the account owner explicitly wants bot-attributed commits from the main worktree. | Temporarily replaces this clone's main-worktree `user.name` and `user.email` with the persisted bot identity. The change remains active until restored. |
+| `agent-git-restore-main-identity` | When the account owner wants to restore own git identity in main-worktree previously overriden with bot identity. | Restores the saved repo-local identity, refusing to overwrite identity changes made since identity override activation. |
+
+Note: none of these skills configures `git push` authentication, which continues to use Git's configured credential.
+
+`agent-github-access` is a just-in-time step, not a permanent authorization. Run it and confirm repository access **before** assigning GitHub CLI/API work to the agent. If no explicit or default credentials select an App and several per-App files exist, the skill asks which public App ID to use; it never guesses. Mint a fresh token for each later session, or when the current token expires.
+
+## Skills usage
+
+Ideally, the agent should not modify the local git config. It should only use the skills provided by `agent-git-setup`.
+
+By default, the agent identity applies only in linked worktrees and `agent-git-setup` does not require your agent to use them. As a result, commits made by the agent in the main checkout remain attributed to your original git identity, unless you deliberately use the `agent-git-override-main-identity` skill to temporarily apply the agent identity in the main worktree.
+
+### agent-git-setup
+This skill is meant to be used once per repo to set up the agent identity whether with the `git-only` or `GitHub App` mode. After that it should be just a question of tactically using the other skills via session prompts or with instructions in AGENTS.md.
+
+### agent-github-access
+This should be invoked ahead of any GitHub CLI or API interaction to ensure bot identity is correctly attributed to the agent in current session.
+
+### agent-git-override-main-identity
+This is a convenience skill to invoke when the account owner wants to override in main tree own identity with agent's one.
+
+### agent-git-restore-main-identity
+This convenience skill restores the identity saved before the override.
+
+## Flows
 
 See [`skills/agent-git-setup/SKILL.md`](skills/agent-git-setup/SKILL.md) for commit attribution and preflight and [`skills/agent-github-access/SKILL.md`](skills/agent-github-access/SKILL.md) for GitHub API access.
 
@@ -180,47 +170,25 @@ See [`skills/agent-git-setup/SKILL.md`](skills/agent-git-setup/SKILL.md) for com
 
 ```
 ┌──────────────────────────────────────┐
-│              Prompt                  │
-│   ────────────────────────────────   │
-│   "Use agent-git-setup skill."       │
-└──────────────┬───────────────────────┘
-               │
-               ▼
+│ Prompt: "Use agent-git-setup skill"  │
+└──────────────────┬───────────────────┘
+                   ▼
 ┌──────────────────────────────────────┐
-│           Token source               │  (only for gh/API agent identity)
-│   ────────────────────────────────   │
-│     scripts/mint-token.sh            │   scripts/mint-token.sh + GitHub App
-│     --app-id --pem                   │    (create app, download PEM,
-│     --shell                          │     install; setup resolves identity)
-└──────────────┬───────────────────────┘
-               │ exports GH_TOKEN + attestation
-               ▼
+│ Setup (once per repo)                │
+│ Saves the bot identity for all       │
+│ linked worktrees; main checkout      │
+│ stays yours                          │
+└──────────────────┬───────────────────┘
+                   ▼
 ┌──────────────────────────────────────┐
-│       Runtime environment            │
-│   ────────────────────────────────   │
-│   AGENT_GIT_NAME                     │  (agent)
-│   GH_TOKEN + signed AGENT_GIT_TOKEN_*│  (GitHub mode)
-└──────────────┬───────────────────────┘
-               │
-               ▼
+│ Preflight (in the agent's worktree)  │
+└──────────────────┬───────────────────┘
+                   ▼
 ┌──────────────────────────────────────┐
-│   scripts/agent-git-setup.sh         │
-│   ────────────────────────────────   │
-│   setup once; preflight before work  │
-│   writes ONE bot-identity config     │  .git/agent-bot-identity.config
-│     in .git/, included for ALL       │  + includeIf "gitdir/i:**/.git/
-│     worktrees via includeIf          │    worktrees/**" in .git/config
-│     user.name = <name>[bot]          │     (main repo .git is excluded
-│     user.email = (bot noreply)       │      by the glob → stays yours)
-└──────────────┬───────────────────────┘
-               │
-               ▼
-┌──────────────────────────────────────┐
-│      Agent works in the worktree     │
-│   ────────────────────────────────   │
-│   commits → <name>[bot] (no badge)   │
-│   gh/API   → <name>[bot] (GH_TOKEN)  │
-│   git push → configured credential   │
+│ Agent works in the worktree          │
+│ commits → <name>[bot]                │
+│ gh/API  → <name>[bot] (GitHub mode)  │
+│ git push → your configured credential│
 └──────────────────────────────────────┘
 ```
 
@@ -229,57 +197,69 @@ See [`skills/agent-git-setup/SKILL.md`](skills/agent-git-setup/SKILL.md) for com
 This flow covers `gh` and GitHub API calls only. It does not set commit identity or configure pushes.
 
 ```
-┌────────────────────────────────────────────┐
-│ Current repository + existing App config   │
-└──────────────────────┬─────────────────────┘
-                       ▼
-┌────────────────────────────────────────────┐
-│ Resolve App credentials                    │
-│ Harness selection → default → per-App files│
-└──────────────┬─────────────────────┬───────┘
-               │ Selected            │ None / ambiguous
-               ▼                     ▼
-┌──────────────────────────────┐  ┌──────────────────────┐
-│ Run platform minter in the   │  │ Stop if none; ask    │
-│ agent's active shell process │  │ which App if several │
-└──────────────┬───────────────┘  └──────────────────────┘
-               │ GH_TOKEN + signed actor attestation
-               ▼
-┌────────────────────────────────────────────┐
-│ Verify installation-token access to repo   │
-│ with gh repo view                          │
-└──────────────┬─────────────────────┬───────┘
-               │ Verified            │ Failed
-               ▼                     ▼
-┌──────────────────────────────┐  ┌──────────────────────────────┐
-│ Requested gh/API actions     │  │ Explain failure and ask for  │
-│ as the App bot               │  │ explicit account owner approval      │
-└──────────────────────────────┘  └──────────────┬───────────────┘
-                                                 ▼
-               ┌────────────────────────────────────┐
-               │          Approved?                 │
-               └──────────────┬───────────────────┬─┘
-                              │ Yes               │ No
-                              ▼                   ▼
-          ┌──────────────────────────────┐  ┌──────────────────┐
-          │ Clear bot-token variables;   │  │ Stop; no GitHub  │
-          │ verify account owner login + repo    │  │ changes          │
-          └──────────────┬───────────────┘  └──────────────────┘
-                         ▼
-          ┌──────────────────────────────┐
-          │ Approved API actions as      │
-          │ account owner for this session       │
-          └──────────────────────────────┘
+┌──────────────────────────────────────┐
+│ Prompt: "Use agent-github-access"    │
+└──────────────────┬───────────────────┘
+                   ▼
+┌──────────────────────────────────────┐
+│ Pick the GitHub App credentials      │
+│ (asks which App if several exist)    │
+└──────────────────┬───────────────────┘
+                   ▼
+┌──────────────────────────────────────┐
+│ Mint a short-lived token and verify  │
+│ access to the repo                   │
+└────────┬─────────────────────┬───────┘
+         │ OK                  │ Failed
+         ▼                     ▼
+┌─────────────────┐  ┌─────────────────────────┐
+│ gh/API actions  │  │ Explain; continue as    │
+│ as the bot      │  │ account owner only if   │
+│                 │  │ you explicitly approve  │
+└─────────────────┘  └─────────────────────────┘
 ```
 
-## Behavior
+## Configuration
 
-- Setup writes the bot's `user.name` and GitHub noreply email to shared repo config for linked worktrees. The main checkout keeps its existing Git identity; the setup leaves its local identity and global Git config untouched.
+GitHub App credentials are stored in a `.env` file outside your repositories. The token minter (`mint-token.sh` / `mint-token.ps1`) reads it; the Git-only flow needs none of this.
+
+| OS | Default location |
+|---|---|
+| Linux / macOS | `~/.config/agent-git-setup/` |
+| Windows | `%USERPROFILE%\.config\agent-git-setup\` |
+
+If `XDG_CONFIG_HOME` is set, `$XDG_CONFIG_HOME/agent-git-setup/` is used instead.
+
+Inside that folder:
+
+- `credentials-<APP_ID>.env` under `credentials.d/`: one file per GitHub App (checked first when the App ID is known).
+- `credentials.env`: a single default App.
+
+Each file holds only plain `NAME=value` lines:
+
+- `GITHUB_APP_ID`: the public App ID.
+- `GITHUB_APP_PEM`: the **path** to the App's private key (`.pem`), not its contents.
+- `AGENT_GIT_BOT_ID` (optional): the bot's numeric account id.
+- `AGENT_GIT_SIGNING_KEY` (optional): the **path** to an SSH key for signed commits.
+
+No tokens or key contents are ever stored. To use a file elsewhere, pass `--credentials <file>` (`-Credentials` in PowerShell) or set `AGENT_GIT_CREDENTIALS`.
+
+## What it does and doesn't do
+
+### Does
+
+- Setup writes the bot's `user.name` and GitHub noreply email to shared repo config for linked worktrees.
 - Commits are unsigned by default. Setting `AGENT_GIT_SIGNING_KEY` to a readable private key enables SSH signing (`gpg.format=ssh`, `commit.gpgsign=true`) for worktrees via the same scoping; the Verified badge then attests to the GitHub account that registered the matching public key as a Signing key (normally the human's), not to the bot. An unreadable key path fails setup with exit 2 before any config is written.
-- GitHub-mode preflight verifies a signed App installation token and access to the target worktree's `origin`. `gh` uses `GH_TOKEN`; other API clients must pass it explicitly. Bot-user tokens are not supported.
+- GitHub-mode preflight verifies a signed App installation token and access to the target worktree's `origin`. `gh` uses `GH_TOKEN`; other API clients must pass it explicitly.
 - `agent-github-access` mints a token using the App installation already selected by the harness and verifies access to the current repository. The token's repository scope is controlled by the App installation's GitHub settings, not narrowed by this check.
 - If bot setup or access fails, the corresponding skill must surface the error and obtain explicit, session-scoped account owner approval before using an existing account owner identity. No approval means stop; no identity or credential config is changed for fallback.
-- The script does not manage worktrees, hooks, remotes, or push credentials. The harness owns lifecycle enforcement. Push identity follows Git's configured credential, normally the user's existing credential; a helper configured with the App token can push as the bot.
+
+### Doesn't
+
+- Change the main checkout's Git identity or your global Git config.
+- Manage worktrees, hooks, or remotes. That's the harness owns lifecycle enforcement.
+- Configure push credentials. Push identity follows Git's configured credential, normally the user's existing credential; to push as the bot, you must configure your own Git credential helper to use the App token.
+- Support bot-user tokens.
 
 ## Validation
 
@@ -299,20 +279,10 @@ Root scripts in `scripts/` are canonical; harnesses use bundled copies under
 the corresponding skill's `scripts/` directory. After changing a root script, run
 `make sync-skill-scripts`; `make ci` checks for bundle drift.
 
-## Commands
+## More details
 
-To enable bot-attributed commits, run setup once for this repository checkout; the harness creates and manages linked worktrees, and the shared conditional Git config applies to all of them, including ones created later. The harness should run the matching preflight in the selected worktree before each task that needs bot identity:
-
-```bash
-scripts/agent-git-setup.sh <repo-dir>
-scripts/agent-git-setup.sh --preflight --mode git-only <worktree>
-scripts/agent-git-setup.sh --preflight --mode github <worktree>
-```
-
-On Windows, use `scripts/agent-git-setup.ps1` with the same arguments. Full
-token-provider, environment, and lifecycle details are in the
-[skill guide](skills/agent-git-setup/SKILL.md); Windows-specific notes are in
-[doc/windows-support.md](doc/windows-support.md).
+- [Skill guide](skills/agent-git-setup/SKILL.md): token provider, environment, and lifecycle details.
+- [Windows support](doc/windows-support.md): PowerShell-specific notes.
 
 ## License
 
