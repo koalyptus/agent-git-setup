@@ -79,8 +79,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Install shellcheck + shfmt
-        run: |
-          for i in 1 2 3; do make install && break; sleep 5; done
+        run: make install
       - name: Run shellcheck + shfmt (bash scripts)
         run: make lint-bash
       - name: Install PSScriptAnalyzer + lint PowerShell scripts
