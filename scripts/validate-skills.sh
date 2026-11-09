@@ -22,4 +22,9 @@ while IFS= read -r -d '' f; do
   SKILL_DIRS+=("$(dirname "$f")")
 done < <(find "$REPO_ROOT/skills" -name SKILL.md -print0)
 
+if [ "${#SKILL_DIRS[@]}" -eq 0 ]; then
+  echo "No SKILL.md files found" >&2
+  exit 1
+fi
+
 exec "$BIN" validate "${SKILL_DIRS[@]}"

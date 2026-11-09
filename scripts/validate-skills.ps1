@@ -24,3 +24,4 @@ $Bin = Join-Path $WorkDir "agent-skills-validator.exe"
 
 $SkillDirs = Get-ChildItem -Path (Join-Path $RepoRoot "skills") -Recurse -Filter SKILL.md | ForEach-Object { $_.DirectoryName }
 & $Bin validate @SkillDirs
+Remove-Item -Recurse -Force $WorkDir -ErrorAction SilentlyContinue
