@@ -9,7 +9,7 @@ jobs:
   sync-check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Check skill-scripts sync
         run: make sync-check
 
@@ -17,7 +17,7 @@ jobs:
     needs: sync-check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Validate SKILL.md packages
         run: make validate-skills
 
@@ -25,7 +25,7 @@ jobs:
     needs: sync-check
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Validate SKILL.md packages
         shell: pwsh
         run: |
@@ -36,7 +36,7 @@ jobs:
     needs: sync-check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
           python-version: '3.x'
@@ -49,7 +49,7 @@ jobs:
     needs: sync-check
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Run hermetic GitHub access minter test
         shell: pwsh
         run: |
@@ -77,7 +77,7 @@ jobs:
     needs: sync-check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install shellcheck + shfmt
         run: make install
       - name: Run shellcheck + shfmt (bash scripts)
