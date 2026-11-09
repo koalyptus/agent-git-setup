@@ -1,19 +1,20 @@
 #!/usr/bin/env bash
-# Validate all SKILL.md packages against the Agent Skills spec.
-# Downloads a pinned agent-skills-validator release (verified by checksum).
 set -euo pipefail
-
-VALIDATOR_VERSION="0.2.0"
-ARCHIVE="agent-skills-validator_${VALIDATOR_VERSION}_linux_amd64.tar.gz"
-SHA256="11aa2494aa3fed906226d4b364d572f0d2638386157e289cc6bd4da682f7b2cf"
-URL="https://github.com/coolapso/agent-skills-validator/releases/download/v${VALIDATOR_VERSION}/${ARCHIVE}"
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORKDIR="$(mktemp -d)"
 trap 'rm -rf "$WORKDIR"' EXIT
 cd "$WORKDIR"
+
+LATEST=$(curl -sSL https://api.github.com/repos/coolapso/agent-skills-validator/releases/latest | python3 -c "import sys,json; print(json.load(sys.stdin)['tag_name'].lstrip('v'))")
+ARCHIVE="agent-skills-validator_${LATEST}_linux_amd64.tar.gz"
+URL="https://github.com/coolapso/agent-skills-validator/releases/download/v${LATEST}/${ARCHIVE}"
+CHECKSUMS_URL="https://github.com/coolapso/agent-skills-validator/releases/download/v${LATEST}/checksums.txt"
+
 curl -sSL --retry 3 --retry-delay 2 -o "$ARCHIVE" "$URL"
-echo "${SHA256}  ${ARCHIVE}" | sha256sum -c -
+curl -sSL --retry 3 --retry-delay 2 -o checksums.txt "$CHECKSUMS_URL"
+grep " ${ARCHIVE}\$" checksums.txt | sha256sum -c -
+
 tar -xzf "$ARCHIVE"
 BIN="$WORKDIR/agent-skills-validator"
 
