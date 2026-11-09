@@ -13,6 +13,25 @@ jobs:
       - name: Check skill-scripts sync
         run: make sync-check
 
+  validate-skills:
+    needs: sync-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Validate SKILL.md packages
+        run: make validate-skills
+
+  validate-skills-windows:
+    needs: sync-check
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Validate SKILL.md packages
+        shell: pwsh
+        run: |
+          pwsh scripts/validate-skills.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
   test-linux:
     needs: sync-check
     runs-on: ubuntu-latest

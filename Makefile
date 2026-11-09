@@ -27,7 +27,7 @@ SKILL_SCRIPTS_DIR := $(SKILL_DIR)/scripts
 SKILL_BUNDLE := $(SKILL_SCRIPTS_DIR)/agent-git-setup.sh $(SKILL_SCRIPTS_DIR)/agent-git-setup.ps1 $(SKILL_SCRIPTS_DIR)/mint-token.sh
 GITHUB_ACCESS_SKILL_SCRIPTS_DIR := skills/agent-github-access/scripts
 
-.PHONY: test lint install ci sync-skill-scripts sync-check
+.PHONY: test lint install ci sync-skill-scripts sync-check validate-skills
 
 test:
 	bash $(TEST)
@@ -189,3 +189,10 @@ release:
 		exit 1; \
 	fi
 	@echo "released v$(VERSION)"
+
+validate-skills:
+ifeq ($(OS),Windows_NT)
+	pwsh scripts/validate-skills.ps1
+else
+	bash scripts/validate-skills.sh
+endif
