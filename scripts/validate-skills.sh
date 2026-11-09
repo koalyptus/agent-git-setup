@@ -12,7 +12,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORKDIR="$(mktemp -d)"
 trap 'rm -rf "$WORKDIR"' EXIT
 cd "$WORKDIR"
-curl -sSL -o "$ARCHIVE" "$URL"
+curl -sSL --retry 3 --retry-delay 2 -o "$ARCHIVE" "$URL"
 echo "${SHA256}  ${ARCHIVE}" | sha256sum -c -
 tar -xzf "$ARCHIVE"
 BIN="$WORKDIR/agent-skills-validator"

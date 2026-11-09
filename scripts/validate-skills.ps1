@@ -11,7 +11,11 @@ $WorkDir = Join-Path $env:TEMP "agent-skills-validator-$ValidatorVersion"
 New-Item -ItemType Directory -Force -Path $WorkDir | Out-Null
 
 $ArchivePath = Join-Path $WorkDir $Archive
-Invoke-WebRequest -Uri $Url -OutFile $ArchivePath
+$attempt = 0
+while ($true) {
+  try { Invoke-WebRequest -Uri $Url -OutFile $ArchivePath; break }
+  catch { $attempt++; if ($attempt -ge 3) { throw }; Start-Sleep -Seconds 2 }
+}
 $actual = (Get-FileHash $ArchivePath -Algorithm SHA256).Hash.ToLower()
 if ($actual -ne $Sha256) { throw "checksum mismatch: $actual" }
 
