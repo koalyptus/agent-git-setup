@@ -98,6 +98,8 @@ test runs in the Linux test job.
 The original single `test` job was split into `test-linux` and
 `test-windows`. The `lint` job now includes a `PSScriptAnalyzer`
 step for `*.ps1` files (also installed via `make install`).
+Separate `validate-skills` and `validate-skills-windows` jobs run the
+skill-package validator on their respective platforms.
 
 ## Known differences from the bash script
 

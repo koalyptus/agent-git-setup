@@ -273,7 +273,13 @@ on Windows.
 | `make test` | Run all test suites. |
 | `make lint` | Run ShellCheck, shfmt, and PSScriptAnalyzer (when available). |
 | `make install` | Install supported local lint/test dependencies. |
+| `make validate-skills` | Validate every `SKILL.md` package against the Agent Skills spec. |
 | `make ci` | Run sync check, tests, and lint; use as the pre-push gate. |
+
+`make validate-skills` downloads the latest checksum-verified
+[agent-skills-validator](https://github.com/coolapso/agent-skills-validator)
+release and validates all `SKILL.md` packages under `skills/`. It needs network
+access and is not part of `make ci`; CI runs it separately on Linux and Windows.
 
 Root scripts in `scripts/` are canonical; harnesses use bundled copies under
 the corresponding skill's `scripts/` directory. After changing a root script, run

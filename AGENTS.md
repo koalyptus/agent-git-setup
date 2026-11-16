@@ -18,4 +18,5 @@
 - Run `make test` for the Bash setup, GitHub access workflows, PowerShell (when available), and token-minter suites. Run the relevant `pwsh tests/*.ps1` suite directly when PowerShell is available but not visible to Make's shell.
 - Run `make lint` for ShellCheck, shfmt, and PSScriptAnalyzer checks.
 - Run `make ci` before proposing a change when the local toolchain supports all targets.
+- Run `make validate-skills` to validate every `SKILL.md` package against the Agent Skills spec; it downloads the checksum-verified agent-skills-validator (network required, not part of `make ci`).
 - Keep tests hermetic: use synthetic credentials and local fixtures; never use a real App key or token.
