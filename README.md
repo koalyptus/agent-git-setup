@@ -22,7 +22,15 @@ git clone https://github.com/koalyptus/agent-git-setup
 
 ### 1. Install the skills you need in your harness
 
-Consult harness's docs for the exact install / "load skill from repo" command. Install `agent-git-setup` and `agent-github-access`; install the main-identity skills only if you want their opt-in workflow. When copying manually, include each installed skill's `scripts/` directory. If loading a raw `SKILL.md`, make its bundled scripts available at the installed skill path too.
+With the [skills CLI](https://www.skills.sh/docs/cli) (Vercel's open skills ecosystem), install every skill in this repo globally (available in all your projects):
+
+```
+npx skills add https://github.com/koalyptus/agent-git-setup/tree/main/skills --all --global
+```
+
+Use `--list` instead of `--all` to preview the skills, or replace `--all` with `--skill <name>` to install a subset. Drop `--global` to install into the current project only.
+
+Or consult your harness's docs for the exact install / "load skill from repo" command. When copying manually, include each installed skill's `scripts/` directory. If loading a raw `SKILL.md`, make its bundled scripts available at the installed skill path too.
 
 ```
 https://raw.githubusercontent.com/koalyptus/agent-git-setup/main/skills/agent-git-setup/SKILL.md
