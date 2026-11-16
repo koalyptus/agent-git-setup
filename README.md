@@ -28,7 +28,7 @@ With the [skills CLI](https://www.skills.sh/docs/cli) (Vercel's open skills ecos
 npx skills add https://github.com/koalyptus/agent-git-setup/tree/main/skills --all --global
 ```
 
-Use `--list` instead of `--all` to preview the skills, or replace `--all` with `--skill <name>` to install a subset. Drop `--global` to install into the current project only. The core pair is `agent-git-setup` and `agent-github-access`; the main-identity skills are opt-in.
+Use `--list` instead of `--all` to preview the skills, or replace `--all` with `--skill <name>` to install a subset. Drop `--global` to install into the current project only.
 
 Or consult your harness's docs for the exact install / "load skill from repo" command. When copying manually, include each installed skill's `scripts/` directory. If loading a raw `SKILL.md`, make its bundled scripts available at the installed skill path too.
 
