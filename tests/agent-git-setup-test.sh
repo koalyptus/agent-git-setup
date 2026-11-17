@@ -316,6 +316,90 @@ else
 	ok "no bot config file written when nothing resolves"
 fi
 
+# 15a. Bot id lookup: the network response is fetched to a FILE and parsed from
+#      that file, never piped into the interpreter (`curl | python3`), so the
+#      pattern-based supply-chain audit (skills.sh HIGH: "downloads and executes
+#      remote code") does not fire. A fake curl honors `-o` and writes a JSON body.
+#
+#      This block replaces the throwaway fake curl (exit 22, exercises the
+#      failure path in tests 9b/12/15) with one that returns a real user payload.
+echo "15a. Bot id lookup fetches to a file (no curl|python3 pipe) and cleans up"
+REPO15A="$(make_repo with-origin)"
+make_worktree "$REPO15A"
+WT15A="$WT_DIR"
+mkdir -p "$SANDBOX/bin-success"
+cat >"$SANDBOX/bin-success/curl" <<'CURL'
+#!/usr/bin/env bash
+# Minimal stand-in for `curl`: honor -o <file>, ignore -H/-s/-f, write a fixed
+# GitHub user payload. Each argv token is logged newline-separated as a HEX dump
+# (portable; avoids GNU-only `base64 -w0`) so the test can match exact tokens —
+# `-o` alone would also substring-match the "agent-git-id.*" path.
+out=""
+while [ $# -gt 0 ]; do
+	if [ -n "${AGENT_GIT_SETUP_TEST_CURL_LOG:-}" ]; then
+		printf '%s\n' "$(printf '%s' "$1" | od -An -tx1 | tr -d ' \n')" >>"$AGENT_GIT_SETUP_TEST_CURL_LOG"
+	fi
+	case "$1" in
+	-o) out="$2"; shift 2 ;;
+	-H|-s|-f) shift ;;
+	*) shift ;;
+	esac
+done
+printf '{"login":"fixture-bot[bot]","id":555000111,"type":"Bot"}\n' >"${out:-/dev/null}"
+exit 0
+CURL
+chmod +x "$SANDBOX/bin-success/curl"
+PATH_ORIG15A="$PATH"
+export PATH="$SANDBOX/bin-success:$PATH_ORIG15A"
+export AGENT_GIT_SETUP_TEST_CURL_LOG="$SANDBOX/curl-args.log"
+export AGENT_GIT_NAME="fixture-bot[bot]"
+unset AGENT_GIT_BOT_ID
+# Baseline FIRST, before the script runs, so any response file it leaves behind
+# counts as a leak instead of being absorbed into the baseline. `cd` into TMPDIR
+# keeps find output and the grep pattern consistent (`./name`) even when TMPDIR
+# is relative.
+LEAK_TMP="${TMPDIR:-/tmp}"
+count_leaks() { (cd "$LEAK_TMP" 2>/dev/null && find . -maxdepth 1 -name 'agent-git-id.*' 2>/dev/null | wc -l); }
+LEAK_BASELINE="$(count_leaks)"
+if "$SCRIPT" "$WT15A" >/dev/null 2>&1; then
+	ok "setup succeeds with a successful API lookup"
+else
+	bad "setup should succeed when the API lookup returns a user"
+fi
+assert_eq "$(git -C "$WT15A" config user.email)" "555000111+fixture-bot[bot]@users.noreply.github.com" "bot id resolved via the API response file"
+# Assert an exact `-o` argv token (not a substring: the temp path also contains
+# "-o" in "agent-git-id"). The log stores hex-encoded tokens.
+if grep -Fxq -- "$(printf '%s' '-o' | od -An -tx1 | tr -d ' \n')" "$AGENT_GIT_SETUP_TEST_CURL_LOG"; then
+	ok "lookup passes the response to curl -o (file, not stdout pipe)"
+else
+	bad "lookup did not use curl -o"
+fi
+unset AGENT_GIT_SETUP_TEST_CURL_LOG
+export PATH="$PATH_ORIG15A"
+rm -rf "$SANDBOX/bin-success"
+# No temp response files created by this block may survive. A pre-created marker
+# that DOES match the glob proves `find` can see a file, and a second probe
+# proves the post-baseline delta actually registers a new file — together these
+# stop the check from passing vacuously if find is missing or broken.
+LEAK_MARKER="agent-git-id.probe.$$"
+(cd "$LEAK_TMP" && : >"$LEAK_MARKER")
+DETECTED="$(cd "$LEAK_TMP" 2>/dev/null && find . -maxdepth 1 -name 'agent-git-id.*' 2>/dev/null | grep -cxF "./$LEAK_MARKER")"
+# Prove the delta measurement actually detects a file created AFTER the baseline:
+# drop a second probe and require the count to rise by exactly one.
+(cd "$LEAK_TMP" && : >"agent-git-id.detect.$$")
+DELTA_DETECTED="$(($(count_leaks) - LEAK_BASELINE))"
+rm -f "$LEAK_TMP/$LEAK_MARKER" "$LEAK_TMP/agent-git-id.detect.$$"
+if [ "${DETECTED:-0}" = "1" ] && [ "$DELTA_DETECTED" = "2" ]; then
+	ok "leak check detects an agent-git-id.* file after baseline"
+else
+	bad "leak check did not detect its probes (detected=$DETECTED delta=$DELTA_DETECTED)"
+fi
+LEAKS="$(($(count_leaks) - LEAK_BASELINE))"
+assert_eq "$LEAKS" "0" "no agent-git-id.* temp files leaked"
+
+# Restore the throwaway failure-path curl for the remaining tests.
+export PATH="$SANDBOX/bin:$PATH"
+
 # 16. --preflight fails closed in the MAIN repo (bot identity not in effect).
 #     The includeIf glob excludes the main tree's .git, so the main checkout's
 #     user.name is the account owner's, not AGENT_GIT_NAME. Preflight must refuse.

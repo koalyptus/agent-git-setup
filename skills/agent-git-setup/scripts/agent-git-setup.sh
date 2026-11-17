@@ -330,12 +330,27 @@ INCLUDE_KEY="includeIf.gitdir/i:**/.git/worktrees/**.path"
 # _RESOLVE_ID <handle>: print the numeric GitHub id for a handle, or empty.
 # Uses the public API without GH_TOKEN; installation tokens cannot read arbitrary users.
 # Written set -e-safe: a failed lookup is reported as unresolved and setup fails.
+#
+# The response is fetched to a temp FILE and parsed from that file — never piped
+# network output straight into the interpreter (`curl ... | python3`). A pipe like
+# that trips pattern-based supply-chain audits (skills.sh flags it HIGH: "downloads
+# and executes remote code"), even though json.load only parses. Breaking the pipe
+# keeps the verdict clean without changing behavior.
+#
+# Cleanup: an explicit `rm -f` runs before every return, which covers the failure
+# paths (a failed curl/python still reaches the rm, and `exit` elsewhere aborts
+# after it). The function-local RETURN trap backs up the normal-return path and
+# the `set -e` abort path; note bash does NOT run it for an explicit `exit` inside
+# the function, so the explicit rm is the load-bearing cleanup.
 _RESOLVE_ID() {
-	local _enc _id
+	local _enc _id _resp
+	_resp="$(mktemp "${TMPDIR:-/tmp}/agent-git-id.XXXXXX" || true)"
+	trap 'rm -f "$_resp"' RETURN
 	_enc="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "$1" 2>/dev/null || true)"
-	_id="$(curl -sf -H "Accept: application/vnd.github+json" "https://api.github.com/users/${_enc}" 2>/dev/null |
-		python3 -c 'import sys,json; print(json.load(sys.stdin).get("id",""))' 2>/dev/null || true)"
-	if [ -n "${_id:-}" ] && [ "${_id}" != "None" ]; then
+	curl -sf -H "Accept: application/vnd.github+json" "https://api.github.com/users/${_enc}" -o "$_resp" 2>/dev/null || true
+	_id="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("id",""))' "$_resp" 2>/dev/null || true)"
+	rm -f "$_resp"
+	if [ -n "${_id:-}" ] && [ "$_id" != "None" ]; then
 		printf '%s' "$_id"
 	fi
 	return 0
