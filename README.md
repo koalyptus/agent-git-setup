@@ -14,13 +14,7 @@ This tool is harness agnostic and does not prescribe usage of linked worktrees. 
 
 ## Install
 
-Clone the repository:
-
-```
-git clone https://github.com/koalyptus/agent-git-setup
-```
-
-### 1. Install the skills you need in your harness
+### 1. Install the skills
 
 With the [skills CLI](https://www.skills.sh/docs/cli) (Vercel's open skills ecosystem), install every skill in this repo globally (available in all your projects):
 
