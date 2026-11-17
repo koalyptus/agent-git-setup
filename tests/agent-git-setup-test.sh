@@ -371,12 +371,19 @@ unset AGENT_GIT_SETUP_TEST_CURL_LOG
 export PATH="$PATH_ORIG15A"
 rm -rf "$SANDBOX/bin-success"
 # No temp response files created by this block may survive. A pre-created marker
-# proves the `find` would have detected any leak (guards against the check
-# passing vacuously on platforms whose find lacks -newermt).
-LEAK_MARKER="${TMPDIR:-/tmp}/agileak-probe.$$"
+# that DOES match the glob is detected first and then removed, proving the find
+# actually catches a leak (guards against the check passing vacuously if find were
+# missing or broken). The real-leak count is taken only after the marker is gone.
+LEAK_MARKER="${TMPDIR:-/tmp}/agent-git-id.probe.$$"
 : >"$LEAK_MARKER"
-LEAKS="$(find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'agent-git-id.*' 2>/dev/null | wc -l)"
+DETECTED="$(find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'agent-git-id.*' 2>/dev/null | grep -cxF "$LEAK_MARKER")"
 rm -f "$LEAK_MARKER"
+if [ "$DETECTED" = "1" ]; then
+	ok "leak check can detect an agent-git-id.* file"
+else
+	bad "leak check failed to detect its own marker"
+fi
+LEAKS="$(find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'agent-git-id.*' 2>/dev/null | wc -l)"
 assert_eq "$LEAKS" "0" "no agent-git-id.* temp files leaked"
 
 # Restore the throwaway failure-path curl for the remaining tests.
