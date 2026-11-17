@@ -316,6 +316,67 @@ else
 	ok "no bot config file written when nothing resolves"
 fi
 
+# 15a. Bot id lookup: the network response is fetched to a FILE and parsed from
+#      that file, never piped into the interpreter (`curl | python3`), so the
+#      pattern-based supply-chain audit (skills.sh HIGH: "downloads and executes
+#      remote code") does not fire. A fake curl honors `-o` and writes a JSON body.
+#
+#      This block replaces the throwaway fake curl (exit 22, exercises the
+#      failure path in tests 9b/12/15) with one that returns a real user payload.
+echo "15a. Bot id lookup fetches to a file (no curl|python3 pipe) and cleans up"
+REPO15A="$(make_repo with-origin)"
+make_worktree "$REPO15A"
+WT15A="$WT_DIR"
+mkdir -p "$SANDBOX/bin-success"
+cat >"$SANDBOX/bin-success/curl" <<'CURL'
+#!/usr/bin/env bash
+# Minimal stand-in for `curl`: honor -o <file>, ignore -H/-s/-f, write a fixed
+# GitHub user payload. Each argv token is logged base64-encoded (newline-
+# separated) as it is parsed, so the test can match exact tokens (`-o` alone
+# would also substring-match the "agent-git-id.*" path).
+out=""
+while [ $# -gt 0 ]; do
+	if [ -n "${AGENT_GIT_SETUP_TEST_CURL_LOG:-}" ]; then
+		printf '%s\n' "$(printf '%s' "$1" | base64 -w0)" >>"$AGENT_GIT_SETUP_TEST_CURL_LOG"
+	fi
+	case "$1" in
+	-o) out="$2"; shift 2 ;;
+	-H|-s|-f) shift ;;
+	*) shift ;;
+	esac
+done
+printf '{"login":"fixture-bot[bot]","id":555000111,"type":"Bot"}\n' >"${out:-/dev/null}"
+exit 0
+CURL
+chmod +x "$SANDBOX/bin-success/curl"
+PATH_ORIG15A="$PATH"
+export PATH="$SANDBOX/bin-success:$PATH_ORIG15A"
+export AGENT_GIT_SETUP_TEST_CURL_LOG="$SANDBOX/curl-args.log"
+export AGENT_GIT_NAME="fixture-bot[bot]"
+unset AGENT_GIT_BOT_ID
+if "$SCRIPT" "$WT15A" >/dev/null 2>&1; then
+	ok "setup succeeds with a successful API lookup"
+else
+	bad "setup should succeed when the API lookup returns a user"
+fi
+assert_eq "$(git -C "$WT15A" config user.email)" "555000111+fixture-bot[bot]@users.noreply.github.com" "bot id resolved via the API response file"
+# Assert an exact `-o` argv token (not a substring: the temp path also contains
+# "-o" in "agent-git-id").
+if command -v base64 >/dev/null 2>&1 && grep -Fxq -- "$(printf '%s' '-o' | base64 -w0)" "$AGENT_GIT_SETUP_TEST_CURL_LOG"; then
+	ok "lookup passes the response to curl -o (file, not stdout pipe)"
+else
+	bad "lookup did not use curl -o"
+fi
+unset AGENT_GIT_SETUP_TEST_CURL_LOG
+export PATH="$PATH_ORIG15A"
+rm -rf "$SANDBOX/bin-success"
+# No temp response files may survive any lookup path (success or failure).
+LEAKS="$(find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'agent-git-id.*' -newermt '-10 minutes' 2>/dev/null | wc -l)"
+assert_eq "$LEAKS" "0" "no agent-git-id.* temp files leaked"
+
+# Restore the throwaway failure-path curl for the remaining tests.
+export PATH="$SANDBOX/bin:$PATH"
+
 # 16. --preflight fails closed in the MAIN repo (bot identity not in effect).
 #     The includeIf glob excludes the main tree's .git, so the main checkout's
 #     user.name is the account owner's, not AGENT_GIT_NAME. Preflight must refuse.
