@@ -53,6 +53,16 @@ else
 	exit 1
 fi
 
+echo "agent-git-setup step 4 runs the bundled script, not a fixed-temp clone"
+if grep -Fq 'scripts/agent-git-setup.sh .' "$GIT_SKILL_DOC" &&
+	! grep -Fq '/tmp/agent-git-setup' "$GIT_SKILL_DOC" &&
+	! grep -Fq '2>/dev/null || true' "$GIT_SKILL_DOC"; then
+	echo "  ok   - skill step 4 has no fixed-temp clone-and-execute"
+else
+	echo "  FAIL - skill step 4 must run the bundled script, not clone into a fixed temp path"
+	exit 1
+fi
+
 echo "isolated configured credentials and synthetic App key"
 PEM_PATH="$TEST_HOME/app-private-key.pem"
 python3 - "$PEM_PATH" <<'PY'
