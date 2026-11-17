@@ -354,6 +354,13 @@ export PATH="$SANDBOX/bin-success:$PATH_ORIG15A"
 export AGENT_GIT_SETUP_TEST_CURL_LOG="$SANDBOX/curl-args.log"
 export AGENT_GIT_NAME="fixture-bot[bot]"
 unset AGENT_GIT_BOT_ID
+# Baseline FIRST, before the script runs, so any response file it leaves behind
+# counts as a leak instead of being absorbed into the baseline. `cd` into TMPDIR
+# keeps find output and the grep pattern consistent (`./name`) even when TMPDIR
+# is relative.
+LEAK_TMP="${TMPDIR:-/tmp}"
+count_leaks() { (cd "$LEAK_TMP" 2>/dev/null && find . -maxdepth 1 -name 'agent-git-id.*' 2>/dev/null | wc -l); }
+LEAK_BASELINE="$(count_leaks)"
 if "$SCRIPT" "$WT15A" >/dev/null 2>&1; then
 	ok "setup succeeds with a successful API lookup"
 else
@@ -371,19 +378,23 @@ unset AGENT_GIT_SETUP_TEST_CURL_LOG
 export PATH="$PATH_ORIG15A"
 rm -rf "$SANDBOX/bin-success"
 # No temp response files created by this block may survive. A pre-created marker
-# that DOES match the glob is detected first and then removed, proving the find
-# actually catches a leak (guards against the check passing vacuously if find were
-# missing or broken). The real-leak count is taken only after the marker is gone.
-LEAK_MARKER="${TMPDIR:-/tmp}/agent-git-id.probe.$$"
-: >"$LEAK_MARKER"
-DETECTED="$(find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'agent-git-id.*' 2>/dev/null | grep -cxF "$LEAK_MARKER")"
-rm -f "$LEAK_MARKER"
-if [ "$DETECTED" = "1" ]; then
-	ok "leak check can detect an agent-git-id.* file"
+# that DOES match the glob proves `find` can see a file, and a second probe
+# proves the post-baseline delta actually registers a new file — together these
+# stop the check from passing vacuously if find is missing or broken.
+LEAK_MARKER="agent-git-id.probe.$$"
+(cd "$LEAK_TMP" && : >"$LEAK_MARKER")
+DETECTED="$(cd "$LEAK_TMP" 2>/dev/null && find . -maxdepth 1 -name 'agent-git-id.*' 2>/dev/null | grep -cxF "./$LEAK_MARKER")"
+# Prove the delta measurement actually detects a file created AFTER the baseline:
+# drop a second probe and require the count to rise by exactly one.
+(cd "$LEAK_TMP" && : >"agent-git-id.detect.$$")
+DELTA_DETECTED="$(($(count_leaks) - LEAK_BASELINE))"
+rm -f "$LEAK_TMP/$LEAK_MARKER" "$LEAK_TMP/agent-git-id.detect.$$"
+if [ "${DETECTED:-0}" = "1" ] && [ "$DELTA_DETECTED" = "2" ]; then
+	ok "leak check detects an agent-git-id.* file after baseline"
 else
-	bad "leak check failed to detect its own marker"
+	bad "leak check did not detect its probes (detected=$DETECTED delta=$DELTA_DETECTED)"
 fi
-LEAKS="$(find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'agent-git-id.*' 2>/dev/null | wc -l)"
+LEAKS="$(($(count_leaks) - LEAK_BASELINE))"
 assert_eq "$LEAKS" "0" "no agent-git-id.* temp files leaked"
 
 # Restore the throwaway failure-path curl for the remaining tests.
