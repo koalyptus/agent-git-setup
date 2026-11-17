@@ -335,12 +335,16 @@ INCLUDE_KEY="includeIf.gitdir/i:**/.git/worktrees/**.path"
 # network output straight into the interpreter (`curl ... | python3`). A pipe like
 # that trips pattern-based supply-chain audits (skills.sh flags it HIGH: "downloads
 # and executes remote code"), even though json.load only parses. Breaking the pipe
-# keeps the verdict clean without changing behavior. The file is removed on every
-# exit path: a RETURN trap (bash runs it on normal return AND on ERR/exit) plus an
-# explicit rm before each return.
+# keeps the verdict clean without changing behavior.
+#
+# Cleanup: an explicit `rm -f` runs before every return, which covers the failure
+# paths (a failed curl/python still reaches the rm, and `exit` elsewhere aborts
+# after it). The function-local RETURN trap backs up the normal-return path and
+# the `set -e` abort path; note bash does NOT run it for an explicit `exit` inside
+# the function, so the explicit rm is the load-bearing cleanup.
 _RESOLVE_ID() {
 	local _enc _id _resp
-	_resp="$(mktemp "${TMPDIR:-/tmp}/agent-git-id.XXXXXX")"
+	_resp="$(mktemp "${TMPDIR:-/tmp}/agent-git-id.XXXXXX" || true)"
 	trap 'rm -f "$_resp"' RETURN
 	_enc="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "$1" 2>/dev/null || true)"
 	curl -sf -H "Accept: application/vnd.github+json" "https://api.github.com/users/${_enc}" -o "$_resp" 2>/dev/null || true
