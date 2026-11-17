@@ -123,10 +123,10 @@ try {
         Bad "skills must require consent and explicit App choice when credentials are ambiguous"
     }
 
-    if (($gitSkillText.Contains("scripts/agent-git-setup.sh .")) -and (-not $gitSkillText.Contains("/tmp/agent-git-setup")) -and (-not $gitSkillText.Contains("2>/dev/null || true"))) {
-        Ok "agent-git-setup step 4 runs the bundled script, not a fixed-temp clone"
+    if (($gitSkillText.Contains('"$SKILL_DIR/scripts/agent-git-setup.sh"')) -and ($gitSkillText.Contains('rev-parse "$PINNED_REF^{commit}"')) -and (-not $gitSkillText.Contains("/tmp/agent-git-setup")) -and (-not $gitSkillText.Contains("2>/dev/null || true"))) {
+        Ok "agent-git-setup step 4 runs the installed script and pins the last-resort clone"
     } else {
-        Bad "skill step 4 must run the bundled script, not clone into a fixed temp path"
+        Bad "skill step 4 must run the installed script, not clone into a fixed temp path"
     }
 
     $configDir = Join-Path $env:XDG_CONFIG_HOME "agent-git-setup"

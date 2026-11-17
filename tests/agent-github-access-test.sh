@@ -59,13 +59,16 @@ else
 	exit 1
 fi
 
-echo "agent-git-setup step 4 runs the bundled script, not a fixed-temp clone"
-if grep -Fq 'scripts/agent-git-setup.sh .' "$GIT_SKILL_DOC" &&
+echo "agent-git-setup step 4 runs the installed script, not a fixed-temp clone"
+# These are literal code samples in the skill document, not shell expansions.
+# shellcheck disable=SC2016
+if grep -Fq '"$SKILL_DIR/scripts/agent-git-setup.sh"' "$GIT_SKILL_DOC" &&
+	grep -Fq 'rev-parse "$PINNED_REF^{commit}"' "$GIT_SKILL_DOC" &&
 	! grep -Fq '/tmp/agent-git-setup' "$GIT_SKILL_DOC" &&
 	! grep -Fq '2>/dev/null || true' "$GIT_SKILL_DOC"; then
-	ok "skill step 4 has no fixed-temp clone-and-execute"
+	ok "skill step 4 runs the installed script and pins the last-resort clone"
 else
-	echo "  FAIL - skill step 4 must run the bundled script, not clone into a fixed temp path"
+	echo "  FAIL - skill step 4 must run the installed script, not clone into a fixed temp path"
 	exit 1
 fi
 
