@@ -67,7 +67,7 @@ Use this for bot attribution first. If a bot setup or preflight failure makes bo
 
 4. **Run setup once per repo.** Writes bot identity via `includeIf` into shared repo config. Every linked worktree (present + future) inherits the same bot identity. The main checkout stays account owner. The harness still chooses and creates the worktree.
 
-   Run the setup script bundled with the installed skill, using the same relative-path style as step 5. The script must live outside the target repo (it refuses to run from inside it), so install the skill globally or otherwise keep its `scripts/` directory outside the repo.
+   Run the setup script bundled with the installed skill, using the same relative-path style as step 5: `scripts/` is relative to the installed skill directory, not the target repo. The script must live outside the target repo (it refuses to run from inside it), so install the skill globally or otherwise keep its `scripts/` directory outside the repo.
 
    ```bash
    scripts/agent-git-setup.sh .    # Linux/macOS
@@ -76,7 +76,7 @@ Use this for bot attribution first. If a bot setup or preflight failure makes bo
 
    If the prompt provided a signing key path, set `AGENT_GIT_SIGNING_KEY` for this command only: `AGENT_GIT_SIGNING_KEY="$KEY_PATH" scripts/agent-git-setup.sh .` (Bash) or `$env:AGENT_GIT_SIGNING_KEY = $KeyPath` before the `.ps1` call (PowerShell).
 
-   If the skill was loaded without its bundled `scripts/` directory (a raw `SKILL.md` only), install it properly first — the README's `npx skills add …` command or the harness's skill-install command. A clone is a last resort, and only when the skill cannot be installed: pin an immutable ref (a release tag or commit SHA), clone into a private temp dir (never a fixed shared path), do not suppress clone errors, and confirm `git -C <dir> rev-parse HEAD` equals the pinned commit before executing.
+   If the skill was loaded without its bundled `scripts/` directory (a raw `SKILL.md` only), install it properly first — the README's `npx skills add …` command or the harness's skill-install command. A clone is a last resort, and only when the skill cannot be installed: pin an immutable ref (a release tag or commit SHA), clone into a private temp dir (never a fixed shared path), do not suppress clone errors, and confirm `git -C <dir> rev-parse HEAD` equals `git -C <dir> rev-parse "$PINNED_REF^{commit}"` before executing.
 
    Does NOT create worktrees, branches, or touch main checkout. Prints isolation check. No `worktreeConfig` extension needed (`includeIf` works on git 2.43+).
 
