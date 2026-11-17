@@ -60,12 +60,15 @@ else
 fi
 
 echo "agent-git-setup step 4 runs the installed script, not a fixed-temp clone"
+STEP4_BLOCK="$(awk '/^4\. /{inblock=1} inblock && /^5\. /{exit} inblock' "$GIT_SKILL_DOC")"
+step4_has() { printf '%s\n' "$STEP4_BLOCK" | grep -Fq "$1"; }
 # These are literal code samples in the skill document, not shell expansions.
 # shellcheck disable=SC2016
-if grep -Fq '"$SKILL_DIR/scripts/agent-git-setup.sh"' "$GIT_SKILL_DOC" &&
-	grep -Fq 'rev-parse "$PINNED_REF^{commit}"' "$GIT_SKILL_DOC" &&
-	! grep -Fq '/tmp/agent-git-setup' "$GIT_SKILL_DOC" &&
-	! grep -Fq '2>/dev/null || true' "$GIT_SKILL_DOC"; then
+if [ -n "$STEP4_BLOCK" ] &&
+	step4_has '"$SKILL_DIR/scripts/agent-git-setup.sh"' &&
+	step4_has 'fetch --depth 1 <repo-url> <SHA>' &&
+	! step4_has '/tmp/agent-git-setup' &&
+	! step4_has '2>/dev/null || true'; then
 	ok "skill step 4 runs the installed script and pins the last-resort clone"
 else
 	echo "  FAIL - skill step 4 must run the installed script, not clone into a fixed temp path"
