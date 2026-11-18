@@ -3,6 +3,12 @@
 set -euo pipefail
 umask 077
 
+PASS=0
+ok() {
+	PASS=$((PASS + 1))
+	echo "  ok   - $*"
+}
+
 unset GITHUB_APP_ID GITHUB_APP_PEM GITHUB_APP_NAME GITHUB_APP_INSTALL_ID GH_TOKEN GH_ENTERPRISE_TOKEN GITHUB_TOKEN GH_HOST GH_REPO AGENT_GIT_CREDENTIALS AGENT_GIT_TOKEN_ACTOR AGENT_GIT_TOKEN_SHA256 AGENT_GIT_TOKEN_ATTESTATION AGENT_GIT_TOKEN_APP_ID AGENT_GIT_TOKEN_APP_PEM_PATH GIT_CONFIG_COUNT GIT_CONFIG_PARAMETERS GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE PYTHONPATH
 
 TEST_HOME="$(mktemp -d -t github-access.XXXXXX)"
@@ -34,7 +40,7 @@ echo "new skill documents the tested mint-and-verify workflow"
 if grep -Fq 'source <("$MINT_TOKEN_BASH" --shell)' "$SKILL_DOC" &&
 	grep -Fq '& $MINT_TOKEN_POWERSHELL' "$SKILL_DOC" &&
 	grep -Fq 'gh repo view --json nameWithOwner --jq .nameWithOwner' "$SKILL_DOC"; then
-	echo "  ok   - skill documents platform-specific minters and current-repo verification"
+	ok "skill documents platform-specific minters and current-repo verification"
 else
 	echo "  FAIL - skill workflow commands do not match the tested flow"
 	exit 1
@@ -47,9 +53,25 @@ if grep -Fq 'May I create commits as this account owner identity' "$GIT_SKILL_DO
 	grep -Fq 'Only after explicit approval' "$SKILL_DOC" &&
 	grep -Fq 'show the public App IDs from their filenames' "$SKILL_DOC" &&
 	grep -Fq 'ask the account owner which App to use' "$SKILL_DOC"; then
-	echo "  ok   - skills require consent and explicit App choice when credentials are ambiguous"
+	ok "skills require consent and explicit App choice when credentials are ambiguous"
 else
 	echo "  FAIL - skills must require consent and explicit App choice when credentials are ambiguous"
+	exit 1
+fi
+
+echo "agent-git-setup step 4 runs the installed script, not a fixed-temp clone"
+STEP4_BLOCK="$(awk '/^4\. /{inblock=1} inblock && /^5\. /{exit} inblock' "$GIT_SKILL_DOC")"
+step4_has() { printf '%s\n' "$STEP4_BLOCK" | grep -Fq "$1"; }
+# These are literal code samples in the skill document, not shell expansions.
+# shellcheck disable=SC2016
+if [ -n "$STEP4_BLOCK" ] &&
+	step4_has '"$SKILL_DIR/scripts/agent-git-setup.sh"' &&
+	step4_has 'fetch --depth 1 <repo-url> <SHA>' &&
+	! step4_has '/tmp/agent-git-setup' &&
+	! step4_has '2>/dev/null || true'; then
+	ok "skill step 4 runs the installed script and pins the last-resort clone"
+else
+	echo "  FAIL - skill step 4 must run the installed script, not clone into a fixed temp path"
 	exit 1
 fi
 
@@ -151,24 +173,24 @@ echo "mint and verify with local fixtures only"
 # shellcheck disable=SC1090
 source <("$MINT_TOKEN_SCRIPT" --shell)
 if [ "${AGENT_GIT_TOKEN_ACTOR:-}" = "fixture-app[bot]" ] && [ -n "${AGENT_GIT_TOKEN_ATTESTATION:-}" ]; then
-	echo "  ok   - existing minter exports the App actor and signed attestation"
+	ok "existing minter exports the App actor and signed attestation"
 else
 	echo "  FAIL - minter did not export complete App token metadata"
 	exit 1
 fi
 
 if GH_RESULT="$(gh repo view --json nameWithOwner --jq .nameWithOwner)" && [ "$GH_RESULT" = "acme/widget" ]; then
-	echo "  ok   - gh verifies access to the current repository with the minted token"
+	ok "gh verifies access to the current repository with the minted token"
 else
 	echo "  FAIL - gh did not verify current-repository access"
 	exit 1
 fi
 
 if cmp -s "$CREDENTIALS_FILE" "$TEST_HOME/credentials.before" && ! grep -R -Fq 'ghs.synthetic-installation-token' "$XDG_CONFIG_HOME" "$HOME"; then
-	echo "  ok   - credentials stay unchanged and the token is not persisted"
+	ok "credentials stay unchanged and the token is not persisted"
 else
 	echo "  FAIL - test workflow modified credentials or persisted its token"
 	exit 1
 fi
 
-echo "PASS=4 FAIL=0"
+echo "PASS=$PASS FAIL=0"

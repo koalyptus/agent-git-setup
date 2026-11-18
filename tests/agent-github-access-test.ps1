@@ -123,6 +123,16 @@ try {
         Bad "skills must require consent and explicit App choice when credentials are ambiguous"
     }
 
+    $step4Start = $gitSkillText.IndexOf("4. **Run setup once per repo.**")
+    $step4End = $gitSkillText.IndexOf("5. **Run the matching preflight")
+    if ($step4Start -lt 0 -or $step4End -le $step4Start) { throw "agent-git-setup SKILL.md step 4/5 headings not found" }
+    $step4Block = $gitSkillText.Substring($step4Start, $step4End - $step4Start)
+    if (($step4Block.Contains('"$SKILL_DIR/scripts/agent-git-setup.sh"')) -and ($step4Block.Contains('fetch --depth 1 <repo-url> <SHA>')) -and (-not $step4Block.Contains("/tmp/agent-git-setup")) -and (-not $step4Block.Contains("2>/dev/null || true"))) {
+        Ok "agent-git-setup step 4 runs the installed script and pins the last-resort clone"
+    } else {
+        Bad "skill step 4 must run the installed script, not clone into a fixed temp path"
+    }
+
     $configDir = Join-Path $env:XDG_CONFIG_HOME "agent-git-setup"
     New-Item -ItemType Directory -Path $configDir -Force | Out-Null
     $credentialsFile = Join-Path $configDir "credentials.env"

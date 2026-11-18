@@ -1,7 +1,7 @@
 ---
 name: agent-git-setup
 description: "Set up a bot git identity (<name>[bot]) for an AI agent's worktree so commits are attributed to the bot, leaving the account owner's working tree untouched. Identity-only: the harness owns the worktree."
-version: 2.0.2
+version: 2.0.3
 author: koalyptus
 license: MIT
 platforms: [linux, macos, windows]
@@ -67,23 +67,26 @@ Use this for bot attribution first. If a bot setup or preflight failure makes bo
 
 4. **Run setup once per repo.** Writes bot identity via `includeIf` into shared repo config. Every linked worktree (present + future) inherits the same bot identity. The main checkout stays account owner. The harness still chooses and creates the worktree.
 
+   Set `SKILL_DIR` to this skill's installation directory — the directory containing the `SKILL.md` you are reading (its path's parent). Re-resolve it in every session that runs step 4 or step 5; it is not persisted shell state. Run the setup script bundled there — not a `scripts/` path relative to the target repository — with the target worktree as the current directory and explicit target (`.`). The script must live outside the target repo (it refuses to run from inside it), so install the skill globally or otherwise keep its `scripts/` directory outside the repo.
+
    ```bash
-   git clone --depth 1 https://github.com/koalyptus/agent-git-setup.git /tmp/agent-git-setup 2>/dev/null || true
-   /tmp/agent-git-setup/scripts/agent-git-setup.sh .    # Linux/macOS
-   /tmp/agent-git-setup/scripts/agent-git-setup.ps1 .   # Windows
+   bash "$SKILL_DIR/scripts/agent-git-setup.sh" .    # Linux/macOS
+   pwsh "$SKILL_DIR/scripts/agent-git-setup.ps1" .   # Windows
    ```
 
-   If the prompt provided a signing key path, set `AGENT_GIT_SIGNING_KEY` for this command only: `AGENT_GIT_SIGNING_KEY="$KEY_PATH" /tmp/agent-git-setup/scripts/agent-git-setup.sh .` (Bash) or `$env:AGENT_GIT_SIGNING_KEY = $KeyPath` before the `.ps1` call (PowerShell).
+   If the prompt provided a signing key path, set `AGENT_GIT_SIGNING_KEY` for this command only: `AGENT_GIT_SIGNING_KEY="$KEY_PATH" bash "$SKILL_DIR/scripts/agent-git-setup.sh" .` (Bash) or `$env:AGENT_GIT_SIGNING_KEY = $KeyPath` before the `pwsh` call (PowerShell).
+
+   If the skill was loaded without its bundled `scripts/` directory (a raw `SKILL.md` only), install it properly first — the README's `npx skills add …` command or the harness's skill-install command. A clone is a last resort, and only when the skill cannot be installed: pin a full commit SHA (tags can move — do not pin a mutable ref), clone into a private temp dir (never a fixed shared path) and check out exactly that commit — `git -C <dir> fetch --depth 1 <repo-url> <SHA>` then `git -C <dir> checkout FETCH_HEAD` (a `--depth 1` clone of a branch cannot reach a non-tip commit) — then confirm `git -C <dir> rev-parse HEAD` equals `<SHA>` and `git -C <dir> status --porcelain` is empty before executing. Do not suppress errors.
 
    Does NOT create worktrees, branches, or touch main checkout. Prints isolation check. No `worktreeConfig` extension needed (`includeIf` works on git 2.43+).
 
-5. **Run the matching preflight in the actual agent worktree, then work there.** Git-only sessions use `git-only`; sessions that call GitHub as the bot use `github`. Commits there = `<name>[bot]`; the main tree is untouched. A harness lifecycle hook is needed to guarantee preflight on every session.
+5. **Run the matching preflight in the actual agent worktree, then work there.** Git-only sessions use `git-only`; sessions that call GitHub as the bot use `github`. Commits there = `<name>[bot]`; the main tree is untouched. A harness lifecycle hook is needed to guarantee preflight on every session (using `$SKILL_DIR` as set in step 4).
 
    ```bash
-   scripts/agent-git-setup.sh --preflight --mode git-only .  # local commits only
-   scripts/agent-git-setup.sh --preflight --mode github .    # GitHub API as bot
-   scripts/agent-git-setup.ps1 --preflight --mode git-only . # PowerShell
-   scripts/agent-git-setup.ps1 --preflight --mode github .
+   "$SKILL_DIR/scripts/agent-git-setup.sh" --preflight --mode git-only .  # local commits only
+   "$SKILL_DIR/scripts/agent-git-setup.sh" --preflight --mode github .    # GitHub API as bot
+   "$SKILL_DIR/scripts/agent-git-setup.ps1" --preflight --mode git-only . # PowerShell
+   "$SKILL_DIR/scripts/agent-git-setup.ps1" --preflight --mode github .
    ```
 
    - Agent must NOT rewrite `origin` or set `remote.origin.url` (leaks bot push credential into main tree — worktrees share remotes).
