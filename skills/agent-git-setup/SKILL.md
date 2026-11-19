@@ -1,7 +1,7 @@
 ---
 name: agent-git-setup
 description: "Set up a bot git identity (<name>[bot]) for an AI agent's worktree so commits are attributed to the bot, leaving the account owner's working tree untouched. Identity-only: the harness owns the worktree."
-version: 2.0.3
+version: 2.0.4
 author: koalyptus
 license: MIT
 platforms: [linux, macos, windows]
