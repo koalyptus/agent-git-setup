@@ -577,15 +577,15 @@ unset REPO19 WT19 CLONE18 REPO18c
 # 20. Shipped surfaces must not carry comments that a security audit reads as
 #     deliberate avoidance of detection. The guard covers scripts/ (source of
 #     truth) and skills/ (the bundle the audit actually sees); tests/ is not
-#     shipped. The token list below is the guard's own definition and is the one
-#     place those words legitimately appear. A planted token proves the check
-#     can fail.
+#     shipped. The token list is the guard's own definition and is the one place
+#     those words legitimately appear. Two sub-checks keep the guard honest: a
+#     missing path must fail (rc=2, not a vacuous zero), and a temp copy with a
+#     planted token must be detected.
 echo "20. Shipped surfaces contain no audit-avoidance comment wording"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 AUDIT_TOKEN_LOG="$SANDBOX/audit-token-hits.log"
-grep -rniF \
-	-e verdict -e gaming -e evasion -e 'supply-chain' -e 'supply chain' -e pattern-based -e snyk -e scanner \
-	"$REPO_ROOT/scripts/" "$REPO_ROOT/skills/" >"$AUDIT_TOKEN_LOG" 2>&1
+AUDIT_TOKENS=(-e verdict -e gaming -e evasion -e 'supply-chain' -e 'supply chain' -e pattern-based -e snyk -e scanner -e 'skills.sh' -e 'audit clean')
+grep -rniF "${AUDIT_TOKENS[@]}" "$REPO_ROOT/scripts/" "$REPO_ROOT/skills/" >"$AUDIT_TOKEN_LOG" 2>&1
 AUDIT_GREP_RC=$?
 AUDIT_TOKEN_HITS="$(wc -l <"$AUDIT_TOKEN_LOG" | tr -d ' ')"
 if [ "$AUDIT_GREP_RC" -le 1 ]; then
@@ -594,6 +594,24 @@ else
 	bad "audit-token grep errored (rc=$AUDIT_GREP_RC)"
 fi
 assert_eq "$AUDIT_TOKEN_HITS" "0" "no audit-avoidance wording on shipped surfaces (scripts/ + skills/)"
+if [ "$AUDIT_TOKEN_HITS" -ne 0 ]; then
+	echo "  --- audit-token matches (log: $AUDIT_TOKEN_LOG) ---" >&2
+	sed 's/^/    /' "$AUDIT_TOKEN_LOG" >&2 || true
+fi
+
+# Error path: a missing directory must give grep rc=2, not a vacuous zero.
+MISSING_PATH="$SANDBOX/no-such-dir"
+MISSING_RC=0
+grep -rniF "${AUDIT_TOKENS[@]}" "$MISSING_PATH" >/dev/null 2>&1 || MISSING_RC=$?
+assert_eq "$MISSING_RC" "2" "audit-token grep fails (rc=2) on a missing path"
+
+# Self-sabotage: the same grep against a temp copy with a planted token must
+# match, so the suite itself proves the guard is not vacuous.
+SABOTAGE_DIR="$SANDBOX/audit-sabotage"
+mkdir -p "$SABOTAGE_DIR/scripts" "$SABOTAGE_DIR/skills"
+printf '# planted probe: keeps the audit clean\n' >"$SABOTAGE_DIR/scripts/probe.sh"
+SABOTAGE_HITS="$(grep -rniF "${AUDIT_TOKENS[@]}" "$SABOTAGE_DIR/scripts/" "$SABOTAGE_DIR/skills/" 2>/dev/null | wc -l | tr -d ' ')"
+assert_eq "$SABOTAGE_HITS" "1" "audit-token guard detects a planted token"
 
 echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]
