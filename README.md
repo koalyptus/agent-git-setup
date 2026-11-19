@@ -164,6 +164,16 @@ This is a convenience skill to invoke when the account owner wants to override i
 ### agent-git-restore-main-identity
 This convenience skill restores the identity saved before the override.
 
+## Update
+
+Re-run the install command to refresh all four skills, or update them by name:
+
+```
+npx skills add https://github.com/koalyptus/agent-git-setup/tree/main/skills --all --global
+
+npx skills update agent-git-setup agent-github-access agent-git-override-main-identity agent-git-restore-main-identity -g
+```
+
 ## Flows
 
 See [`skills/agent-git-setup/SKILL.md`](skills/agent-git-setup/SKILL.md) for commit attribution and preflight and [`skills/agent-github-access/SKILL.md`](skills/agent-github-access/SKILL.md) for GitHub API access.
