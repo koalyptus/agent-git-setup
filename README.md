@@ -166,7 +166,7 @@ This convenience skill restores the identity saved before the override.
 
 ## Update
 
-Re-run the install command to refresh all four skills, or update them by name:
+Re-running the install command overwrites the installed copies, or update them by name with `update` (alias `upgrade`):
 
 ```
 npx skills add https://github.com/koalyptus/agent-git-setup/tree/main/skills --all --global
