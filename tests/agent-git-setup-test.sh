@@ -575,19 +575,18 @@ export PATH="$PATH_ORIG"
 unset REPO19 WT19 CLONE18 REPO18c
 
 # 20. Shipped surfaces must not carry comments that a security audit reads as
-#     deliberate avoidance of detection. The audited artifact is the skill
-#     package under skills/, so the guard covers scripts/ (source of truth) and
-#     skills/ (bundle copies) — the only files the audit can see; tests/ is not
+#     deliberate avoidance of detection. The guard covers scripts/ (source of
+#     truth) and skills/ (the bundle the audit actually sees); tests/ is not
 #     shipped. The token list below is the guard's own definition and is the one
 #     place those words legitimately appear. A planted token proves the check
 #     can fail.
 echo "20. Shipped surfaces contain no audit-avoidance comment wording"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 AUDIT_TOKEN_LOG="$SANDBOX/audit-token-hits.log"
-AUDIT_GREP_RC=0
-(cd "$REPO_ROOT" && grep -rniF \
-	-e verdict -e gaming -e evasion -e 'supply.chain' -e pattern-based -e snyk -e scanner \
-	scripts/ skills/) >"$AUDIT_TOKEN_LOG" 2>&1 || AUDIT_GREP_RC=$?
+grep -rniF \
+	-e verdict -e gaming -e evasion -e 'supply-chain' -e 'supply chain' -e pattern-based -e snyk -e scanner \
+	"$REPO_ROOT/scripts/" "$REPO_ROOT/skills/" >"$AUDIT_TOKEN_LOG" 2>&1
+AUDIT_GREP_RC=$?
 AUDIT_TOKEN_HITS="$(wc -l <"$AUDIT_TOKEN_LOG" | tr -d ' ')"
 if [ "$AUDIT_GREP_RC" -le 1 ]; then
 	ok "audit-token grep ran without error (rc=$AUDIT_GREP_RC)"
