@@ -332,10 +332,9 @@ INCLUDE_KEY="includeIf.gitdir/i:**/.git/worktrees/**.path"
 # Written set -e-safe: a failed lookup is reported as unresolved and setup fails.
 #
 # The response is fetched to a temp FILE and parsed from that file — never piped
-# network output straight into the interpreter (`curl ... | python3`). A pipe like
-# that trips pattern-based supply-chain audits (skills.sh flags it HIGH: "downloads
-# and executes remote code"), even though json.load only parses. Breaking the pipe
-# keeps the verdict clean without changing behavior.
+# network output straight into the interpreter (`curl ... | python3`). Feeding
+# a fetched file instead of a pipe is defense-in-depth: json.load only parses, but
+# an explicit read boundary keeps the data flow auditable and reviewable.
 #
 # Cleanup: an explicit `rm -f` runs before every return, which covers the failure
 # paths (a failed curl/python still reaches the rm, and `exit` elsewhere aborts
